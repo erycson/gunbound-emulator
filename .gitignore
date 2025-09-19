@@ -1,0 +1,36 @@
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Ambientes virtuais
+venv/
+env/
+Scripts/
+Include/
+lib/
+.env/
+
+# Dependências
+site-packages/
+
+# Configurações do sistema/IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Arquivos temporários
+*.log
+*.tmp
+*.bak
+
+# Banco de dados e arquivos binários
+*.db
+*.sqlite3
+data.bin
+
+# Outros
+dist/
+build/
+node_modules/
