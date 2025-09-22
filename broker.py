@@ -1,14 +1,17 @@
 import asyncio
+from gunbound.broker.managers import GameServerManager, ConfigManager, DatabaseManager
 from gunbound.broker_server import BrokerServer
 from gunbound.util.aes_cipher import AESCipher
-from gunbound.broker.managers.config import ConfigManager
-from gunbound.broker.managers.database import DatabaseManager
 import gunbound.broker.protocol # Garante o registro automático dos protocolos
 
 async def main():
-    # Inicializa o ConfigManager e DatabaseManager
+    # Inicializa os Manganers
     config = ConfigManager.initialize("config.yml")
+    
     await DatabaseManager.initialize(config['database']['uri'])
+
+    manager = GameServerManager.initialize(config['gameservers'])
+    manager.start_monitor()
 
     # Inicia o servidor
     crypto = AESCipher(config.get('crypto'))

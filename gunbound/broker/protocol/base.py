@@ -1,11 +1,30 @@
 # lib/protocol/base.py
 import abc
 import asyncio
-from gunbound.util.binary_buffer import BinaryReader
+from typing import Optional, Type
+from gunbound.util.binary_buffer import BinaryReader, BinaryWriter
 from gunbound.broker.exceptions import UnknownPacketError
 
+class BasePackageRecv(abc.ABC):
+    @abc.abstractmethod
+    async def process(self, buf: BinaryReader):
+        pass
+
+    @abc.abstractmethod
+    def log_command(self, conn):
+        pass
+    
+class BasePackageSend(abc.ABC):
+    @abc.abstractmethod
+    def get_buf(self) -> BinaryWriter:
+        pass
+
+    @abc.abstractmethod
+    def log_command(self, conn):
+        pass
+
 class BasePackageFactory(abc.ABC):
-    registry = {}
+    registry: dict[int, Type[BasePackageRecv]] = {}
 
     @classmethod
     def register(cls, type_code):
@@ -16,25 +35,16 @@ class BasePackageFactory(abc.ABC):
 
     @classmethod
     async def from_data(cls, command, conn, buf: BinaryReader):
-        handler = cls.registry.get(command)
+        handler: Optional[Type[BasePackageRecv]] = cls.registry.get(command)
         if not handler:
             raise UnknownPacketError(f"Comando não implementado: {command:#04x}", buf)
         
         # Cria a instância do pacote e chama o método process
-        pacote = handler(conn)
-        asyncio.create_task(pacote.process(buf))
+        data = handler(conn, buf)
+        data.log_command(conn)
+        asyncio.create_task(data.process())
 
     @classmethod
     @abc.abstractmethod
     async def process(cls, buf: BinaryReader):
-        pass
-
-class BasePackageRecv(abc.ABC):
-    @abc.abstractmethod
-    async def process(self, buf: BinaryReader):
-        pass
-    
-class BasePackageSend(abc.ABC):
-    @abc.abstractmethod
-    def to_bytes(self):
         pass

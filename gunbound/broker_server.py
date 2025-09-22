@@ -3,14 +3,16 @@ from gunbound.broker.client import ClientConnection
 
 class BrokerServer:
     def __init__(self, config, crypto):
+        self.id = id(self)
         self.host = config['host']
         self.port = config['port']
         self.crypto = crypto
         self.server = None
         self.connections = []
+        self.servers = []
 
     async def handler(self, reader, writer):
-        connection = ClientConnection(reader, writer, self.crypto)
+        connection = ClientConnection(self, reader, writer)
         self.connections.append(connection)
         asyncio.create_task(connection.handler())
 
@@ -24,3 +26,7 @@ class BrokerServer:
 
         async with self.server:
             await self.server.serve_forever()
+
+    def remove_connection(self, connection: ClientConnection):
+        if connection in self.connections:
+            self.connections.remove(connection)

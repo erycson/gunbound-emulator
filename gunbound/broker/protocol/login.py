@@ -1,16 +1,19 @@
 # lib/protocol/login.py
 
-from gunbound.broker.protocol.enums import ClientPacket, ServerPacket
+import struct
+from gunbound.broker.protocol.enums import ClientPacket, ServerPacket, ServerCode
 from gunbound.broker.protocol.base import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.broker.managers.config import ConfigManager
+from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
 from gunbound.util.class_loader import instantiate_by_fullname
 
 @BasePackageFactory.register(ClientPacket.CLI_LOGIN.value)
 class LoginRecv(BasePackageRecv):
     _strategy = None
 
-    def __init__(self, conn):
+    def __init__(self, conn, buf: BinaryReader):
         self.conn = conn
+        self.buf = buf
         self.strategy = self.get_strategy()
 
     @classmethod
@@ -21,25 +24,37 @@ class LoginRecv(BasePackageRecv):
             cls._strategy = instantiate_by_fullname(strategy_class)
         return cls._strategy
 
-    async def process(self, buf):
+    async def process(self):
         # Delegar para a estratégia selecionada
-        session_id, username, password = await self.strategy.process(self.conn, buf)
-        print(f"[LoginRecv] Login processado: {username}/{password}")
+        await self.strategy.process(self.conn, self.buf)
+
+    def log_command(self, conn):
+        cmd = ClientPacket.CLI_LOGIN.value
+        print(f"RECV<< [SS={conn.broker.id:08X} SQ={conn.seq:04X} CD={cmd:04X}] {self.buf.to_hex()}")
 
 class LoginResp(BasePackageSend):
-    def __init__(self, payload):
-        self.cmd = ServerPacket.LOGIN_RESPONSE.value
-        self.payload = payload
+    def __init__(self, buf: BinaryWriter):
+        self.buf = buf 
 
     @classmethod
-    def success(cls, user):
-        return cls({'status': 'ok', 'user': user})
-
+    def success(cls):
+        buf = BinaryWriter()
+        buf.write_uint16(ServerPacket.SRV_LOGIN)
+        buf.write_uint16(ServerCode.SRV_OK)
+        return cls(buf)
+    
     @classmethod
-    def userNotFound(cls, username):
-        return cls({'status': 'not_found', 'username': username})
+    def wrong_credentials(cls):
+        buf = BinaryWriter()
+        buf.write_uint16(ServerPacket.SRV_LOGIN)
+        buf.write_uint16(ServerCode.SRV_ERR_WRONG_CREDENTIALS)
+        return cls(buf)
 
-    def to_bytes(self):
-        # Serialização para bytes (exemplo: JSON)
-        import json
-        return json.dumps(self.payload).encode()
+    def get_buf(self) -> BinaryWriter:
+        return self.buf
+    
+    def log_command(self, conn):
+        reader = self.buf.to_reader()
+        cmd = reader.read_uint16(pos=0)
+        code = reader.read_uint16(pos=2)
+        print(f"SEND>> [SS={conn.broker.id:08X} SQ={conn.seq:04X} CD={cmd:04X} RTC={code:04X}]")

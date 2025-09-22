@@ -1,7 +1,7 @@
 import struct
 
 class BinaryReader:
-    def __init__(self, data: bytes):
+    def __init__(self, data: bytes = b""):
         self._buffer = data
         self._pos = 0
 
@@ -125,7 +125,10 @@ class BinaryReader:
 
     def getvalue(self):
         return bytes(self._buffer)
-    
+
+    def to_hex(self):
+        return ' '.join(f'{b:02X}' for b in self._buffer)
+
     def size(self):
         return len(self._buffer)
 
@@ -140,79 +143,82 @@ class BinaryWriter:
         self._buffer = bytearray()
         self._pos = 0
 
-    def write_int8(self, value, pos=None, le=True):
+    def write_int8(self, value, pos=None, le=True, insert=False):
         fmt = '<b' if le else '>b'
-        b = struct.pack(fmt, value)
-        self._write_bytes(b, 1, pos)
+        b = struct.pack(fmt, int(value))
+        self._write_bytes(b, 1, pos, insert=insert)
 
-    def write_uint8(self, value, pos=None, le=True):
+    def write_uint8(self, value, pos=None, le=True, insert=False):
         fmt = '<B' if le else '>B'
-        b = struct.pack(fmt, value)
-        self._write_bytes(b, 1, pos)
+        b = struct.pack(fmt, int(value))
+        self._write_bytes(b, 1, pos, insert=insert)
 
-    def write_int16(self, value, pos=None, le=True):
+    def write_int16(self, value, pos=None, le=True, insert=False):
         fmt = '<h' if le else '>h'
-        b = struct.pack(fmt, value)
-        self._write_bytes(b, 2, pos)
+        b = struct.pack(fmt, int(value))
+        self._write_bytes(b, 2, pos, insert=insert)
 
-    def write_uint16(self, value, pos=None, le=True):
+    def write_uint16(self, value, pos=None, le=True, insert=False):
         fmt = '<H' if le else '>H'
-        b = struct.pack(fmt, value)
-        self._write_bytes(b, 2, pos)
+        b = struct.pack(fmt, int(value))
+        self._write_bytes(b, 2, pos, insert=insert)
 
-    def write_int32(self, value, pos=None, le=True):
+    def write_int32(self, value, pos=None, le=True, insert=False):
         fmt = '<i' if le else '>i'
-        b = struct.pack(fmt, value)
-        self._write_bytes(b, 4, pos)
+        b = struct.pack(fmt, int(value))
+        self._write_bytes(b, 4, pos, insert=insert)
 
-    def write_uint32(self, value, pos=None, le=True):
+    def write_uint32(self, value, pos=None, le=True, insert=False):
         fmt = '<I' if le else '>I'
-        b = struct.pack(fmt, value)
-        self._write_bytes(b, 4, pos)
+        b = struct.pack(fmt, int(value))
+        self._write_bytes(b, 4, pos, insert=insert)
 
-    def write_int64(self, value, pos=None, le=True):
+    def write_int64(self, value, pos=None, le=True, insert=False):
         fmt = '<q' if le else '>q'
-        b = struct.pack(fmt, value)
-        self._write_bytes(b, 8, pos)
+        b = struct.pack(fmt, int(value))
+        self._write_bytes(b, 8, pos, insert=insert)
 
-    def write_uint64(self, value, pos=None, le=True):
+    def write_uint64(self, value, pos=None, le=True, insert=False):
         fmt = '<Q' if le else '>Q'
-        b = struct.pack(fmt, value)
-        self._write_bytes(b, 8, pos)
+        b = struct.pack(fmt, int(value))
+        self._write_bytes(b, 8, pos, insert=insert)
 
-    def write_short(self, value, pos=None, le=True):
+    def write_short(self, value, pos=None, le=True, insert=False):
         fmt = '<h' if le else '>h'
-        b = struct.pack(fmt, value)
-        self._write_bytes(b, 2, pos)
+        b = struct.pack(fmt, int(value))
+        self._write_bytes(b, 2, pos, insert=insert)
 
-    def write_float(self, value, pos=None, le=True):
+    def write_float(self, value, pos=None, le=True, insert=False):
         fmt = '<f' if le else '>f'
-        b = struct.pack(fmt, value)
-        self._write_bytes(b, 4, pos)
+        b = struct.pack(fmt, float(value))
+        self._write_bytes(b, 4, pos, insert=insert)
 
-    def write_double(self, value, pos=None, le=True):
+    def write_double(self, value, pos=None, le=True, insert=False):
         fmt = '<d' if le else '>d'
-        b = struct.pack(fmt, value)
-        self._write_bytes(b, 8, pos)
+        b = struct.pack(fmt, float(value))
+        self._write_bytes(b, 8, pos, insert=insert)
 
-    def write_byte(self, value, pos=None):
+    def write_byte(self, value, pos=None, insert=False):
         b = bytes([value])
-        self._write_bytes(b, 1, pos)
+        self._write_bytes(b, 1, pos, insert=insert)
 
-    def write_string(self, value, length, pos=None, encoding='utf-8'):
+    def write_string(self, value, length, pos=None, encoding='utf-8', insert=False):
         b = value.encode(encoding)
         b = b[:length] + b'\x00' * (length - len(b))
-        self._write_bytes(b, length, pos)
+        self._write_bytes(b, length, pos, insert=insert)
 
-    def _write_bytes(self, b, length, pos):
+    def _write_bytes(self, b, length, pos, insert=False):
         if pos is None:
             self._buffer[self._pos:self._pos+length] = b
             self._pos += length
         else:
-            # Expand buffer if needed
-            if pos + length > len(self._buffer):
-                self._buffer.extend(b'\x00' * (pos + length - len(self._buffer)))
-            self._buffer[pos:pos+length] = b
+            if insert:
+                self._buffer[pos:pos] = b  # insere deslocando o resto
+            else:
+                # Expand buffer if needed
+                if pos + length > len(self._buffer):
+                    self._buffer.extend(b'\x00' * (pos + length - len(self._buffer)))
+                self._buffer[pos:pos+length] = b
 
     def getvalue(self):
         return bytes(self._buffer)
@@ -220,8 +226,14 @@ class BinaryWriter:
     def size(self):
         return len(self._buffer)
 
+    def to_hex(self):
+        return ' '.join(f'{b:02X}' for b in self._buffer)
+
     def seek(self, pos):
         self._pos = pos
 
     def tell(self):
         return self._pos
+
+    def to_reader(self):
+        return BinaryReader(self.getvalue())

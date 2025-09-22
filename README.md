@@ -16,7 +16,6 @@ python -m venv .
 Depois, ative-o e instale as bibliotecas utilizadas pelo sistema
 
 ```
-python -m venv .
 ./Scripts/activate
 pip install -r requirements.txt
 ```

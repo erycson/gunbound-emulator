@@ -1,4 +1,5 @@
 # lib/broker/strategy/login_strategy.py
+from gunbound.broker.protocol.login import LoginResp
 from gunbound.util.sha1 import SHA1WithoutROTL
 from gunbound.util.binary_buffer import BinaryReader
 from gunbound.broker.managers import ConfigManager, DatabaseManager
@@ -17,12 +18,13 @@ class GBWC_v440_LoginStrategy(LoginStrategy):
         self.db = DatabaseManager.get()
 
     async def process(self, conn, buf: BinaryReader):
+        self.buf = buf
         block_a = buf.read_bytes(32)
         block_b = buf.read_bytes(32)
 
         if (len(block_a) != 32 or len(block_b) != 32):
             print(f"[LoginStrategy] Blocos de dados inválidos. A {len(block_a)}, B {len(block_b)}")
-            return None, None, None
+            return
 
         username_bytes = self.decrypt(block_a[:16])
         session_bytes = self.decrypt(block_a[16:])[:4]
@@ -30,19 +32,19 @@ class GBWC_v440_LoginStrategy(LoginStrategy):
         username = self.c_str(username_bytes)
         session_id = int.from_bytes(session_bytes, "little", signed=True)
 
-        print(f"[LoginStrategy] Tentativa de login: Usuário '{username}', SessionID: {session_id}")
-
         user = await self.find_user(username)
         if not user:
-            print(f"[LoginStrategy] Usuário '{username}' não encontrado na base de dados.")
-            return None, None, None
-
-        print(f"[LoginStrategy] User '{username}', Nickname: '{user.Nickname}', Autoridade: {user.Authority}")
+            await conn.on_send(LoginResp.wrong_credentials())
+            return
 
         key_derived = self.derive_key(username_bytes, user.Password, session_bytes)
         password = self.c_str(self.decrypt_custom(block_b, key_derived))
 
-        return session_id, username, password
+        if user.Password != password:
+            await conn.on_send(LoginResp.wrong_credentials())
+            return
+        
+        await conn.on_send(LoginResp.success())
 
     async def find_user(self, username: str):
         return await self.db.fetch_one(
