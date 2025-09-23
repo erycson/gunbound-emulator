@@ -1001,6 +1001,7 @@ CREATE TABLE `User`  (
   `User_Level` int(3) NOT NULL DEFAULT 0,
   PRIMARY KEY (`Id`) USING BTREE
 ) ENGINE = federated CONNECTION = 'gbwc_51/User';
+-- ) ENGINE = federated CONNECTION = 'mysql://root@127.0.0.1:33306/gbwc/User?reconnect=1';
 
 -- ----------------------------
 -- Table structure for usercount

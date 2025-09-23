@@ -16,12 +16,13 @@ center:
   port: 8372
 
 gameservers:
-  - id: 0 # index
+  - name: "Gunbound WC" # Max, 32 bytes
+    description: "Área livre\\nSem avatar" # Max, 64 bytes
     version: 8452169
-    name: "Gunbound WC"
-    description: "Gunbound WC Emulator"
+    users_max: 100 # max 65535
     host: "127.0.0.1"
+    event: 0 # 1 = wowlg, é a imagem de fundo do servidor na lista de servidores
     port: 8360
-    authority:
-      min: 0
-      max: 100
+    funct_registry: 1040399 # FuncRestrict é uma combinação de numeros que definem as caracteris do servidor, ex: se tem tornado, force, vento, evento, avatar on ou off etc (Gerador de FuncRestrict
+    level_min: 19
+    level_max: -4

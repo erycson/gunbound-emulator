@@ -30,7 +30,8 @@ class LoginRecv(BasePackageRecv):
 
     def log_command(self, conn):
         cmd = ClientPacket.CLI_LOGIN.value
-        print(f"RECV<< [SS={conn.broker.id:08X} SQ={conn.seq:04X} CD={cmd:04X}] {self.buf.to_hex()}")
+        seq = conn.expected_client_checksum(self.buf.size())
+        print(f"RECV<< [SS={conn.broker.id:08X} SQ={seq:04X} CD={cmd:04X}] {self.buf.to_hex()}")
 
 class LoginResp(BasePackageSend):
     def __init__(self, buf: BinaryWriter):
@@ -55,6 +56,7 @@ class LoginResp(BasePackageSend):
     
     def log_command(self, conn):
         reader = self.buf.to_reader()
-        cmd = reader.read_uint16(pos=0)
-        code = reader.read_uint16(pos=2)
-        print(f"SEND>> [SS={conn.broker.id:08X} SQ={conn.seq:04X} CD={cmd:04X} RTC={code:04X}]")
+        checksum = reader.read_uint16(pos=2)
+        cmd = reader.read_uint16(pos=4)
+        code = reader.read_uint16(pos=6)
+        print(f"SEND>> [SS={conn.broker.id:08X} SQ={checksum:04X} CD={cmd:04X} RTC={code:04X}]")

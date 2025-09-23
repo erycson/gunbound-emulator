@@ -8,7 +8,7 @@ class GameServerManager:
     _instance = None
     
     def __init__(self, configs=[]):
-        self.servers = [GameServer(config) for config in configs] if configs else []
+        self.servers = [GameServer(index, config) for index, config in enumerate(configs)] if configs else []
         self.db = DatabaseManager.get()
         self.config = ConfigManager.get()
         self.monitor_task = None

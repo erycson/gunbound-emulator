@@ -9,7 +9,7 @@ class ClientPacket(IntEnum):
     # Solicita a lista de servidores de jogo, ordenada por algum critério.
     CLI_SORTED_SERVER_LIST = 0x1100
 
-    # Solicita informações de servidores específicos.
+    # Solicita informações de servidores específicos.  
     CLI_SPECIFIC_SERVER_LIST = 0x1101
 
     # Requisição de login principal de um jogador.
@@ -34,6 +34,9 @@ class ServerPacket(IntEnum):
     SRV_LOGIN = 0x1312 # usado em falha imediata de enfileirar login (DB)
     SRV_SETVERSION = 0x2001 # ack do set version (sucesso/erro)
     SRV_GET_MSG = 0x3001 # ack do get msg (sucesso/erro)
+
+    # Servidor
+    SRV_SERVER_LIST = 0x1102
 
 class ServerCode(IntEnum):
     # Genéricos (podem aparecer em múltiplos replies)

@@ -12,48 +12,56 @@ class ClientConnection:
         self.broker = broker
         self.reader = reader
         self.writer = writer
-        self.seq = 0
+        self.client_seq = 0 # Não sei se é compartilhado com outras conexões
+        self.server_seq = 0
 
         ip, port = writer.get_extra_info('peername')
         self.addr = f"{ip}:{port}"
 
-        print(f"[{self.addr}] Nova conexão estabelecida ({self.broker.id:08X}:{self.id:08X})")
+        print(f"[{self.addr}] ClientConnection({self.broker.id:08X}:{self.id:08X})")
 
-    async def close(self):
+    async def disconnect(self):
         self.writer.close()
         await self.writer.wait_closed()
+
+    async def close(self):
+        await self.disconnect()
         self.broker.remove_connection(self)
 
-    def expected_checksum(self, packet_len: int) -> int:
-        next = ( (self.seq + packet_len) & 0xFFFF )
+    def is_closed(self):
+        return self.writer.is_closing()
+
+    def expected_client_checksum(self, packet_len: int) -> int:
+        next = (self.client_seq + packet_len) & 0xFFFF
         return (17405 * next - 24893) & 0xFFFF
 
-    def advance_seq(self, packet_len: int) -> None:
-        self.seq = (self.seq + packet_len) & 0xFFFFFFFF
+    def advance_client_seq(self, packet_len: int) -> None:
+        self.client_seq = (self.client_seq + packet_len) & 0xFFFF
+    
+    def expected_server_checksum(self, packet_len: int) -> int:
+        next = (self.server_seq + packet_len) & 0xFFFF
+        return (17405 * next - 21501) & 0xFFFF
+
+    def advance_server_seq(self, packet_len: int) -> None:
+        self.server_seq = (self.server_seq + packet_len) & 0xFFFF
 
     async def handler(self):
         while True:
-            try:
-                # Leia o cabeçalho inicial (2 bytes para o tamanho, little-endian)
-                header = await self.reader.readexactly(2)
-                if not header:
-                    break  # conexão fechada
-                packet_size = int.from_bytes(header, 'little', signed=False)
-
-                # Ignore pacotes com tamanho inválido (ex: menor que header)
-                if packet_size < 6:
-                    if packet_size > 2:
-                        await self.reader.readexactly(packet_size - 2)  # descarta o restante
-                    continue
-                
-                # Leia o restante do pacote
-                payload = await self.reader.readexactly(packet_size - 2)
-                reader = BinaryReader(payload)
-                await self.on_recv(packet_size, reader)
-            finally:
-                print(f"[{self.addr}] Fechando conexão")
+            # Leia o cabeçalho inicial (2 bytes para o tamanho, little-endian)
+            header = await self.reader.read(2)
+            if len(header) < 2:
                 await self.close()
                 break
+
+            # Ignore pacotes com tamanho inválido (ex: menor que header)
+            packet_size = int.from_bytes(header, 'little', signed=False)
+            if packet_size < 6:
+                break
+            
+            # Leia o restante do pacote
+            payload = await self.reader.readexactly(packet_size - 2)
+            reader = BinaryReader(payload)
+            await self.on_recv(packet_size, reader)
 
     async def on_recv(self, packet_size: int, buf: BinaryReader):
         try:
@@ -61,13 +69,13 @@ class ClientConnection:
             cmd = buf.read_uint16()
 
             # Valida o pacote
-            expected = self.expected_checksum(packet_size)
+            expected = self.expected_client_checksum(packet_size)
             if checksum != expected:
                 print(f"[{self.addr}] CHECKSUM FAIL< got={checksum:04X} exp={expected:04X} len={packet_size} cmd=0x{cmd:04X}")
-                return
+                # return
 
             # Processa o pacote
-            self.advance_seq(packet_size)
+            self.advance_client_seq(packet_size)
             await BasePackageFactory.from_data(cmd, self, buf)
         except UnknownPacketError as e:
             cmd = e.getcmd()
@@ -76,17 +84,21 @@ class ClientConnection:
             raise e
 
     async def on_send(self, data: BasePackageSend):
-        data.log_command(self)
+        # if self.is_closed():
+        #     print(f"[{self.addr}] Conexão fechada, não é possível enviar dados")
+        #     return
 
         buf = data.get_buf()
         total_len = buf.size() + 4
         buf.write_uint16(total_len, pos=0, insert=True)
-        buf.write_uint16(self.expected_checksum(total_len), pos=2, insert=True)
+        buf.write_uint16(self.expected_server_checksum(total_len), pos=2, insert=True)
+
+        data.log_command(self)
         
         try:
             self.writer.write(buf.getvalue())
             await self.writer.drain()
-            self.advance_seq(total_len)
+            self.advance_server_seq(total_len)
         except ConnectionResetError as e:
             print(f"[{self.addr}] Conexão perdida ao enviar dados: {e}")
             print(f"[{self.addr}] Cliente provavelmente desconectou abruptamente")

@@ -4,6 +4,7 @@ import asyncio
 from typing import Optional, Type
 from gunbound.util.binary_buffer import BinaryReader, BinaryWriter
 from gunbound.broker.exceptions import UnknownPacketError
+from gunbound.util.dump import dump
 
 class BasePackageRecv(abc.ABC):
     @abc.abstractmethod
@@ -37,7 +38,9 @@ class BasePackageFactory(abc.ABC):
     async def from_data(cls, command, conn, buf: BinaryReader):
         handler: Optional[Type[BasePackageRecv]] = cls.registry.get(command)
         if not handler:
-            raise UnknownPacketError(f"Comando não implementado: {command:#04x}", buf)
+            print(f"[{conn.addr}] Pacote desconhecido: 0x{command:04X} (len={buf.size()})")
+            dump(buf.getvalue())
+            return
         
         # Cria a instância do pacote e chama o método process
         data = handler(conn, buf)
