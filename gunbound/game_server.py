@@ -4,12 +4,11 @@ from gunbound.game.client import ClientConnection
 from gunbound.game.managers.client import ClientManager
 
 class GameServer:
-    def __init__(self, index, config, crypto):
+    def __init__(self, index, config):
         self.id = id(self)
         self.index = index
         self.host = config['host']
         self.port = config['port']
-        self.crypto = crypto
         self.server = None
         self.clients = ClientManager.get()
         self.features = self.calc_features(config)

@@ -1,17 +1,16 @@
-from asyncio import IncompleteReadError
+from asyncio import StreamWriter, StreamReader
 from gunbound.broker.protocol.base import BasePackageFactory
-from gunbound.util.aes_cipher import AESCipher
-from gunbound.util.binary_buffer import BinaryReader, BinaryWriter
+from gunbound.util.binary_buffer import BinaryReader
 from gunbound.util.dump import dump
 from gunbound.broker.protocol.base import BasePackageSend
 from gunbound.broker.exceptions import UnknownPacketError
 
 class ClientConnection:
-    def __init__(self, broker, reader, writer):
+    def __init__(self, broker, reader: StreamReader, writer: StreamWriter):
         self.id = id(self)
         self.broker = broker
-        self.reader = reader
-        self.writer = writer
+        self.reader: StreamReader = reader
+        self.writer: StreamWriter = writer
         self.client_seq = 0 # Não sei se é compartilhado com outras conexões
         self.server_seq = 0
 
@@ -84,9 +83,9 @@ class ClientConnection:
             raise e
 
     async def on_send(self, data: BasePackageSend):
-        # if self.is_closed():
-        #     print(f"[{self.addr}] Conexão fechada, não é possível enviar dados")
-        #     return
+        if self.is_closed():
+            print(f"[{self.addr}] Conexão fechada, não é possível enviar dados")
+            return
 
         buf = data.get_buf()
         total_len = buf.size() + 4

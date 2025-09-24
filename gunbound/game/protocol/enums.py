@@ -7,6 +7,7 @@ class ClientPacket(IntEnum):
     # Solicita a lista de servidores de jogo, ordenada por algum critério.
     CLI_GET_SESSION_ID = 0x1000
 
+    CLI_LOGIN = 0x1010
     CLI_USER_ID = 0x1020
     CLI_CHANNEL_JOIN = 0x2000
     CLI_ROOM_SORTED_LIST = 0x2100

@@ -10,14 +10,11 @@ from gunbound.util.udp_protocol import UDPFutureProtocol
 class GameServer:
     def __init__(self, index, config):
         self.index = index
-        self.version = config['version']
-        self.event = config['event']
-        self.name = config['name']
-        self.description = config['description']
         self.host = config['host']
         self.port = config['port']
-        self.authority_min = config['authority']['min']
-        self.authority_max = config['authority']['max']
+        self.name = config['name']
+        self.description = config['description']
+        self.event = config['event']
         
         if (len(self.name.encode('latin-1')) > 32):
             raise ValueError(f"Nome do servidor muito longo (máx 32 bytes em latin-1): {self.name} ({len(self.name.encode('latin-1'))} bytes)")
@@ -26,7 +23,7 @@ class GameServer:
 
         # Status tracking
         self.is_online = False
-        self.last_check = 0
+        self.last_check: float = 0
         
         # Dados recebidos pelo GameServer
         self.users_max = 0
@@ -56,42 +53,38 @@ class GameServer:
         00 00 -> LevelMax (Grande possibilidade ser só um Byte)
         00 -> Avatar ativo
     """
-    async def check_status(self, timeout=1.0) -> int:
-        transport = None
+    async def check_status(self, timeout: float = 2.0) -> int:
+        transport: asyncio.DatagramTransport | None = None
+        self.last_check = time.time()
 
         try:
-            transport, protocol = await asyncio.wait_for(
-                asyncio.get_event_loop().create_datagram_endpoint(
+            async with asyncio.timeout(timeout):
+                transport, protocol = await asyncio.get_event_loop().create_datagram_endpoint(
                     lambda: UDPFutureProtocol(),
                     remote_addr=(self.host, self.port)
-                ),
-                timeout=timeout
-            )
-            
+                )
+
+            timeout = timeout - (time.time() - self.last_check)
             pack = struct.pack("<BBHI", 0x08, 0x00, 0xF000, self.index)
             transport.sendto(pack)
+
+            async with asyncio.timeout(timeout):
+                response, addr = await protocol.response_future
             
-            response_data = await asyncio.wait_for(
-                protocol.response_future,
-                timeout=timeout
-            )
-            
-            transport.close()
-            
-            reader = BinaryReader(response_data)
+            reader = BinaryReader(response)
+            print(f"UDP-RECV [FROM={addr[0]}:{addr[1]} Accept=1] {reader.to_hex()}")
+
             length = reader.read_uint16()
             if length != 23 or length != reader.size():
                 self.is_online = False
-                self.last_check = time.time()
                 return 0
 
-            cmd = reader.read_int16()
+            cmd = reader.read_uint16()
             index = reader.read_uint32()
             # Acredito que dê pra usar esse index pra validar se a resposta é do server certo
             # ou uma validação interna pra que alguem não falsifique a resposta
             if cmd != 0xF000 or index != self.index:
                 self.is_online = False
-                self.last_check = time.time()
                 return 0
 
             # O que falta descobrir, é como é enviado a informação dizendo que o serveridor tem muita ou pouca gente
@@ -106,13 +99,11 @@ class GameServer:
             self.avatar_enabled = reader.read_uint8() == 1
 
             self.is_online = True
-            self.last_check = time.time()
 
             return self.users_online
-        except Exception as e:
+        except Exception:
             self.is_online = False
-            self.last_check = time.time()
             return 0
         finally:
-            if transport is not None:
+            if transport is not None and not transport.is_closing():
                 transport.close()

@@ -2,11 +2,10 @@ import asyncio
 from gunbound.broker.client import ClientConnection
 
 class BrokerServer:
-    def __init__(self, config, crypto):
+    def __init__(self, config):
         self.id = id(self)
         self.host = config['host']
         self.port = config['port']
-        self.crypto = crypto
         self.server = None
         self.connections = []
         self.servers = []
@@ -22,7 +21,7 @@ class BrokerServer:
             self.host,
             self.port
         )
-        print(f'Servidor iniciado')
+        print(f'BrokerServer iniciado')
 
         async with self.server:
             await self.server.serve_forever()

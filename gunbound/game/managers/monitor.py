@@ -11,7 +11,8 @@ class MonitorManager:
     def __init__(self, game: GameServer, config):
         self.game = game
         self.config = config
-        self.monitor_task = None
+        self.task = None
+        self.transport = None
 
     @classmethod
     def initialize(cls, game: GameServer, config):
@@ -27,47 +28,42 @@ class MonitorManager:
             raise RuntimeError("MonitorManager não inicializado!")
         return cls._instance
     
-    def start_monitor(self, interval=10):
-        if self.monitor_task and not self.monitor_task.done():
-            return
-            
+    def start(self):
         async def loop():
-            transport, protocol = asyncio.get_event_loop().create_datagram_endpoint(
+            transport, protocol = await asyncio.get_event_loop().create_datagram_endpoint(
                 lambda: UDPFutureProtocol(),
-                remote_addr=(self.config['host'], self.config['port'])
+                local_addr=(self.config['host'], self.config['port'])
             )
 
             while True:
                 try:
-                    response_data = await asyncio.wait_for(protocol.response_future)
-                    host, port = transport.get_extra_info('peername')
-                    
-                    reader = BinaryReader(response_data)
+                    response, addr = await protocol.response_future
+
+                    reader = BinaryReader(response)
+                    print(f"UDP-RECV [FROM={addr[0]}:{addr[1]} Accept=1]: {reader.to_hex()}")
 
                     length = reader.read_uint16()
                     if length != reader.size() or reader.size() < 4:
-                        print(f"UDP-RECV [FROM={host}:{port} Accept=0]")
                         continue
-
-                    print(f"UDP-RECV [FROM={host}:{port} Accept=1]: {reader.to_hex()}")
                     
                     match reader.read_uint16():
                         case 0xF000:
-                            self.udp_get_state(transport, reader)
-                            break
+                            await self.udp_get_state(transport, addr, reader)
                 finally:
-                    transport.close()
+                    protocol.response_future = asyncio.Future()
         
-        self.monitor_task = asyncio.create_task(loop())
+        self.task = asyncio.create_task(loop())
 
-    def stop_monitor(self):
-        if self.monitor_task and not self.monitor_task.done():
-            self.monitor_task.cancel()
+    def stop(self):
+        if self.task and not self.task.done():
+            self.task.cancel()
+        if self.transport:
+            self.transport.close()
 
-    def is_monitor_running(self):
-        return self.monitor_task and not self.monitor_task.done()
+    def is_running(self):
+        return self.task and not self.task.done()
 
-    async def udp_get_state(self, transport, reader):
+    async def udp_get_state(self, transport: asyncio.DatagramTransport, addr, reader: BinaryReader):
         index = reader.read_uint32()
         if index != self.game.index:
             return
@@ -87,4 +83,4 @@ class MonitorManager:
         writer.write_int16(self.config['grade_max'])  # LevelMax (pode ser q seja só 1 byte)
         writer.write_byte(1 if self.game.features & Features.AVATAR_ENABLED else 0) # Avatar Enabled
 
-        transport.sendto(writer.get_bytes())
+        transport.sendto(writer.getvalue(), addr)

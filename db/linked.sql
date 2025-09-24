@@ -1000,7 +1000,7 @@ CREATE TABLE `User`  (
   `Country` char(3) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `User_Level` int(3) NOT NULL DEFAULT 0,
   PRIMARY KEY (`Id`) USING BTREE
-) ENGINE=CONNECT CONNECTION='mysql://root@127.0.0.1:33306/gbwc/User?reconnect=1';
+) ENGINE = federated CONNECTION = 'gbwc_51/User';
 
 -- ----------------------------
 -- Table structure for usercount
@@ -1013,4 +1013,4 @@ CREATE TABLE `UserCount`  (
   `UserCount` int(11) UNSIGNED NOT NULL,
   `Time` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   PRIMARY KEY (`SerialNo`) USING BTREE
-) ENGINE=CONNECT CONNECTION='mysql://root@127.0.0.1:33306/gbwc/UserCount?reconnect=1';
+) ENGINE = federated CONNECTION = 'gbwc_51/UserCount';

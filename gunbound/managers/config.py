@@ -3,16 +3,7 @@ import yaml
 class ConfigManager:
     _instance = None
 
-    def __new__(cls, config_path=None):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialized = False
-        return cls._instance
-
     def __init__(self, config_path=None):
-        if self._initialized:
-            return
-        self._initialized = True
         self.config = self._load_config(config_path)
 
     def _load_config(self, config_path):

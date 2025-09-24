@@ -1,7 +1,7 @@
-import asyncio
 import time
+import asyncio
 from gunbound.broker.gameserver import GameServer
-from gunbound.broker.managers import DatabaseManager, ConfigManager
+from gunbound.managers import DatabaseManager, ConfigManager
 
 class GameServerManager:
     _instance = None
@@ -52,12 +52,7 @@ class GameServerManager:
             )
 
     def start_monitor(self, interval=10):
-        if self.monitor_task and not self.monitor_task.done():
-            return
-            
         async def loop():
-            await asyncio.sleep(interval)
-
             while True:
                 start_time = time.time()
                 
