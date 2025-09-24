@@ -1,4 +1,5 @@
 import asyncio
+from asyncio import CancelledError
 from gunbound.game.managers.client import ClientManager
 from gunbound.game.protocol.enums import Features
 from gunbound.game_server import GameServer
@@ -28,7 +29,7 @@ class MonitorManager:
             raise RuntimeError("MonitorManager não inicializado!")
         return cls._instance
     
-    def start(self):
+    async def start(self):
         async def loop():
             transport, protocol = await asyncio.get_event_loop().create_datagram_endpoint(
                 lambda: UDPFutureProtocol(),
@@ -49,16 +50,21 @@ class MonitorManager:
                     match reader.read_uint16():
                         case 0xF000:
                             await self.udp_get_state(transport, addr, reader)
+                except CancelledError:
+                    protocol.response_future.cancel()
+                    transport.close()
+                    break
                 finally:
                     protocol.response_future = asyncio.Future()
         
         self.task = asyncio.create_task(loop())
 
-    def stop(self):
-        if self.task and not self.task.done():
-            self.task.cancel()
-        if self.transport:
-            self.transport.close()
+    async def stop(self):
+        self.task.cancel()
+        try:
+            await self.task
+        except CancelledError:
+            pass
 
     def is_running(self):
         return self.task and not self.task.done()

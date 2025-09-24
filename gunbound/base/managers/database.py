@@ -15,6 +15,7 @@ class DatabaseManager:
             self = cls(uri)
             await self._database.connect()
             cls._instance = self
+            return cls._instance._database
         except Exception as e:
             import sys
             print(f"Erro ao conectar ao banco de dados: {e}", file=sys.stderr)

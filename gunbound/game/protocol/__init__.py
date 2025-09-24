@@ -1,6 +1,6 @@
 import os
 import importlib
-
+from .enums import ClientPacket, ServerPacket
 current_dir = os.path.dirname(__file__)
 
 for filename in os.listdir(current_dir):

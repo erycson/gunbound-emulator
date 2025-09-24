@@ -1,5 +1,6 @@
+from __future__ import annotations
 import asyncio
-from asyncio import StreamReader, StreamWriter
+from asyncio import Task, CancelledError, StreamReader, StreamWriter
 from gunbound.game.client import ClientConnection
 from gunbound.game.managers.client import ClientManager
 
@@ -9,25 +10,35 @@ class GameServer:
         self.index = index
         self.host = config['host']
         self.port = config['port']
-        self.server = None
+        self.task: Task = None
         self.clients = ClientManager.get()
         self.features = self.calc_features(config)
 
     async def handler(self, reader: StreamReader, writer: StreamWriter):
         client = ClientConnection(self, reader, writer)
-        client.task = asyncio.create_task(client.handler())
         self.clients.add(client)
 
     async def start(self):
-        self.server = await asyncio.start_server(
-            self.handler,
-            self.host,
-            self.port
-        )
-        print(f'GameServer iniciado')
+        async def loop():
+            server = await asyncio.start_server(
+                self.handler,
+                self.host,
+                self.port
+            )
+            print(f'GameServer iniciado')
 
-        async with self.server:
-            await self.server.serve_forever()
+            async with server:
+                await server.serve_forever()
+        
+        self.task = asyncio.create_task(loop())
+
+    async def stop(self):
+        self.task.cancel()
+        try:
+            await self.clients.close()
+            await self.task
+        except CancelledError:
+            pass
 
     def calc_features(self, config) -> int:
         features: int = 0

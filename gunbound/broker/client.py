@@ -1,9 +1,6 @@
-from asyncio import StreamWriter, StreamReader
-from gunbound.broker.protocol.base import BasePackageFactory
-from gunbound.util.binary_buffer import BinaryReader
-from gunbound.util.dump import dump
-from gunbound.broker.protocol.base import BasePackageSend
-from gunbound.broker.exceptions import UnknownPacketError
+from asyncio import CancelledError, StreamWriter, StreamReader, Task
+from gunbound.base.protocol import BasePackageFactory, BasePackageSend
+from gunbound.util import BinaryReader
 
 class ClientConnection:
     def __init__(self, broker, reader: StreamReader, writer: StreamWriter):
@@ -13,6 +10,8 @@ class ClientConnection:
         self.writer: StreamWriter = writer
         self.client_seq = 0 # Não sei se é compartilhado com outras conexões
         self.server_seq = 0
+        self.closing: bool = False
+        self.task: Task | None = None
 
         ip, port = writer.get_extra_info('peername')
         self.addr = f"{ip}:{port}"
@@ -24,8 +23,18 @@ class ClientConnection:
         await self.writer.wait_closed()
 
     async def close(self):
-        await self.disconnect()
-        self.broker.remove_connection(self)
+        if self.closing:
+            return
+        self.closing = True
+
+        try:
+            await self.disconnect()
+            self.task.cancel()
+            await self.task
+        except CancelledError:
+            pass
+        finally:
+            self.broker.remove(self)
 
     def is_closed(self):
         return self.writer.is_closing()
@@ -55,7 +64,7 @@ class ClientConnection:
             # Ignore pacotes com tamanho inválido (ex: menor que header)
             packet_size = int.from_bytes(header, 'little', signed=False)
             if packet_size < 6:
-                break
+                continue
             
             # Leia o restante do pacote
             payload = await self.reader.readexactly(packet_size - 2)
@@ -63,24 +72,18 @@ class ClientConnection:
             await self.on_recv(packet_size, reader)
 
     async def on_recv(self, packet_size: int, buf: BinaryReader):
-        try:
-            checksum = buf.read_uint16()
-            cmd = buf.read_uint16()
+        checksum = buf.read_uint16()
+        cmd = buf.read_uint16()
 
-            # Valida o pacote
-            expected = self.expected_client_checksum(packet_size)
-            if checksum != expected:
-                print(f"[{self.addr}] CHECKSUM FAIL< got={checksum:04X} exp={expected:04X} len={packet_size} cmd=0x{cmd:04X}")
-                # return
+        # Valida o pacote
+        expected = self.expected_client_checksum(packet_size)
+        if checksum != expected:
+            print(f"[{self.addr}] CHECKSUM FAIL< got={checksum:04X} exp={expected:04X} len={packet_size} cmd=0x{cmd:04X}")
+            return
 
-            # Processa o pacote
-            self.advance_client_seq(packet_size)
-            await BasePackageFactory.from_data(cmd, self, buf)
-        except UnknownPacketError as e:
-            cmd = e.getcmd()
-            print(f"[{self.addr}] UnknownPacketError command: {cmd:#04x}. Dump: \n")
-            dump(e.buf.getvalue())
-            raise e
+        # Processa o pacote
+        self.advance_client_seq(packet_size)
+        await BasePackageFactory.from_data(cmd, self, buf)
 
     async def on_send(self, data: BasePackageSend):
         if self.is_closed():

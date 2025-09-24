@@ -1,7 +1,8 @@
 import time
 import asyncio
+from asyncio import Task, CancelledError
 from gunbound.broker.gameserver import GameServer
-from gunbound.managers import DatabaseManager, ConfigManager
+from gunbound.base.managers import DatabaseManager, ConfigManager
 
 class GameServerManager:
     _instance = None
@@ -10,7 +11,7 @@ class GameServerManager:
         self.servers = [GameServer(index, config) for index, config in enumerate(configs)] if configs else []
         self.db = DatabaseManager.get()
         self.config = ConfigManager.get()
-        self.monitor_task = None
+        self.task: Task = None
 
     @classmethod
     def initialize(cls, configs):
@@ -37,7 +38,7 @@ class GameServerManager:
 
     async def check_status(self, timeout=1.0):
         tasks = [server.check_status(timeout) for server in self.servers]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*tasks, return_exceptions=False)
         total = sum(results)
         
         if total > 0:
@@ -51,23 +52,28 @@ class GameServerManager:
                 }
             )
 
-    def start_monitor(self, interval=10):
+    async def start(self, interval=10):
         async def loop():
             while True:
                 start_time = time.time()
                 
                 try:
                     await self.check_status()
+                except CancelledError:
+                    break
                 finally:
                     elapsed_time = time.time() - start_time
                     sleep_time = max(0, interval - elapsed_time)
                     await asyncio.sleep(sleep_time)
         
-        self.monitor_task = asyncio.create_task(loop())
+        self.task = asyncio.create_task(loop())
 
-    def stop_monitor(self):
-        if self.monitor_task and not self.monitor_task.done():
-            self.monitor_task.cancel()
+    async def stop(self):
+        self.task.cancel()
+        try:
+            await self.task
+        except CancelledError:
+            pass
 
-    def is_monitor_running(self):
-        return self.monitor_task and not self.monitor_task.done()
+    def is_running(self):
+        return self.task and not self.task.done()

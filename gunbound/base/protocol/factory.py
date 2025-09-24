@@ -1,26 +1,9 @@
 import abc
 import asyncio
 from typing import Optional, Type
+from gunbound.base.protocol.recv import BasePackageRecv
 from gunbound.util.binary_buffer import BinaryReader, BinaryWriter
 from gunbound.util.dump import dump
-
-class BasePackageRecv(abc.ABC):
-    @abc.abstractmethod
-    async def process(self, buf: BinaryReader):
-        pass
-
-    @abc.abstractmethod
-    def log_command(self, conn):
-        pass
-    
-class BasePackageSend(abc.ABC):
-    @abc.abstractmethod
-    def get_buf(self) -> BinaryWriter:
-        pass
-
-    @abc.abstractmethod
-    def log_command(self, conn):
-        pass
 
 class BasePackageFactory(abc.ABC):
     registry: dict[int, Type[BasePackageRecv]] = {}

@@ -1,8 +1,8 @@
 from gunbound.game.client import ClientConnection
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket
-from gunbound.game.protocol.base import BasePackageFactory, BasePackageRecv, BasePackageSend
+from gunbound.base.managers import CryptoManager
+from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
-from gunbound.managers.crypto import CryptoManager
 
 @BasePackageFactory.register(ClientPacket.CLI_GET_SESSION_ID.value)
 class LoginRecv(BasePackageRecv):

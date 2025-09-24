@@ -1,5 +1,5 @@
 from gunbound.broker.protocol.login import LoginResp
-from gunbound.managers import DatabaseManager, CryptoManager
+from gunbound.base.managers import DatabaseManager, CryptoManager
 from gunbound.util.binary_buffer import BinaryReader
 
 class LoginStrategy:

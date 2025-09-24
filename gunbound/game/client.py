@@ -1,19 +1,18 @@
-from asyncio import Task, StreamReader, StreamWriter
-from gunbound.broker.protocol.base import BasePackageFactory
-from gunbound.util.binary_buffer import BinaryReader
-from gunbound.util.dump import dump
-from gunbound.broker.protocol.base import BasePackageSend
-from gunbound.broker.exceptions import UnknownPacketError
+from __future__ import annotations
+from asyncio import CancelledError, Task, StreamReader, StreamWriter
+from gunbound.base.protocol import BasePackageFactory, BasePackageSend
+from gunbound.util import BinaryReader
 
 class ClientConnection:
-    def __init__(self, game, reader: StreamReader, writer: StreamWriter):
+    def __init__(self, manager, reader: StreamReader, writer: StreamWriter):
         self.id = None
-        self.game = game
+        self.manager = manager
         self.reader: StreamReader = reader
         self.writer: StreamWriter = writer
         self.client_seq: int = 0 # Não sei se é compartilhado com outras conexões
         self.server_seq: int = 0
         self.task: Task | None = None
+        self.closing: bool = False
 
         ip, port = writer.get_extra_info('peername')
         self.addr: str = f"{ip}:{port}"
@@ -25,10 +24,18 @@ class ClientConnection:
         await self.writer.wait_closed()
 
     async def close(self):
-        await self.disconnect()
-        self.game.remove_connection(self)
-        if self.task and not self.task.done():
+        if self.closing:
+            return
+        self.closing = True
+
+        try:
+            await self.disconnect()
             self.task.cancel()
+            await self.task
+        except CancelledError:
+            pass
+        finally:
+            self.manager.remove(self)
 
     def is_closed(self):
         return self.writer.is_closing()
@@ -52,13 +59,13 @@ class ClientConnection:
             # Leia o cabeçalho inicial (2 bytes para o tamanho, little-endian)
             header = await self.reader.read(2)
             if len(header) < 2:
-                await self.close()
+                self.close()
                 break
 
             # Ignore pacotes com tamanho inválido (ex: menor que header)
             packet_size = int.from_bytes(header, 'little', signed=False)
             if packet_size < 6:
-                break
+                continue
             
             # Leia o restante do pacote
             payload = await self.reader.readexactly(packet_size - 2)
@@ -66,30 +73,20 @@ class ClientConnection:
             await self.on_recv(packet_size, reader)
 
     async def on_recv(self, packet_size: int, buf: BinaryReader):
-        try:
-            checksum = buf.read_uint16()
-            cmd = buf.read_uint16()
+        checksum = buf.read_uint16()
+        cmd = buf.read_uint16()
 
-            # Valida o pacote
-            expected = self.expected_client_checksum(packet_size)
-            if checksum != expected:
-                print(f"[{self.addr}] CHECKSUM FAIL< got={checksum:04X} exp={expected:04X} len={packet_size} cmd=0x{cmd:04X}")
-                # return
+        # Valida o pacote
+        expected = self.expected_client_checksum(packet_size)
+        if checksum != expected:
+            print(f"[{self.addr}] CHECKSUM FAIL< got={checksum:04X} exp={expected:04X} len={packet_size} cmd=0x{cmd:04X}")
+            return
 
-            # Processa o pacote
-            self.advance_client_seq(packet_size)
-            await BasePackageFactory.from_data(cmd, self, buf)
-        except UnknownPacketError as e:
-            cmd = e.getcmd()
-            print(f"[{self.addr}] UnknownPacketError command: {cmd:#04x}. Dump: \n")
-            dump(e.buf.getvalue())
-            raise e
+        # Processa o pacote
+        self.advance_client_seq(packet_size)
+        await BasePackageFactory.from_data(cmd, self, buf)
 
     async def on_send(self, data: BasePackageSend):
-        # if self.is_closed():
-        #     print(f"[{self.addr}] Conexão fechada, não é possível enviar dados")
-        #     return
-
         buf = data.get_buf()
         total_len = buf.size() + 4
         buf.write_uint16(total_len, pos=0, insert=True)

@@ -40,7 +40,6 @@ class ServerCode(IntEnum):
     # Genéricos (podem aparecer em múltiplos replies)
     SRV_OK = 0x00
 
-
 class Features(IntEnum):
     AVATAR_ENABLED = 1 << 4
     EFFECT_FORCE = 1 << 13

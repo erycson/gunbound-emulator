@@ -1,6 +1,6 @@
 from gunbound.broker.protocol.enums import ClientPacket, ServerPacket, ServerCode
-from gunbound.broker.protocol.base import BasePackageFactory, BasePackageRecv, BasePackageSend
-from gunbound.managers.config import ConfigManager
+from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
+from gunbound.base.managers import ConfigManager
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
 from gunbound.util.class_loader import instantiate_by_fullname
 

@@ -1,6 +1,6 @@
 import socket
-from gunbound.broker.protocol.enums import ClientPacket, ServerPacket, ServerCode
-from gunbound.broker.protocol.base import BasePackageFactory, BasePackageRecv, BasePackageSend
+from gunbound.broker.protocol.enums import ClientPacket, ServerPacket
+from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.broker.managers.gameserver import GameServerManager
 from gunbound.broker.gameserver import GameServer
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
@@ -70,8 +70,8 @@ class ServerSortedListResp(BasePackageSend):
             buf.write_uint16(server.port)
             buf.write_bytes([0x00, 0x00, 0x00, 0x00]) # Desconhecido
             buf.write_uint16(server.users_max) # RecommendedMan
-            buf.write_int8(server.grade_min)
             buf.write_int8(server.grade_max)
+            buf.write_int8(server.grade_min)
             buf.write_uint8(int(server.avatar_enabled))
             buf.write_uint8(int(server.is_online))
 

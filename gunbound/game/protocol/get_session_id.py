@@ -1,6 +1,6 @@
 from gunbound.game.client import ClientConnection
-from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
-from gunbound.game.protocol.base import BasePackageFactory, BasePackageRecv, BasePackageSend
+from gunbound.game.protocol import ClientPacket, ServerPacket
+from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
 
 @BasePackageFactory.register(ClientPacket.CLI_GET_SESSION_ID.value)
