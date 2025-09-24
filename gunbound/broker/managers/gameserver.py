@@ -1,4 +1,3 @@
-# lib/broker/managers/gameserver.py
 import asyncio
 import time
 from gunbound.broker.gameserver import GameServer

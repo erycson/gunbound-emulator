@@ -1,9 +1,7 @@
-# lib/protocol/base.py
 import abc
 import asyncio
 from typing import Optional, Type
 from gunbound.util.binary_buffer import BinaryReader, BinaryWriter
-from gunbound.broker.exceptions import UnknownPacketError
 from gunbound.util.dump import dump
 
 class BasePackageRecv(abc.ABC):
@@ -42,7 +40,6 @@ class BasePackageFactory(abc.ABC):
             dump(buf.getvalue())
             return
         
-        # Cria a instância do pacote e chama o método process
         data = handler(conn, buf)
         data.log_command(conn)
         asyncio.create_task(data.process())

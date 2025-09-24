@@ -1,4 +1,3 @@
-# lib/broker/strategy/login_strategy.py
 from gunbound.broker.protocol.login import LoginResp
 from gunbound.util.sha1 import SHA1WithoutROTL
 from gunbound.util.binary_buffer import BinaryReader

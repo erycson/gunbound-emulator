@@ -1,4 +1,3 @@
-# lib/broker/protocol/enums.py
 """Enums para pacotes do cliente e do broker."""
 from enum import IntEnum
 

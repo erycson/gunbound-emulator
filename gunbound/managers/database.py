@@ -1,4 +1,3 @@
-# lib/broker/managers/database.py
 import databases
 
 class DatabaseManager:

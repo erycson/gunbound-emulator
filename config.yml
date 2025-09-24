@@ -15,14 +15,40 @@ center:
   host: "127.0.0.1"
   port: 8372
 
+features:
+  AVATAR_ENABLED: &AVATAR_ENABLED 16 # 1 << 4
+  EFFECT_FORCE: &EFFECT_FORCE 8192 # 1 << 13
+  EFFECT_TORNADO: &EFFECT_TORNADO 16384 # 1 << 14
+  EFFECT_LIGHTNING: &EFFECT_LIGHTNING 32768 # 1 << 15
+  EFFECT_WIND: &EFFECT_WIND 65536 # 1 << 16
+  EFFECT_THOR: &EFFECT_THOR 131072 # 1 << 17
+  EFFECT_MOON: &EFFECT_MOON 262144 # 1 << 18
+  EFFECT_ECLIPSE: &EFFECT_ECLIPSE 524288 # 1 << 19
+  EVENT1_ENABLE: &EVENT1_ENABLE 1048576 # 1 << 20
+  EVENT2_ENABLE: &EVENT2_ENABLE 2097152 # 1 << 21
+  EVENT3_ENABLE: &EVENT3_ENABLE 4194304 # 1 << 22
+  EVENT4_ENABLE: &EVENT4_ENABLE 8388608 # 1 << 23
+
 gameservers:
   - name: "Gunbound WC" # Max, 32 bytes
     description: "Área livre\\nSem avatar" # Max, 64 bytes
+    accept: # IPs ou range de IPs de quem pode entrar no servidor, usando notação CIDR
+      - 127.0.0.1
+      - 64.0/1
     version: 8452169
     users_max: 100 # max 65535
     host: "127.0.0.1"
     event: 0 # 1 = wowlg, é a imagem de fundo do servidor na lista de servidores
     port: 8360
     funct_registry: 1040399 # FuncRestrict é uma combinação de numeros que definem as caracteris do servidor, ex: se tem tornado, force, vento, evento, avatar on ou off etc (Gerador de FuncRestrict
-    level_min: 19
-    level_max: -4
+    grade_min: 19
+    grade_max: -4
+    features: 
+      - *AVATAR_ENABLED
+      - *EFFECT_FORCE
+      - *EFFECT_TORNADO
+      - *EFFECT_LIGHTNING
+      - *EFFECT_WIND
+      - *EFFECT_THOR
+      - *EFFECT_MOON
+      - *EFFECT_ECLIPSE

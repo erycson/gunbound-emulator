@@ -1,9 +1,6 @@
-# lib/protocol/login.py
-
-import struct
 from gunbound.broker.protocol.enums import ClientPacket, ServerPacket, ServerCode
 from gunbound.broker.protocol.base import BasePackageFactory, BasePackageRecv, BasePackageSend
-from gunbound.broker.managers.config import ConfigManager
+from gunbound.managers.config import ConfigManager
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
 from gunbound.util.class_loader import instantiate_by_fullname
 
@@ -37,6 +34,9 @@ class LoginResp(BasePackageSend):
     def __init__(self, buf: BinaryWriter):
         self.buf = buf 
 
+    """
+    00 00 -> RTC (SRV_OK)
+    """
     @classmethod
     def success(cls):
         buf = BinaryWriter()
@@ -44,6 +44,9 @@ class LoginResp(BasePackageSend):
         buf.write_uint16(ServerCode.SRV_OK)
         return cls(buf)
     
+    """
+    11 00 -> RTC (SRV_ERR_WRONG_CREDENTIALS)
+    """
     @classmethod
     def wrong_credentials(cls):
         buf = BinaryWriter()

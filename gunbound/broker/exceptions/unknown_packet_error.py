@@ -1,7 +1,4 @@
-# lib/broker/exceptions.py
-
 from gunbound.util.binary_buffer import BinaryReader
-
 
 class UnknownPacketError(ValueError):
     """

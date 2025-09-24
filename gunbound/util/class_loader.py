@@ -1,4 +1,3 @@
-# lib/util/class_loader.py
 """
 Utilitário para importar e instanciar classes pelo nome completo (ex: 'lib.broker.strategy.login_strategy.DefaultLoginStrategy').
 """

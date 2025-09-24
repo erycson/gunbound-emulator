@@ -1,10 +1,5 @@
-# lib/broker/managers/config.py
-import os
 import yaml
 
-"""
-Singleton para configurações globais e recursos compartilhados
-"""
 class ConfigManager:
     _instance = None
 

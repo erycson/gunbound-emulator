@@ -1,6 +1,3 @@
-# lib/protocol/login.py
-
-import struct
 import socket
 from gunbound.broker.protocol.enums import ClientPacket, ServerPacket, ServerCode
 from gunbound.broker.protocol.base import BasePackageFactory, BasePackageRecv, BasePackageSend
@@ -20,8 +17,7 @@ class ServerSortedListRecv(BasePackageRecv):
         order = self.buf.read_uint8()
         filterFlag = self.buf.read_uint8()
         startIndex = self.buf.read_uint16()
-        rows = GameServerManager.get().all()
-        servers = rows if rows else []
+        servers = GameServerManager.get().all()
 
         await self.conn.on_send(ServerSortedListResp.success(servers))
 
@@ -51,8 +47,8 @@ class ServerSortedListResp(BasePackageSend):
         B8 0B -> Max Players
         13 -> Leve Min
         FC -> Level Max
-        00 -> Desconhecido
-        01 -> is Online?
+        00 -> Is Online
+        01 -> Avatar Enabled
     """
     @classmethod
     def success(cls, servers: list[GameServer]):
@@ -72,13 +68,12 @@ class ServerSortedListResp(BasePackageSend):
             buf.write_string(server.description)
             buf.write_bytes(socket.inet_aton(server.host))
             buf.write_uint16(server.port)
-            buf.write_bytes([0x00, 0x00]) # Desconhecido
-            buf.write_bytes([0x00, 0x00]) # Desconhecido
+            buf.write_bytes([0x00, 0x00, 0x00, 0x00]) # Desconhecido
             buf.write_uint16(server.users_max) # RecommendedMan
-            buf.write_int8(server.level_min)
-            buf.write_int8(server.level_max)
-            buf.write_uint8(0) # Desconhecido
-            buf.write_uint8(server.is_online())
+            buf.write_int8(server.grade_min)
+            buf.write_int8(server.grade_max)
+            buf.write_uint8(int(server.avatar_enabled))
+            buf.write_uint8(int(server.is_online))
 
         return cls(buf)
     
