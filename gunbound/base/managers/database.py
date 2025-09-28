@@ -1,10 +1,10 @@
-import databases
+from databases import Database
 
 class DatabaseManager:
     _instance = None
 
     def __init__(self, uri):
-        self._database = databases.Database(uri)
+        self._database: Database = Database(uri)
 
     @classmethod
     async def initialize(cls, uri):
@@ -22,7 +22,7 @@ class DatabaseManager:
             sys.exit(1)
 
     @classmethod
-    def get(cls):
+    def get(cls) -> Database:
         if cls._instance is None:
             raise RuntimeError("DatabaseManager não inicializado!")
         return cls._instance._database

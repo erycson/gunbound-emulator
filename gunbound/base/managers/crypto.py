@@ -4,8 +4,8 @@ from gunbound.util.sha1 import SHA1WithoutROTL
 class CryptoManager:
     _instance = None
 
-    def __init__(self, config):
-        self.key = bytes.fromhex(config['aes_key'])
+    def __init__(self, key):
+        self.key = bytes.fromhex(key)
         if len(self.key) != 16:
             raise ValueError("A chave de criptografia deve ter 16 bytes (128 bits)")
         
@@ -49,8 +49,7 @@ class CryptoManager:
         return bytes(buf)
 
     @classmethod
-    def derive_key(cls, username: bytes, password: str, sessionID: bytes) -> bytes:
-        """username4 + password4 (ASCII) + session_le4  -> 16B (H0..H3 LE)."""
-        m = username.split(b"\x00", 1)[0] + password.encode("ascii") + sessionID
-        return SHA1WithoutROTL().update(m).digest()[:16]
+    def derive_key(cls, username: str, password: str, session_id: bytes) -> bytes:
+        data = username.encode('latin-1') + password.encode('latin-1') + session_id
+        return SHA1WithoutROTL().update(data).digest()[:16]
     

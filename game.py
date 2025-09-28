@@ -13,7 +13,7 @@ async def main(index = 0):
         raise ValueError(f"Configurações para o servidor {index} não encontradas")
     
     database = await DatabaseManager.initialize(config['database']['uri'])
-    CryptoManager.initialize(config['crypto'])
+    CryptoManager.initialize(config['crypto']['game_key'])
     ClientManager.initialize()
 
     # Inicia o servidor

@@ -1,22 +1,22 @@
-from __future__ import annotations
 import asyncio
 from asyncio import Task, CancelledError, StreamReader, StreamWriter
-from gunbound.game.client import ClientConnection
 from gunbound.game.managers.client import ClientManager
 
 class GameServer:
     def __init__(self, index, config):
-        self.id = id(self)
+        self.id = id(self) & 0xFFFFFFFF
         self.index = index
         self.host = config['host']
         self.port = config['port']
+        self.version_min = config['version_min']
+        self.version_max = config['version_max']
+        self.product_version = config['product_version']
         self.task: Task = None
         self.clients = ClientManager.get()
         self.features = self.calc_features(config)
 
     async def handler(self, reader: StreamReader, writer: StreamWriter):
-        client = ClientConnection(self, reader, writer)
-        self.clients.add(client)
+        await self.clients.add(self, reader, writer)
 
     async def start(self):
         async def loop():
@@ -25,7 +25,7 @@ class GameServer:
                 self.host,
                 self.port
             )
-            print(f'GameServer iniciado')
+            print(f'GameServer iniciado em {self.host}:{self.port} (features={self.features:04X})')
 
             async with server:
                 await server.serve_forever()
@@ -46,5 +46,3 @@ class GameServer:
             features |= feature
         return features
     
-    def remove_connection(self, client: ClientConnection):
-        self.clients.remove(client)

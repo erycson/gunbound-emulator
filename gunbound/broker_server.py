@@ -4,7 +4,7 @@ from gunbound.broker.client import ClientConnection
 
 class BrokerServer:
     def __init__(self, config):
-        self.id = id(self)
+        self.id = id(self) & 0xFFFFFFFF
         self.host = config['host']
         self.port = config['port']
         self.task: Task = None

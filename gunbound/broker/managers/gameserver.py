@@ -39,18 +39,17 @@ class GameServerManager:
     async def check_status(self, timeout=1.0):
         tasks = [server.check_status(timeout) for server in self.servers]
         results = await asyncio.gather(*tasks, return_exceptions=False)
-        total = sum(results)
+        print(results)
         
-        if total > 0:
-            await self.db.execute(
-                "INSERT INTO UserCount (SerialNo, ServerIp, ServerPort, Time, UserCount) VALUES (:no, INET_ATON(:ip), :port, NOW(), :total)",
-                {
-                    'no': self.config['broker']['version'],
-                    'ip': self.config['broker']['host'],
-                    'port': self.config['broker']['port'],
-                    'total': sum(results)
-                }
-            )
+        await self.db.execute(
+            "INSERT INTO UserCount (SerialNo, ServerIp, ServerPort, Time, UserCount) VALUES (:no, INET_ATON(:ip), :port, NOW(), :total)",
+            {
+                'no': self.config['broker']['version'],
+                'ip': self.config['broker']['host'],
+                'port': self.config['broker']['port'],
+                'total': sum(results)
+            }
+        )
 
     async def start(self, interval=10):
         async def loop():

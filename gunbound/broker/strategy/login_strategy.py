@@ -33,7 +33,7 @@ class GBWC_v440_LoginStrategy(LoginStrategy):
             await conn.on_send(LoginResp.wrong_credentials())
             return
 
-        key_derived = self.crypto.derive_key(username_bytes, user.Password, session_bytes)
+        key_derived = self.crypto.derive_key(username, user.Password, session_bytes)
         password = self.c_str(self.crypto.decrypt_custom(block_b, key_derived))
 
         if user.Password != password:

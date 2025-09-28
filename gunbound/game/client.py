@@ -4,8 +4,9 @@ from gunbound.base.protocol import BasePackageFactory, BasePackageSend
 from gunbound.util import BinaryReader
 
 class ClientConnection:
-    def __init__(self, manager, reader: StreamReader, writer: StreamWriter):
-        self.id = None
+    def __init__(self, server, manager, id: int, reader: StreamReader, writer: StreamWriter):
+        self.id = id
+        self.server = server
         self.manager = manager
         self.reader: StreamReader = reader
         self.writer: StreamWriter = writer
@@ -17,7 +18,7 @@ class ClientConnection:
         ip, port = writer.get_extra_info('peername')
         self.addr: str = f"{ip}:{port}"
 
-        print(f"[{self.addr}] ClientConnection({self.broker.id:08X}:{self.id:08X})")
+        print(f"[{self.addr}] ClientConnection({self.server.id:08X}:{self.id:08X})")
 
     async def disconnect(self):
         self.writer.close()
@@ -35,7 +36,7 @@ class ClientConnection:
         except CancelledError:
             pass
         finally:
-            self.manager.remove(self)
+            await self.manager.remove(self)
 
     def is_closed(self):
         return self.writer.is_closing()
@@ -56,20 +57,24 @@ class ClientConnection:
 
     async def handler(self):
         while True:
+
             # Leia o cabeçalho inicial (2 bytes para o tamanho, little-endian)
             header = await self.reader.read(2)
             if len(header) < 2:
-                self.close()
+                print(f"[{self.id:08X}] Tamanho do cabeçalho inválido, fechando conexão")
+                await self.close()
                 break
 
             # Ignore pacotes com tamanho inválido (ex: menor que header)
             packet_size = int.from_bytes(header, 'little', signed=False)
             if packet_size < 6:
+                print(f"[{self.id:08X}] Tamanho do pacote inválido, ignorando")
                 continue
-            
+
             # Leia o restante do pacote
             payload = await self.reader.readexactly(packet_size - 2)
             reader = BinaryReader(payload)
+            
             await self.on_recv(packet_size, reader)
 
     async def on_recv(self, packet_size: int, buf: BinaryReader):

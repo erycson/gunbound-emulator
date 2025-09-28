@@ -1,5 +1,6 @@
 crypto:
-  aes_key: "A92753041BFCACE65B2338346846038C"
+  broker_key: "A92753041BFCACE65B2338346846038C"
+  game_key:   "FFB3B3BEAE97AD83B9610E23A43C2EB0"
 
 database:
   uri: "mysql+asyncmy://gbuser:gbpass@127.0.0.1:3306/gbwc?min_size=1&max_size=2"
@@ -35,7 +36,9 @@ gameservers:
     accept: # IPs ou range de IPs de quem pode entrar no servidor, usando notação CIDR
       - 127.0.0.1
       - 64.0/1
-    version: 8452169
+    version_min: 440
+    version_max: 440
+    product_version: 8452169
     users_max: 100 # max 65535
     host: "127.0.0.1"
     event: 0 # 1 = wowlg, é a imagem de fundo do servidor na lista de servidores

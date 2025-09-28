@@ -67,7 +67,7 @@ class ServerSortedListResp(BasePackageSend):
             buf.write_uint8(len(server.description.encode('latin-1')))
             buf.write_string(server.description)
             buf.write_bytes(socket.inet_aton(server.host))
-            buf.write_uint16(server.port)
+            buf.write_uint16(server.port, le=False)
             buf.write_bytes([0x00, 0x00, 0x00, 0x00]) # Desconhecido
             buf.write_uint16(server.users_max) # RecommendedMan
             buf.write_int8(server.grade_max)

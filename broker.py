@@ -36,13 +36,13 @@ async def main():
     # Inicializa os Managers
     config = ConfigManager.initialize("config.yml")
     database = await DatabaseManager.initialize(config['database']['uri'])
-    CryptoManager.initialize(config['crypto'])
+    CryptoManager.initialize(config['crypto']['broker_key'])
     manager = GameServerManager.initialize(config['gameservers'])
     await manager.start()
 
     # Servidores dump
-    await asyncio.start_server(dump_handler(8352), '0.0.0.0', 8352)  # BuddyServ
-    await asyncio.start_server(dump_handler(8382), '0.0.0.0', 8382)  # BuddyCenter
+    # await asyncio.start_server(dump_handler(8352), '0.0.0.0', 8352)  # BuddyServ
+    # await asyncio.start_server(dump_handler(8382), '0.0.0.0', 8382)  # BuddyCenter
 
     broker = BrokerServer(config['broker'])
     await broker.start()
@@ -53,7 +53,7 @@ async def main():
         await manager.stop()
         await broker.stop()
         await database.disconnect()
-        print("GameeServer parado")
+        print("BrokerServer parado")
 
     def signal_handler(signum, frame):
         asyncio.get_running_loop().create_task(shutdown())

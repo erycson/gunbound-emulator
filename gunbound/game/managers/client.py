@@ -1,5 +1,5 @@
 import asyncio
-from random import random
+import random
 from gunbound.game.client import ClientConnection
 
 """"
@@ -12,7 +12,8 @@ class ClientManager:
     _instance = None
     
     def __init__(self):
-        self.clients: map[int, ClientConnection] = {}
+        self.clients: dict[int, ClientConnection] = {}  # Corrigido para dict
+        self.lock = asyncio.Lock()
 
     @classmethod
     def initialize(cls):
@@ -31,17 +32,18 @@ class ClientManager:
     def size(self) -> int:
         return len(self.clients)
     
-    def add(self, reader, writer):
-        client = ClientConnection(self, reader, writer)
-        client.id = self.generate_id()
-        client.task = asyncio.create_task(client.handler())
-        self.clients[client.id] = client
+    async def add(self, server, reader, writer):
+        async with self.lock:
+            client = ClientConnection(server, self, self.generate_id(), reader, writer)
+            client.task = asyncio.create_task(client.handler())
+            self.clients[client.id] = client
 
-    def remove(self, client: ClientConnection):
-        if client.id in self.clients:
-            del self.clients[client.id]
-            return True
-        return False
+    async def remove(self, client: ClientConnection) -> bool:
+        async with self.lock:
+            if client.id in self.clients:
+                del self.clients[client.id]
+                return True
+            return False
 
     def generate_id(self) -> int:
         id = 0

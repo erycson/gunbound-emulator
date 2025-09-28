@@ -22,7 +22,7 @@ class BasePackageFactory(abc.ABC):
             print(f"[{conn.addr}] Pacote desconhecido: 0x{command:04X} (len={buf.size()})")
             dump(buf.getvalue())
             return
-        
+
         data = handler(conn, buf)
         data.log_command(conn)
         asyncio.create_task(data.process())

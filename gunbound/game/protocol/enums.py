@@ -39,6 +39,7 @@ class ServerPacket(IntEnum):
 class ServerCode(IntEnum):
     # Genéricos (podem aparecer em múltiplos replies)
     SRV_OK = 0x00
+    SRV_WRONG_VERSION = 0x60
 
 class Features(IntEnum):
     AVATAR_ENABLED = 1 << 4

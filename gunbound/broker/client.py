@@ -4,7 +4,7 @@ from gunbound.util import BinaryReader
 
 class ClientConnection:
     def __init__(self, broker, reader: StreamReader, writer: StreamWriter):
-        self.id = id(self)
+        self.id = id(self) & 0xFFFFFFFF
         self.broker = broker
         self.reader: StreamReader = reader
         self.writer: StreamWriter = writer

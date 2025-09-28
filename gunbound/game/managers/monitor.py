@@ -74,15 +74,15 @@ class MonitorManager:
         if index != self.game.index:
             return
 
-        session = ClientManager.get()
+        manager = ClientManager.get()   
 
         writer = BinaryWriter()
         writer.write_uint16(23)  # Size
-        writer.write_uint16(0xF000) # Command
+        writer.write_uint16(0xF001) # Command
         writer.write_uint32(self.game.index) # ServerIndex
         writer.write_bytes([0x00, 0x00])  # Desconhecido
-        writer.write_uint16(session.size())  # UsersOnline
         writer.write_bytes([0x00, 0x00])  # Desconhecido
+        writer.write_uint16(manager.size())  # UsersOnline
         writer.write_uint16(self.config['users_max'])  # UsersMax
         writer.write_int16(self.config['grade_min']) # LevelMin (pode ser q seja só 1 byte)
         writer.write_bytes([0x00, 0x00]) # Desconhecido

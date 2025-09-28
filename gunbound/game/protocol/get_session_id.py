@@ -15,9 +15,9 @@ class GetSessionIdRecv(BasePackageRecv):
         await self.conn.on_send(GetSessionIdResp.success(self.conn.id))
 
     def log_command(self, conn):
-        cmd = ClientPacket.CLI_SORTED_SERVER_LIST.value
+        cmd = ClientPacket.CLI_GET_SESSION_ID.value
         seq = conn.expected_client_checksum(self.buf.size())
-        print(f"RECV<< [SS={conn.broker.id:08X} SQ={seq:04X} CD={cmd:04X}] {self.buf.to_hex()}")
+        print(f"RECV<< [SS={conn.server.id:08X} SQ={seq:04X} CD={cmd:04X}] {self.buf.to_hex()}")
 
 class GetSessionIdResp(BasePackageSend):
     def __init__(self, buf: BinaryWriter):
@@ -27,7 +27,7 @@ class GetSessionIdResp(BasePackageSend):
     04 D1 00 00 -> SessionId 1233
     """
     @classmethod
-    def success(cls, session_id: int):
+    def success(cls, session_id: bytes):
         buf = BinaryWriter()
         buf.write_uint16(ServerPacket.SRV_SESSION_ID)
         buf.write_uint32(session_id)
@@ -40,4 +40,4 @@ class GetSessionIdResp(BasePackageSend):
         reader = self.buf.to_reader()
         checksum = reader.read_uint16(pos=2)
         cmd = reader.read_uint16(pos=4)
-        print(f"SEND>> [SS={conn.broker.id:08X} SQ={checksum:04X} CD={cmd:04X}] {self.buf.to_hex()}")
+        print(f"SEND>> [SS={conn.server.id:08X} SQ={checksum:04X} CD={cmd:04X}] {self.buf.to_hex()}")
