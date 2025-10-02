@@ -1,6 +1,6 @@
 INSTALL PLUGIN FEDERATED SONAME 'ha_federated';
 
-CREATE SERVER gbwc_51 FOREIGN DATA WRAPPER mysql OPTIONS (HOST '127.0.0.1', PORT 33306, DATABASE 'gbwc', USER 'root', PASSWORD '');
+CREATE SERVER gbwc_linked FOREIGN DATA WRAPPER mysql OPTIONS (HOST '127.0.0.1', PORT 33306, DATABASE 'gbwc', USER 'root', PASSWORD '');
 
 -- ----------------------------
 -- Table structure for abnormalupdate
@@ -12,7 +12,7 @@ CREATE TABLE `AbnormalUpdate`  (
   `ScoreDelta` smallint(6) NOT NULL DEFAULT 0,
   `MoneyDelta` int(11) NOT NULL DEFAULT 0,
   `Time` datetime NOT NULL DEFAULT '0000-00-00 00:00:00'
-) ENGINE = federated CONNECTION = 'gbwc_51/AbnormalUpdate';
+) ENGINE = federated CONNECTION = 'gbwc_linked/AbnormalUpdate';
 
 -- ----------------------------
 -- Table structure for abnormalupdatelog
@@ -32,7 +32,7 @@ CREATE TABLE `AbnormalUpdateLog`  (
   `GameRoomTitle` varchar(64) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `GameRoomID` smallint(5) NOT NULL DEFAULT 0,
   `ServerIP` int(10) NOT NULL DEFAULT 0
-) ENGINE = federated CONNECTION = 'gbwc_51/AbnormalUpdateLog';
+) ENGINE = federated CONNECTION = 'gbwc_linked/AbnormalUpdateLog';
 
 -- ----------------------------
 -- Table structure for accuse
@@ -45,7 +45,7 @@ CREATE TABLE `Accuse`  (
   `Accused` varchar(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   `Time` time NULL DEFAULT NULL,
   `Complaint` text CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL
-) ENGINE = federated CONNECTION = 'gbwc_51/Accuse';
+) ENGINE = federated CONNECTION = 'gbwc_linked/Accuse';
 
 -- ----------------------------
 -- Table structure for applicationsetting
@@ -58,7 +58,7 @@ CREATE TABLE `ApplicationSetting`  (
   `FullDownloadUrl` varchar(255) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `VersionLimit` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`ApplicationId`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/ApplicationSetting';
+) ENGINE = federated CONNECTION = 'gbwc_linked/ApplicationSetting';
 
 -- ----------------------------
 -- Table structure for avatar_supply_history
@@ -71,7 +71,7 @@ CREATE TABLE `avatar_supply_history`  (
   `Provide_Id` char(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `Provide_Date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   `Provide_Msg` char(50) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT ''
-) ENGINE = federated CONNECTION = 'gbwc_51/avatar_supply_history';
+) ENGINE = federated CONNECTION = 'gbwc_linked/avatar_supply_history';
 
 -- ----------------------------
 -- Table structure for avatar_table
@@ -109,7 +109,7 @@ CREATE TABLE `avatar_table`  (
   `Wear_String9` varchar(100) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   `Wear_String10` varchar(100) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   PRIMARY KEY (`Prop_Number`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/avatar_table';
+) ENGINE = federated CONNECTION = 'gbwc_linked/avatar_table';
 
 -- ----------------------------
 -- Table structure for ban
@@ -118,7 +118,7 @@ DROP TABLE IF EXISTS `Ban`;
 CREATE TABLE `Ban`  (
   `ID` char(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `Nickname` char(20) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT ''
-) ENGINE = federated CONNECTION = 'gbwc_51/Ban';
+) ENGINE = federated CONNECTION = 'gbwc_linked/Ban';
 
 -- ----------------------------
 -- Table structure for banlog
@@ -131,7 +131,7 @@ CREATE TABLE `BanLog`  (
   `Reason` varchar(255) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `Judge` varchar(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   INDEX `Id`(`Id`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/BanLog';
+) ENGINE = federated CONNECTION = 'gbwc_linked/BanLog';
 
 -- ----------------------------
 -- Table structure for banreason
@@ -140,7 +140,7 @@ DROP TABLE IF EXISTS `BanReason`;
 CREATE TABLE `BanReason`  (
   `ID` varchar(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `MuteLog` text CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL
-) ENGINE = federated CONNECTION = 'gbwc_51/BanReason';
+) ENGINE = federated CONNECTION = 'gbwc_linked/BanReason';
 
 -- ----------------------------
 -- Table structure for buddylist
@@ -151,7 +151,7 @@ CREATE TABLE `BuddyList`  (
   `Category` char(20) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `Buddy` char(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   INDEX `Id`(`Id`, `Buddy`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/BuddyList';
+) ENGINE = federated CONNECTION = 'gbwc_linked/BuddyList';
 
 -- ----------------------------
 -- Table structure for buyinfo
@@ -164,7 +164,7 @@ CREATE TABLE `BuyInfo`  (
   `Asset` int(20) NULL DEFAULT NULL,
   `BuyType` varchar(255) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   `Time` datetime NULL DEFAULT '0000-00-00 00:00:00'
-) ENGINE = federated CONNECTION = 'gbwc_51/BuyInfo';
+) ENGINE = federated CONNECTION = 'gbwc_linked/BuyInfo';
 
 -- ----------------------------
 -- Table structure for cash
@@ -175,7 +175,7 @@ CREATE TABLE `Cash`  (
   `Cash` int(100) NOT NULL DEFAULT 0,
   `OldCash` int(100) NOT NULL DEFAULT 0,
   PRIMARY KEY (`ID`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/Cash';
+) ENGINE = federated CONNECTION = 'gbwc_linked/Cash';
 
 -- ----------------------------
 -- Table structure for charge_candidate
@@ -194,7 +194,7 @@ CREATE TABLE `charge_candidate`  (
   `Status` varchar(100) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT 'Waiting',
   PRIMARY KEY (`Sn`) USING BTREE,
   INDEX `Id`(`Id`, `PayPal_Mail`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/charge_candidate';
+) ENGINE = federated CONNECTION = 'gbwc_linked/charge_candidate';
 
 -- ----------------------------
 -- Table structure for charge_history
@@ -214,7 +214,7 @@ CREATE TABLE `charge_history`  (
   `Status_Reason` varchar(100) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   PRIMARY KEY (`Sn`) USING BTREE,
   INDEX `Id`(`Id`, `PayPal_Mail`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/charge_history';
+) ENGINE = federated CONNECTION = 'gbwc_linked/charge_history';
 
 -- ----------------------------
 -- Table structure for charge_status
@@ -233,7 +233,7 @@ CREATE TABLE `charge_status`  (
   `Status_ReaSon` varchar(100) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   PRIMARY KEY (`Sn`) USING BTREE,
   INDEX `Id`(`Id`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/charge_status';
+) ENGINE = federated CONNECTION = 'gbwc_linked/charge_status';
 
 -- ----------------------------
 -- Table structure for chest
@@ -251,7 +251,7 @@ CREATE TABLE `Chest`  (
   `Owner` varchar(50) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT '',
   `ExpireType` varchar(255) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   PRIMARY KEY (`No`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/Chest';
+) ENGINE = federated CONNECTION = 'gbwc_linked/Chest';
 
 -- ----------------------------
 -- Table structure for collection
@@ -259,7 +259,7 @@ CREATE TABLE `Chest`  (
 DROP TABLE IF EXISTS `Collection`;
 CREATE TABLE `Collection`  (
   `User` varchar(50) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT ''
-) ENGINE = federated CONNECTION = 'gbwc_51/Collection';
+) ENGINE = federated CONNECTION = 'gbwc_linked/Collection';
 
 -- ----------------------------
 -- Table structure for concurrentuser
@@ -272,7 +272,7 @@ CREATE TABLE `ConcurrentUser`  (
   `Time` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   INDEX `ServerIp`(`ServerIp`, `ServerPort`) USING BTREE,
   INDEX `Time`(`Time`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/ConcurrentUser';
+) ENGINE = federated CONNECTION = 'gbwc_linked/ConcurrentUser';
 
 -- ----------------------------
 -- Table structure for country_reference
@@ -284,7 +284,7 @@ CREATE TABLE `country_reference`  (
   `Country_Name` varchar(200) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   PRIMARY KEY (`Country_Count`) USING BTREE,
   INDEX `Country_Name`(`Country_Name`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/country_reference';
+) ENGINE = federated CONNECTION = 'gbwc_linked/country_reference';
 
 -- ----------------------------
 -- Table structure for current_currentuser
@@ -298,7 +298,7 @@ CREATE TABLE `current_currentuser`  (
   `ID` int(50) UNSIGNED NULL DEFAULT 0,
   INDEX `ServerIp`(`ServerIp`, `ServerPort`) USING BTREE,
   INDEX `Time`(`Time`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/current_currentuser';
+) ENGINE = federated CONNECTION = 'gbwc_linked/current_currentuser';
 
 -- ----------------------------
 -- Table structure for currentuser
@@ -314,7 +314,7 @@ CREATE TABLE `CurrentUser`  (
   `Id` varchar(10) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   INDEX `ServerIp`(`ServerIp`, `ServerPort`) USING BTREE,
   INDEX `Time`(`Time`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/CurrentUser';
+) ENGINE = federated CONNECTION = 'gbwc_linked/CurrentUser';
 
 -- ----------------------------
 -- Table structure for dead_user
@@ -323,7 +323,7 @@ DROP TABLE IF EXISTS `dead_user`;
 CREATE TABLE `dead_user`  (
   `id` char(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `e_mail` char(30) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT ''
-) ENGINE = federated CONNECTION = 'gbwc_51/dead_user';
+) ENGINE = federated CONNECTION = 'gbwc_linked/dead_user';
 
 -- ----------------------------
 -- Table structure for droplog
@@ -335,7 +335,7 @@ CREATE TABLE `DropLog`  (
   `Time` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   INDEX `Id`(`Id`) USING BTREE,
   INDEX `Dropper`(`Dropper`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/DropLog';
+) ENGINE = federated CONNECTION = 'gbwc_linked/DropLog';
 
 -- ----------------------------
 -- Table structure for email_answer
@@ -348,7 +348,7 @@ CREATE TABLE `email_answer`  (
   `type` varchar(100) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   `answer` text CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL,
   PRIMARY KEY (`no`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/email_answer';
+) ENGINE = federated CONNECTION = 'gbwc_linked/email_answer';
 
 -- ----------------------------
 -- Table structure for eventlog
@@ -362,7 +362,7 @@ CREATE TABLE `EventLog`  (
   `ServerIp` int(10) UNSIGNED NOT NULL DEFAULT 0,
   `ServerPort` smallint(5) UNSIGNED NOT NULL DEFAULT 0,
   INDEX `Id`(`Id`, `Code`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/EventLog';
+) ENGINE = federated CONNECTION = 'gbwc_linked/EventLog';
 
 -- ----------------------------
 -- Table structure for fileinfo
@@ -377,7 +377,7 @@ CREATE TABLE `FileInfo`  (
   `FileSize` int(11) NOT NULL DEFAULT 0,
   INDEX `ApplicationId`(`ApplicationId`) USING BTREE,
   INDEX `FileVersion`(`FileVersion`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/FileInfo';
+) ENGINE = federated CONNECTION = 'gbwc_linked/FileInfo';
 
 -- ----------------------------
 -- Table structure for game
@@ -417,7 +417,7 @@ CREATE TABLE `Game`  (
   `NickName` varchar(15) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   PRIMARY KEY (`Id`) USING BTREE,
   INDEX `Guild`(`Guild`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/Game';
+) ENGINE = federated CONNECTION = 'gbwc_linked/Game';
 
 -- ----------------------------
 -- Table structure for game_info
@@ -476,7 +476,7 @@ CREATE TABLE `game_info`  (
   `new_id` int(11) NOT NULL DEFAULT 0,
   `Unique_Id` int(11) NULL DEFAULT 0,
   `nio_member` int(11) NOT NULL DEFAULT 0
-) ENGINE = federated CONNECTION = 'gbwc_51/game_info';
+) ENGINE = federated CONNECTION = 'gbwc_linked/game_info';
 
 -- ----------------------------
 -- Table structure for gbcomments
@@ -491,7 +491,7 @@ CREATE TABLE `GBComments`  (
   `Comment` text CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL,
   `Date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   PRIMARY KEY (`Id`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/GBComments';
+) ENGINE = federated CONNECTION = 'gbwc_linked/GBComments';
 
 -- ----------------------------
 -- Table structure for gbnews
@@ -506,7 +506,7 @@ CREATE TABLE `GBNews`  (
   `Author` varchar(15) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   `Comments` int(4) NULL DEFAULT 0,
   PRIMARY KEY (`Id`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/GBNews';
+) ENGINE = federated CONNECTION = 'gbwc_linked/GBNews';
 
 -- ----------------------------
 -- Table structure for gift
@@ -521,7 +521,7 @@ CREATE TABLE `Gift`  (
   `SentTime` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   PRIMARY KEY (`SerialNo`) USING BTREE,
   INDEX `Receiver`(`Receiver`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/Gift';
+) ENGINE = federated CONNECTION = 'gbwc_linked/Gift';
 
 -- ----------------------------
 -- Table structure for giftitem
@@ -535,7 +535,7 @@ CREATE TABLE `GiftItem`  (
   `Acquisition` varchar(255) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   `Receiver` varchar(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   PRIMARY KEY (`No`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/GiftItem';
+) ENGINE = federated CONNECTION = 'gbwc_linked/GiftItem';
 
 -- ----------------------------
 -- Table structure for giftmsg
@@ -554,7 +554,7 @@ CREATE TABLE `GiftMsg`  (
   `ItemId` int(16) NULL DEFAULT NULL,
   `Acquisition` varchar(255) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   PRIMARY KEY (`No`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/GiftMsg';
+) ENGINE = federated CONNECTION = 'gbwc_linked/GiftMsg';
 
 -- ----------------------------
 -- Table structure for grandprix_group
@@ -567,7 +567,7 @@ CREATE TABLE `grandprix_group`  (
   `RankOld` varchar(50) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   `Win` varchar(50) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   `Lose` varchar(50) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL
-) ENGINE = federated CONNECTION = 'gbwc_51/grandprix_group';
+) ENGINE = federated CONNECTION = 'gbwc_linked/grandprix_group';
 
 -- ----------------------------
 -- Table structure for grandprix_personal
@@ -582,7 +582,7 @@ CREATE TABLE `grandprix_personal`  (
   `ScoreOnCalc` varchar(50) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   `User` varchar(50) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   `Category` varchar(50) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL
-) ENGINE = federated CONNECTION = 'gbwc_51/grandprix_personal';
+) ENGINE = federated CONNECTION = 'gbwc_linked/grandprix_personal';
 
 -- ----------------------------
 -- Table structure for guildweb
@@ -594,7 +594,7 @@ CREATE TABLE `GuildWeb`  (
   `Descricao` varchar(200) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `Requerimento` varchar(200) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `WebSite` varchar(40) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT ''
-) ENGINE = federated CONNECTION = 'gbwc_51/GuildWeb';
+) ENGINE = federated CONNECTION = 'gbwc_linked/GuildWeb';
 
 -- ----------------------------
 -- Table structure for gunwcuser
@@ -616,7 +616,7 @@ CREATE TABLE `GunWCUser`  (
   `Country` char(3) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `AuthorityBackup` int(10) NULL DEFAULT NULL,
   PRIMARY KEY (`Id`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/GunWCUser';
+) ENGINE = federated CONNECTION = 'gbwc_linked/GunWCUser';
 
 -- ----------------------------
 -- Table structure for ipblock
@@ -626,7 +626,7 @@ CREATE TABLE `IPBlock`  (
   `ip` varchar(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   `Allow` varchar(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   `Mask` varchar(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL
-) ENGINE = federated CONNECTION = 'gbwc_51/IPBlock';
+) ENGINE = federated CONNECTION = 'gbwc_linked/IPBlock';
 
 -- ----------------------------
 -- Table structure for item
@@ -638,7 +638,7 @@ CREATE TABLE `Item`  (
   `Refund_G` int(11) NOT NULL DEFAULT 0,
   `Refund_T` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`No`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/Item';
+) ENGINE = federated CONNECTION = 'gbwc_linked/Item';
 
 -- ----------------------------
 -- Table structure for loginlog
@@ -653,7 +653,7 @@ CREATE TABLE `LoginLog`  (
   `Time` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   `ServerIP` int(10) NOT NULL DEFAULT 0,
   `ServerPort` smallint(5) NOT NULL DEFAULT 0
-) ENGINE = federated CONNECTION = 'gbwc_51/LoginLog';
+) ENGINE = federated CONNECTION = 'gbwc_linked/LoginLog';
 
 -- ----------------------------
 -- Table structure for menu
@@ -687,7 +687,7 @@ CREATE TABLE `Menu`  (
   `PriceByCashForT` int(11) NOT NULL DEFAULT 10000,
   `PriceByCashForY` int(11) NOT NULL DEFAULT 10000,
   PRIMARY KEY (`No`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/Menu';
+) ENGINE = federated CONNECTION = 'gbwc_linked/Menu';
 
 -- ----------------------------
 -- Table structure for mobilerecord
@@ -698,7 +698,7 @@ CREATE TABLE `MobileRecord`  (
   `Lose` text CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL,
   `Id` varchar(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `Mobile` varchar(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT ''
-) ENGINE = federated CONNECTION = 'gbwc_51/MobileRecord';
+) ENGINE = federated CONNECTION = 'gbwc_linked/MobileRecord';
 
 -- ----------------------------
 -- Table structure for msg
@@ -710,7 +710,7 @@ CREATE TABLE `Msg`  (
   `MsgBoxText` varchar(50) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT '0',
   `MsgBoxType` tinytext CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL,
   `LinkUrl` tinytext CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL
-) ENGINE = federated CONNECTION = 'gbwc_51/Msg';
+) ENGINE = federated CONNECTION = 'gbwc_linked/Msg';
 
 -- ----------------------------
 -- Table structure for msgqueue
@@ -718,7 +718,7 @@ CREATE TABLE `Msg`  (
 DROP TABLE IF EXISTS `MsgQueue`;
 CREATE TABLE `MsgQueue`  (
   `SerialNo` tinytext CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL
-) ENGINE = federated CONNECTION = 'gbwc_51/MsgQueue';
+) ENGINE = federated CONNECTION = 'gbwc_linked/MsgQueue';
 
 -- ----------------------------
 -- Table structure for mutelog
@@ -731,7 +731,7 @@ CREATE TABLE `MuteLog`  (
   `Reason` varchar(255) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `Judge` varchar(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   INDEX `Id`(`Id`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/MuteLog';
+) ENGINE = federated CONNECTION = 'gbwc_linked/MuteLog';
 
 -- ----------------------------
 -- Table structure for new_table
@@ -745,7 +745,7 @@ CREATE TABLE `new_table`  (
   `f_view_count` int(11) NOT NULL DEFAULT 0,
   `f_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   PRIMARY KEY (`f_index`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/new_table';
+) ENGINE = federated CONNECTION = 'gbwc_linked/new_table';
 
 -- ----------------------------
 -- Table structure for packet
@@ -759,7 +759,7 @@ CREATE TABLE `Packet`  (
   `Body` tinyblob NOT NULL,
   `Time` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   INDEX `Receiver`(`Receiver`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/Packet';
+) ENGINE = federated CONNECTION = 'gbwc_linked/Packet';
 
 -- ----------------------------
 -- Table structure for playlog
@@ -829,7 +829,7 @@ CREATE TABLE `PlayLog`  (
   INDEX `S5_ID`(`S5_ID`) USING BTREE,
   INDEX `S6_ID`(`S6_ID`) USING BTREE,
   INDEX `S7_ID`(`S7_ID`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/PlayLog';
+) ENGINE = federated CONNECTION = 'gbwc_linked/PlayLog';
 
 -- ----------------------------
 -- Table structure for priceerror
@@ -839,7 +839,7 @@ CREATE TABLE `PriceError`  (
   `Id` varchar(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `Reason` text CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL,
   INDEX `Id`(`Id`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/PriceError';
+) ENGINE = federated CONNECTION = 'gbwc_linked/PriceError';
 
 -- ----------------------------
 -- Table structure for rankcalcbreak
@@ -850,7 +850,7 @@ CREATE TABLE `RankCalcBreak`  (
   `Rank` int(11) NOT NULL DEFAULT 0,
   `Grade` smallint(6) NOT NULL DEFAULT 0,
   PRIMARY KEY (`Id`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/RankCalcBreak';
+) ENGINE = federated CONNECTION = 'gbwc_linked/RankCalcBreak';
 
 -- ----------------------------
 -- Table structure for receiptbuy
@@ -868,7 +868,7 @@ CREATE TABLE `ReceiptBuy`  (
   `ReceiptGiftNo` int(11) NULL DEFAULT NULL,
   PRIMARY KEY (`No`) USING BTREE,
   INDEX `Id`(`Id`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/ReceiptBuy';
+) ENGINE = federated CONNECTION = 'gbwc_linked/ReceiptBuy';
 
 -- ----------------------------
 -- Table structure for receiptconsume
@@ -883,7 +883,7 @@ CREATE TABLE `ReceiptConsume`  (
   `Time` datetime NULL DEFAULT NULL,
   `ExpireType` varchar(11) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT '0',
   `Expire` varchar(11) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT '0'
-) ENGINE = federated CONNECTION = 'gbwc_51/ReceiptConsume';
+) ENGINE = federated CONNECTION = 'gbwc_linked/ReceiptConsume';
 
 -- ----------------------------
 -- Table structure for receiptgift
@@ -900,7 +900,7 @@ CREATE TABLE `ReceiptGift`  (
   `Expiretype` varchar(255) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT NULL,
   INDEX `Id`(`Id`) USING BTREE,
   INDEX `Receiver`(`Receiver`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/ReceiptGift';
+) ENGINE = federated CONNECTION = 'gbwc_linked/ReceiptGift';
 
 -- ----------------------------
 -- Table structure for receiptsell
@@ -913,7 +913,7 @@ CREATE TABLE `ReceiptSell`  (
   `CashDelta` int(11) NOT NULL DEFAULT 0,
   `Time` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   INDEX `Id`(`Id`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/ReceiptSell';
+) ENGINE = federated CONNECTION = 'gbwc_linked/ReceiptSell';
 
 -- ----------------------------
 -- Table structure for records
@@ -922,7 +922,7 @@ DROP TABLE IF EXISTS `Records`;
 CREATE TABLE `Records`  (
   `c_num` text CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL,
   `Mask_Decimal` decimal(10, 0) NOT NULL DEFAULT 0
-) ENGINE = federated CONNECTION = 'gbwc_51/Records';
+) ENGINE = federated CONNECTION = 'gbwc_linked/Records';
 
 -- ----------------------------
 -- Table structure for report_site
@@ -938,7 +938,7 @@ CREATE TABLE `report_site`  (
   `totalgrade` int(5) NULL DEFAULT NULL,
   `confirm` char(1) CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL DEFAULT '0',
   PRIMARY KEY (`no`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/report_site';
+) ENGINE = federated CONNECTION = 'gbwc_linked/report_site';
 
 -- ----------------------------
 -- Table structure for restrict_table
@@ -956,7 +956,7 @@ CREATE TABLE `restrict_table`  (
   `view` smallint(6) NOT NULL DEFAULT 0,
   PRIMARY KEY (`Sn`) USING BTREE,
   INDEX `ID`(`ID`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/restrict_table';
+) ENGINE = federated CONNECTION = 'gbwc_linked/restrict_table';
 
 -- ----------------------------
 -- Table structure for servicestatus
@@ -968,7 +968,7 @@ CREATE TABLE `ServiceStatus`  (
   `ServerIp` int(15) NOT NULL DEFAULT 0,
   `ServerPort` smallint(5) NOT NULL DEFAULT 0,
   `Status` text CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL
-) ENGINE = federated CONNECTION = 'gbwc_51/ServiceStatus';
+) ENGINE = federated CONNECTION = 'gbwc_linked/ServiceStatus';
 
 -- ----------------------------
 -- Table structure for stagerecord
@@ -979,7 +979,7 @@ CREATE TABLE `StageRecord`  (
   `Lose` int(11) NOT NULL DEFAULT 0,
   `Id` varchar(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `Stage` int(11) NOT NULL DEFAULT 0
-) ENGINE = federated CONNECTION = 'gbwc_51/StageRecord';
+) ENGINE = federated CONNECTION = 'gbwc_linked/StageRecord';
 
 -- ----------------------------
 -- Table structure for user
@@ -1000,7 +1000,7 @@ CREATE TABLE `User`  (
   `Country` char(3) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `User_Level` int(3) NOT NULL DEFAULT 0,
   PRIMARY KEY (`Id`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/User';
+) ENGINE = federated CONNECTION = 'gbwc_linked/User';
 
 -- ----------------------------
 -- Table structure for usercount
@@ -1013,4 +1013,4 @@ CREATE TABLE `UserCount`  (
   `UserCount` int(11) UNSIGNED NOT NULL,
   `Time` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
   PRIMARY KEY (`SerialNo`) USING BTREE
-) ENGINE = federated CONNECTION = 'gbwc_51/UserCount';
+) ENGINE = federated CONNECTION = 'gbwc_linked/UserCount';

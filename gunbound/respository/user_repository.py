@@ -14,9 +14,6 @@ class UserRepository:
     """
 
     def __init__(self):
-        """
-        Inicializa o UserRepository com banco de dados e sub-repositórios.
-        """
         self.db = DatabaseManager.get()
 
     async def logout(self, user_id: str, context: int) -> bool:
@@ -47,12 +44,12 @@ class UserRepository:
             Optional[Dict[str, Any]]: Dados do perfil do usuário ou None se não encontrado.
         """
         data = await self.db.fetch_one(
-            "SELECT Id, User, Password, Nickname, Gender, User_Level, Authority, Authority2, UNIX_TIMESTAMP(RestrictTime) AS RestrictTime FROM User WHERE Id = :user_id",
+            "SELECT Id, User, Password, Nickname, Gender, User_Level, Authority, Authority2, RestrictTime FROM User WHERE Id = :user_id",
             {'user_id': user_id}
         )
         return dict(data) if data else None
 
-    async def get_stats(self, user_id: str) -> Optional[Dict[str, Any]]:
+    async def get_game(self, user_id: str) -> Optional[Dict[str, Any]]:
         """
         Busca estatísticas do jogo da tabela game.
 
@@ -63,10 +60,7 @@ class UserRepository:
             Optional[Dict[str, Any]]: Dados das estatísticas do jogo ou None se não encontrado.
         """
         data = await self.db.fetch_one(
-            "SELECT Guild, TotalGrade, SeasonGrade, MemberCount, TotalRank, SeasonRank, GuildRank, AccumShot, AccumDamage, "
-            "TotalScore, SeasonScore, Money, EventScore0, EventScore1, EventScore2, EventScore3, "
-            "UNIX_TIMESTAMP(GiftProhibitTime), ClientData, Country, CountryGrade, CountryRank "
-            "FROM game WHERE Id = :user_id",
+            "SELECT Guild, TotalGrade, SeasonGrade, MemberCount, TotalRank, SeasonRank, GuildRank, AccumShot, AccumDamage, TotalScore, SeasonScore, Money, EventScore0, EventScore1, EventScore2, EventScore3, GiftProhibitTime, ClientData, Country, CountryGrade, CountryRank FROM game WHERE Id = :user_id",
             {'user_id': user_id}
         )
         return dict(data) if data else None
@@ -82,8 +76,30 @@ class UserRepository:
             List[Dict[str, Any]]: Lista de mensagens de presente.
         """
         msgs = await self.db.fetch_all(
-            "SELECT No, MenuId, Sender, UNIX_TIMESTAMP(SentTime), Msg, MsgType, ExpireType, GiftItemNo "
-            "FROM GiftMsg WHERE Receiver = :user_id",
+            "SELECT No, MenuId, Sender, SentTime, Msg, MsgType, ExpireType, GiftItemNo FROM GiftMsg WHERE Receiver = :user_id",
             {'user_id': user_id}
         )
         return [dict(m) for m in msgs]
+    
+    async def update_client_data(self, user_id: str, client_data: bytes) -> bool:
+        """
+        Atualiza os dados do cliente para o usuário.
+
+        Args:
+            user_id (str): O identificador único do usuário.
+            client_data (bytes): Dados do cliente a serem atualizados.
+
+        Returns:
+            bool: True se a atualização foi bem-sucedida, False caso contrário.
+        """
+        # FF030102FF06FF0A24
+        # if len(client_data) > 100:
+        #     client_data = client_data[:100]
+        # elif len(client_data) < 100:
+        #     client_data = client_data + b'\x00' * (100 - len(client_data))
+        
+        result = await self.db.execute(
+            "UPDATE Game SET ClientData = :client_data, LastUpdateTime=NOW() WHERE Id = :user_id",
+            {'client_data': client_data, 'user_id': user_id}
+        )
+        return result > 0

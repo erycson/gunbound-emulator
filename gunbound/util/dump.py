@@ -1,4 +1,4 @@
-def dump(data: bytes, start_addr: int = 0):
+def dump(data: str|bytes, start_addr: int = 0):
     lines = []
     for i in range(0, len(data), 16):
         chunk = data[i:i+16]

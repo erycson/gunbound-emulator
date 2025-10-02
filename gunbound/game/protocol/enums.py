@@ -26,6 +26,12 @@ class ClientPacket(IntEnum):
     CLI_ROOM_RETURN_RESULT = 0x3232
     CLI_START_GAME = 0x3430
 
+    CLI_CLIENT_DATA = 0x1090
+    CLI_ITEM = 0x6000
+    CLI_ITEM_GIFT_MSG = 0x6004
+    CLI_CASH = 0x6100
+    CLI_GOLD = 0x6104
+
 """
 Enums para pacotes enviados pelo broker ao cliente.
 """
@@ -35,6 +41,20 @@ class ServerPacket(IntEnum):
 
     # Autentica o cliente no gameserver
     SRV_LOGIN = 0x1012
+    SRV_LOGIN_13 = 0x1013
+    SRV_LOGIN_15 = 0x1015
+
+    SRV_ITEM = 0x6001
+    SRV_ITEM_GIFT_MSG = 0x6004
+    SRV_CASH = 0x6101
+    SRV_GOLD = 0x6105
+    SRV_CLIENT_DATA = 0x1091
+
+    SRV_ERROR_UNKNOWN_1090 = 0x1090
+    SRV_ERROR_UNKNOWN_3200 = 0x3200
+    SRV_ERROR_UNKNOWN_5001 = 0x5001
+    SRV_ERROR_UNKNOWN_5011 = 0x5011
+    SRV_ERROR_UNKNOWN_6004 = 0x6004
 
 class ServerCode(IntEnum):
     # Genéricos (podem aparecer em múltiplos replies)

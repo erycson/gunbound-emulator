@@ -2,19 +2,11 @@ crypto:
   broker_key: "A92753041BFCACE65B2338346846038C"
   game_key:   "FFB3B3BEAE97AD83B9610E23A43C2EB0"
 
+global:
+  PRODUCT_VERSION: &PRODUCT_VERSION 8452169
+  
 database:
   uri: "mysql+asyncmy://gbuser:gbpass@127.0.0.1:3306/gbwc?min_size=1&max_size=2"
-
-broker:
-  version: 8452169
-  host: "0.0.0.0"
-  port: 8372
-  strategies:
-    login: "gunbound.broker.strategy.login_strategy.GBWC_v440_LoginStrategy"
-
-center:
-  host: "127.0.0.1"
-  port: 8372
 
 features:
   AVATAR_ENABLED: &AVATAR_ENABLED 16 # 1 << 4
@@ -30,22 +22,39 @@ features:
   EVENT3_ENABLE: &EVENT3_ENABLE 4194304 # 1 << 22
   EVENT4_ENABLE: &EVENT4_ENABLE 8388608 # 1 << 23
 
+broker:
+  host: "127.0.0.1"
+  port: 8372
+  product_version: *PRODUCT_VERSION
+  strategies:
+    login: "gunbound.broker.strategy.login_strategy.GBWC_v440_LoginStrategy"
+
+buddy_server:
+  host: "127.0.0.1"
+  port: 8352
+
+buddy_center:
+  host: "127.0.0.1"
+  port: 8382
+
 gameservers:
   - name: "Gunbound WC" # Max, 32 bytes
     description: "Área livre\\nSem avatar" # Max, 64 bytes
+    host: "127.0.0.1"
+    port: 8360
     accept: # IPs ou range de IPs de quem pode entrar no servidor, usando notação CIDR
       - 127.0.0.1
       - 64.0/1
     version_min: 440
     version_max: 440
-    product_version: 8452169
+    product_version: *PRODUCT_VERSION
     users_max: 100 # max 65535
-    host: "127.0.0.1"
     event: 0 # 1 = wowlg, é a imagem de fundo do servidor na lista de servidores
-    port: 8360
-    funct_registry: 1040399 # FuncRestrict é uma combinação de numeros que definem as caracteris do servidor, ex: se tem tornado, force, vento, evento, avatar on ou off etc (Gerador de FuncRestrict
     grade_min: 19
     grade_max: -4
+    gold_factor: 100
+    score_factor: 100
+    stats_interval: 300 # Intervalo em segundos que será inserido a quantidade de usuários na tabela UserCount
     features: 
       - *AVATAR_ENABLED
       - *EFFECT_FORCE

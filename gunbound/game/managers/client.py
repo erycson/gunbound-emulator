@@ -1,5 +1,6 @@
-import asyncio
+import time
 import random
+import asyncio
 from gunbound.game.client import ClientConnection
 
 """"
@@ -14,6 +15,7 @@ class ClientManager:
     def __init__(self):
         self.clients: dict[int, ClientConnection] = {}  # Corrigido para dict
         self.lock = asyncio.Lock()
+        self.rand_seed: int = 1
 
     @classmethod
     def initialize(cls):
@@ -34,7 +36,8 @@ class ClientManager:
     
     async def add(self, server, reader, writer):
         async with self.lock:
-            client = ClientConnection(server, self, self.generate_id(), reader, writer)
+            prng_seed = int(time.time() + id(self)) & 0xFFFFFFFF
+            client = ClientConnection(server, self, prng_seed, self.generate_id(), reader, writer)
             client.task = asyncio.create_task(client.handler())
             self.clients[client.id] = client
 
@@ -48,8 +51,14 @@ class ClientManager:
     def generate_id(self) -> int:
         id = 0
         while id == 0 or id in self.clients:
-            id = random.randint(1, 4294967295)  # Gera int32 positivo (0 a 2^32-1)
-        return id
+            id = random.randint(1, 0xFFFFFFFF - 1)
+            if id not in self.clients:
+                return id
+            
+    def rand(self) -> int:
+        # Segue o padrão rand() do MSVCRT
+        self.rand_seed = (self.rand_seed * 214013 + 2531011) & 0xFFFFFFFF
+        return (self.rand_seed >> 16) & 0x7FFF
     
     async def close(self):
         clients = list(self.clients.values())

@@ -14,11 +14,11 @@ class CryptoManager:
         self.padding = None
 
     @classmethod
-    def initialize(cls, config):
+    def initialize(cls, key):
         if cls._instance is not None:
             raise RuntimeError("CryptoManager já inicializado!")
 
-        cls._instance = cls(config)
+        cls._instance = cls(key)
         return cls._instance
     
     @classmethod

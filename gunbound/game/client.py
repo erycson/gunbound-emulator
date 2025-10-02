@@ -1,10 +1,20 @@
-from __future__ import annotations
 from asyncio import CancelledError, Task, StreamReader, StreamWriter
+from typing import Any, Dict
 from gunbound.base.protocol import BasePackageFactory, BasePackageSend
-from gunbound.util import BinaryReader
+from gunbound.respository import ServerRepository
+from gunbound.util import BinaryReader, PRNGGenerator
 
 class ClientConnection:
-    def __init__(self, server, manager, id: int, reader: StreamReader, writer: StreamWriter):
+    def __init__(self, server, manager, prng_seed: int, id: int, reader: StreamReader, writer: StreamWriter):
+        """
+        Representa uma conexão de cliente.
+        Args:
+            server: Instância do servidor ao qual o cliente está conectado.
+            manager: Gerenciador de conexões de clientes.
+            id (int): Identificador único da conexão do cliente.
+            reader (StreamReader): StreamReader para ler dados do cliente.
+            writer (StreamWriter): StreamWriter para enviar dados ao cliente.
+        """
         self.id = id
         self.server = server
         self.manager = manager
@@ -14,6 +24,9 @@ class ClientConnection:
         self.server_seq: int = 0
         self.task: Task | None = None
         self.closing: bool = False
+        self.prng: PRNGGenerator = PRNGGenerator(prng_seed)
+        self.data: Dict[str, Any] = {}
+        self.server_repository: ServerRepository = ServerRepository()
 
         ip, port = writer.get_extra_info('peername')
         self.addr: str = f"{ip}:{port}"
@@ -31,6 +44,8 @@ class ClientConnection:
 
         try:
             await self.disconnect()
+            if 'profile' in self.data:
+                await self.server_repository.delete_current_user(self.data['profile']['Id'])
             self.task.cancel()
             await self.task
         except CancelledError:
@@ -54,7 +69,7 @@ class ClientConnection:
 
     def advance_server_seq(self, packet_len: int) -> None:
         self.server_seq = (self.server_seq + packet_len) & 0xFFFF
-
+    
     async def handler(self):
         while True:
 

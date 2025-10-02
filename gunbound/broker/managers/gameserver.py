@@ -1,17 +1,19 @@
 import time
+import socket
 import asyncio
 from asyncio import Task, CancelledError
 from gunbound.broker.gameserver import GameServer
-from gunbound.base.managers import DatabaseManager, ConfigManager
+from gunbound.base.managers import ConfigManager
+from gunbound.respository import ServerRepository
 
 class GameServerManager:
     _instance = None
     
     def __init__(self, configs=[]):
         self.servers = [GameServer(index, config) for index, config in enumerate(configs)] if configs else []
-        self.db = DatabaseManager.get()
         self.config = ConfigManager.get()
         self.task: Task = None
+        self.server_repository: ServerRepository = ServerRepository()
 
     @classmethod
     def initialize(cls, configs):
@@ -39,16 +41,12 @@ class GameServerManager:
     async def check_status(self, timeout=1.0):
         tasks = [server.check_status(timeout) for server in self.servers]
         results = await asyncio.gather(*tasks, return_exceptions=False)
-        print(results)
         
-        await self.db.execute(
-            "INSERT INTO UserCount (SerialNo, ServerIp, ServerPort, Time, UserCount) VALUES (:no, INET_ATON(:ip), :port, NOW(), :total)",
-            {
-                'no': self.config['broker']['version'],
-                'ip': self.config['broker']['host'],
-                'port': self.config['broker']['port'],
-                'total': sum(results)
-            }
+        await self.server_repository.insert_user_count(
+            self.config['broker']['version'],
+            int.from_bytes(socket.inet_aton(self.config['broker']['host']), 'little'),
+            self.config['broker']['port'],
+            sum(results)
         )
 
     async def start(self, interval=10):
