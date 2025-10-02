@@ -3,6 +3,7 @@ import asyncio
 import time
 from typing import Any, Dict
 from gunbound.base.protocol import BasePackageFactory, BasePackageSend
+from gunbound.game.channel import Channel
 from gunbound.game.protocol.login import LoginResp
 from gunbound.respository import ServerRepository
 from gunbound.util import BinaryReader, PRNGGenerator
@@ -32,6 +33,7 @@ class ClientConnection:
         self.server_repository: ServerRepository = ServerRepository()
         self.last_activity: float = time.time() - 301 # o 301 é pra forçar o envio do token
         self.is_authenticated: bool = False
+        self.channel: Channel | None = None
 
         ip, port = writer.get_extra_info('peername')
         self.addr: str = f"{ip}:{port}"
@@ -74,6 +76,9 @@ class ClientConnection:
         if self.closing:
             return
         self.closing = True
+
+        if self.channel is not None:
+            self.channel.remove(self)
 
         try:
             await self.disconnect()

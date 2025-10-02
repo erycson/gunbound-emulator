@@ -1,7 +1,7 @@
 import socket
 import asyncio
 from asyncio import Task, CancelledError, StreamReader, StreamWriter
-from gunbound.game.managers.client import ClientManager
+from gunbound.game.managers import ClientManager, ChannelManager
 from gunbound.respository import ServerRepository
 
 class GameServer:
@@ -12,6 +12,7 @@ class GameServer:
         self.port = config['port']
         self.config = config
         self.task: Task = None
+        self.channels: ChannelManager = ChannelManager.get()
         self.clients: ClientManager = ClientManager.get()
         self.features = self.calc_features(config)
         self.server_repository: ServerRepository = ServerRepository()

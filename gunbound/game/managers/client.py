@@ -2,6 +2,7 @@ import time
 import random
 import asyncio
 from gunbound.game.client import ClientConnection
+from gunbound.util import synchronized
 
 """"
 Gerencia as conexões dos clientes.
@@ -34,19 +35,19 @@ class ClientManager:
     def size(self) -> int:
         return len(self.clients)
     
+    @synchronized()
     async def add(self, server, reader, writer):
-        async with self.lock:
-            prng_seed = int(time.time() + id(self)) & 0xFFFFFFFF
-            client = ClientConnection(server, self, prng_seed, self.generate_id(), reader, writer)
-            client.task = asyncio.create_task(client.handler())
-            self.clients[client.id] = client
+        prng_seed = int(time.time() + id(self)) & 0xFFFFFFFF
+        client = ClientConnection(server, self, prng_seed, self.generate_id(), reader, writer)
+        client.task = asyncio.create_task(client.handler())
+        self.clients[client.id] = client
 
+    @synchronized()
     async def remove(self, client: ClientConnection) -> bool:
-        async with self.lock:
-            if client.id in self.clients:
-                del self.clients[client.id]
-                return True
-            return False
+        if client.id in self.clients:
+            del self.clients[client.id]
+            return True
+        return False
 
     def generate_id(self) -> int:
         id = 0

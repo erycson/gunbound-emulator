@@ -95,7 +95,7 @@ class LoginRecv(BasePackageRecv):
         print(f"[LoginRecv] Usuário logado com sucesso", data)
         await self.conn.on_send(LoginResp.success(self.conn))
         await self.conn.on_send(LoginResp.success_record(stage, mobile))
-        self.conn.is_keepalive() # envia o token inicial
+        self.conn.is_alive()
 
     async def find_login(self, username: str, client_ip: int) -> Dict[str, Dict[str, Any]]:
         game, is_ip_blocked = await asyncio.gather(

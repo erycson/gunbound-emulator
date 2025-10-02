@@ -2,7 +2,7 @@ import sys
 import signal
 import asyncio
 from gunbound.base.managers import ConfigManager, DatabaseManager, CryptoManager
-from gunbound.game.managers import ClientManager, MonitorManager
+from gunbound.game.managers import ClientManager, MonitorManager, ChannelManager
 from gunbound.game_server import GameServer
 import gunbound.game.protocol # Garante o registro automático dos protocolos
 
@@ -15,6 +15,7 @@ async def main(index = 0):
     database = await DatabaseManager.initialize(config['database']['uri'])
     CryptoManager.initialize(config['crypto']['game_key'])
     ClientManager.initialize()
+    ChannelManager.initialize()
 
     # Inicia o servidor
     config = config['gameservers'][index]
