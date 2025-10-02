@@ -41,8 +41,8 @@ class ServerPacket(IntEnum):
 
     # Autentica o cliente no gameserver
     SRV_LOGIN = 0x1012
-    SRV_LOGIN_13 = 0x1013
-    SRV_LOGIN_15 = 0x1015
+    SRV_LOGIN_RECORD = 0x1013
+    SRV_LOGIN_TOKEN = 0x1015
 
     SRV_ITEM = 0x6001
     SRV_ITEM_GIFT_MSG = 0x6004

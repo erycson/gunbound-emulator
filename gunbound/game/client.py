@@ -1,6 +1,9 @@
 from asyncio import CancelledError, Task, StreamReader, StreamWriter
+import asyncio
+import time
 from typing import Any, Dict
 from gunbound.base.protocol import BasePackageFactory, BasePackageSend
+from gunbound.game.protocol.login import LoginResp
 from gunbound.respository import ServerRepository
 from gunbound.util import BinaryReader, PRNGGenerator
 
@@ -27,11 +30,41 @@ class ClientConnection:
         self.prng: PRNGGenerator = PRNGGenerator(prng_seed)
         self.data: Dict[str, Any] = {}
         self.server_repository: ServerRepository = ServerRepository()
+        self.last_activity: float = time.time() - 301 # o 301 é pra forçar o envio do token
+        self.is_authenticated: bool = False
 
         ip, port = writer.get_extra_info('peername')
         self.addr: str = f"{ip}:{port}"
 
         print(f"[{self.addr}] ClientConnection({self.server.id:08X}:{self.id:08X})")
+
+    def is_closed(self):
+        return self.writer.is_closing()
+
+    def expected_client_checksum(self, packet_len: int) -> int:
+        next = (self.client_seq + packet_len) & 0xFFFF
+        return (17405 * next - 24893) & 0xFFFF
+
+    def advance_client_seq(self, packet_len: int) -> None:
+        self.client_seq = (self.client_seq + packet_len) & 0xFFFF
+    
+    def expected_server_checksum(self, packet_len: int) -> int:
+        next = (self.server_seq + packet_len) & 0xFFFF
+        return (17405 * next - 21501) & 0xFFFF
+
+    def advance_server_seq(self, packet_len: int) -> None:
+        self.server_seq = (self.server_seq + packet_len) & 0xFFFF
+    
+    def is_alive(self) -> bool:
+        """
+        Verifica se a conexão está ativa com base na última atividade.
+        """
+        if time.time() - self.last_activity <= 600:
+            if time.time() - self.last_activity > 300 and not self.is_authenticated:
+                asyncio.create_task(self.on_send(LoginResp.success_token(self)))
+                self.is_authenticated = True
+            return True
+        return False
 
     async def disconnect(self):
         self.writer.close()
@@ -52,27 +85,9 @@ class ClientConnection:
             pass
         finally:
             await self.manager.remove(self)
-
-    def is_closed(self):
-        return self.writer.is_closing()
-
-    def expected_client_checksum(self, packet_len: int) -> int:
-        next = (self.client_seq + packet_len) & 0xFFFF
-        return (17405 * next - 24893) & 0xFFFF
-
-    def advance_client_seq(self, packet_len: int) -> None:
-        self.client_seq = (self.client_seq + packet_len) & 0xFFFF
-    
-    def expected_server_checksum(self, packet_len: int) -> int:
-        next = (self.server_seq + packet_len) & 0xFFFF
-        return (17405 * next - 21501) & 0xFFFF
-
-    def advance_server_seq(self, packet_len: int) -> None:
-        self.server_seq = (self.server_seq + packet_len) & 0xFFFF
     
     async def handler(self):
         while True:
-
             # Leia o cabeçalho inicial (2 bytes para o tamanho, little-endian)
             header = await self.reader.read(2)
             if len(header) < 2:
@@ -85,6 +100,9 @@ class ClientConnection:
             if packet_size < 6:
                 print(f"[{self.id:08X}] Tamanho do pacote inválido, ignorando")
                 continue
+
+            # Atualiza o tempo da última atividade
+            self.last_activity = time.time()
 
             # Leia o restante do pacote
             payload = await self.reader.readexactly(packet_size - 2)

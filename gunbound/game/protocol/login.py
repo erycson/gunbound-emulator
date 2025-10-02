@@ -1,12 +1,11 @@
 import socket
-import random
 import asyncio
-from typing import Dict, Any
+import time
+from typing import Dict, Any, List
 from gunbound.game.client import ClientConnection
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 from gunbound.base.managers import CryptoManager, ConfigManager
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
-from gunbound.util import dump
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
 from gunbound.respository import UserRepository, RecordsRepository, ServerRepository
 
@@ -86,14 +85,17 @@ class LoginRecv(BasePackageRecv):
             return
         
         # Agora que tudo foi validado, obtém todos os dados do usuário
-        data = await self.get_login(username, client_ip, client_port, conn_ip, conn_port)
-        data['profile'] = login['profile']
+        game, stage, mobile = await self.get_login(username, client_ip, client_port, conn_ip, conn_port)
+        data = {
+            'game': game,
+            'profile': login['profile'],
+        }
         self.conn.data = data
 
         print(f"[LoginRecv] Usuário logado com sucesso", data)
         await self.conn.on_send(LoginResp.success(self.conn))
-        await self.conn.on_send(LoginResp.success_1013())
-        await self.conn.on_send(LoginResp.success_1015())
+        await self.conn.on_send(LoginResp.success_record(stage, mobile))
+        self.conn.is_keepalive() # envia o token inicial
 
     async def find_login(self, username: str, client_ip: int) -> Dict[str, Dict[str, Any]]:
         game, is_ip_blocked = await asyncio.gather(
@@ -202,29 +204,33 @@ class LoginResp(BasePackageSend):
         return cls(buf)
     
     @classmethod
-    def success_1013(cls):
+    def success_record(cls, stage: List[Dict[str, Any]], mobile: List[Dict[str, Any]]):
         """Uso desconhecido"""
         buf = BinaryWriter()
-        buf.write_uint16(ServerPacket.SRV_LOGIN_13)
-        buf.write_bytes(bytes.fromhex('00 00 00 00'))
+        buf.write_uint16(ServerPacket.SRV_LOGIN_RECORD)
+
+        buf.write_uint16(len(stage))
+        for record in stage:
+            buf.write_uint32(record['Stage'])
+            buf.write_uint32(record['Win'])
+            buf.write_uint32(record['Lose'])
+
+        buf.write_uint16(len(mobile))
+        for record in mobile:
+            buf.write_uint32(record['Mobile'])
+            buf.write_uint32(record['Win'])
+            buf.write_uint32(record['Lose'])
+
         return cls(buf)
     
     @classmethod
-    def success_1015(cls):
-        """Uso desconhecido"""
+    def success_token(cls, conn: ClientConnection):
+        """
+        Uso ainda não está certo, mas parece ser um token de autenticação adicional
+        """
         buf = BinaryWriter()
-        buf.write_uint16(ServerPacket.SRV_LOGIN_15)
-        buf.write_bytes(bytes.fromhex('3F A9 F0 47'))
-        return cls(buf)
-    
-    """
-    10 12 00 60
-    """
-    @classmethod
-    def wrong_version(cls):
-        buf = BinaryWriter()
-        buf.write_uint16(ServerPacket.SRV_LOGIN)
-        buf.write_uint16(ServerCode.SRV_WRONG_VERSION)
+        buf.write_uint16(ServerPacket.SRV_LOGIN_TOKEN)
+        buf.write_bytes(conn.prng.generate_value())
         return cls(buf)
     
     def get_buf(self) -> BinaryWriter:
