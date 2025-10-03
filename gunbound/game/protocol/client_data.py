@@ -11,7 +11,6 @@ class ClientDataRecv(BasePackageRecv):
 
     def __init__(self, conn: ClientConnection, buf: BinaryReader):
         self.conn = conn
-        self.inventory_repository: InventoryRepository = InventoryRepository()
 
     async def process(self):
         self.buf.read_uint8() # Desconhecido, sem sempre 1
