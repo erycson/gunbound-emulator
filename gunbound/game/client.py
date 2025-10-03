@@ -81,9 +81,15 @@ class ClientConnection:
             self.channel.remove(self)
 
         try:
-            await self.disconnect()
+            if 'game' in self.data:
+                await self.user_repository.update_clientdata(self.data['game']['Id'], self.data['game']['ClientData'])
             if 'profile' in self.data:
                 await self.server_repository.delete_current_user(self.data['profile']['Id'])
+        except:
+            pass
+
+        try:
+            await self.disconnect()
             self.task.cancel()
             await self.task
         except CancelledError:

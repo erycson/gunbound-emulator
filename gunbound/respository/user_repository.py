@@ -81,7 +81,7 @@ class UserRepository:
         )
         return [dict(m) for m in msgs]
     
-    async def update_client_data(self, user_id: str, client_data: bytes) -> bool:
+    async def update_clientdata(self, user_id: str, client_data: bytes) -> bool:
         """
         Atualiza os dados do cliente para o usuário.
 

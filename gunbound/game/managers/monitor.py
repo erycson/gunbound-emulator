@@ -3,7 +3,7 @@ import socket
 import asyncio
 from asyncio import CancelledError, Task
 from gunbound.game.managers.client import ClientManager
-from gunbound.game.protocol.enums import Features
+from gunbound.game.protocol import Feature
 from gunbound.game_server import GameServer
 from gunbound.respository import ServerRepository
 from gunbound.util import BinaryReader, BinaryWriter, UDPFutureProtocol
@@ -115,6 +115,6 @@ class MonitorManager:
         writer.write_int16(self.config['grade_min']) # LevelMin (pode ser q seja só 1 byte)
         writer.write_bytes([0x00, 0x00]) # Desconhecido
         writer.write_int16(self.config['grade_max'])  # LevelMax (pode ser q seja só 1 byte)
-        writer.write_byte(1 if self.game.features & Features.AVATAR_ENABLED else 0) # Avatar Enabled
+        writer.write_byte(1 if self.game.features & Feature.AVATAR_ENABLED else 0) # Avatar Enabled
 
         transport.sendto(writer.getvalue(), addr)

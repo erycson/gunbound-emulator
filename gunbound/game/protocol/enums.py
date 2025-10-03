@@ -46,6 +46,8 @@ class ServerPacket(IntEnum):
 
     SRV_CHANNEL_JOIN = 0x2001
 
+    SRV_ROOM_SELECT_TANK = 0x3201
+
     SRV_ITEM = 0x6001
     SRV_ITEM_GIFT_MSG = 0x6004
     SRV_CASH = 0x6101
@@ -55,7 +57,6 @@ class ServerPacket(IntEnum):
     SRV_ERROR_UNKNOWN_1090 = 0x1090
     SRV_ERROR_UNKNOWN_1FFF = 0x1FFF
     SRV_ERROR_UNKNOWN_200F = 0x200F
-    SRV_ERROR_UNKNOWN_3200 = 0x3200
     SRV_ERROR_UNKNOWN_5001 = 0x5001
     SRV_ERROR_UNKNOWN_5011 = 0x5011
     SRV_ERROR_UNKNOWN_6004 = 0x6004
@@ -63,9 +64,10 @@ class ServerPacket(IntEnum):
 class ServerCode(IntEnum):
     # Genéricos (podem aparecer em múltiplos replies)
     SRV_OK = 0x00
+    SRV_UPDATED = 0x01
     SRV_WRONG_VERSION = 0x60
 
-class Features(IntEnum):
+class Feature(IntEnum):
     AVATAR_ENABLED = 1 << 4
     EFFECT_FORCE = 1 << 13
     EFFECT_TORNADO = 1 << 14
@@ -78,3 +80,22 @@ class Features(IntEnum):
     EVENT2_ENABLE = 1 << 21
     EVENT3_ENABLE = 1 << 22
     EVENT4_ENABLE = 1 << 23
+
+class Tank(IntEnum):
+    ARMOR = 0x0003
+    MAGE = 0x0103
+    NAK = 0x0203
+    TRICO = 0x0303
+    BIGFOOT = 0x0403
+    BOOMER = 0x0503
+    RAONLAUNCHER = 0x0603
+    LIGHTENING = 0x0703
+    JD = 0x0803
+    A_SATE = 0x0903
+    ICE = 0x0A03
+    TURTLE = 0x0B03
+    GRUB = 0x0C03
+    ADUKA = 0x0D03
+    KALSIDDON = 0x0E03
+    J_FROG = 0x0F03
+    RANDOM = 0xFF03
