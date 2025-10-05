@@ -9,7 +9,8 @@ class UDPFutureProtocol(DatagramProtocol):
         self.transport = transport
 
     def datagram_received(self, data, addr):
-        self.response_future.set_result((data, addr))
+        if not self.response_future.done():
+            self.response_future.set_result((data, addr))
 
     # def error_received(self, exc):
     #     print(f"Error received: {exc}")

@@ -1,7 +1,12 @@
+from __future__ import annotations
 import time
 import asyncio
+from asyncio import StreamReader, StreamWriter
+from typing import TYPE_CHECKING
 from gunbound.game.client import ClientConnection
 from gunbound.util import synchronized, MSVCRTRand
+if TYPE_CHECKING:
+    from gunbound import GameServer
 
 """"
 Gerencia as conexões dos clientes.
@@ -35,7 +40,7 @@ class ClientManager:
         return len(self.clients)
     
     @synchronized()
-    async def add(self, server, reader, writer):
+    async def add(self, server: 'GameServer', reader: StreamReader, writer: StreamWriter):
         prng_seed = int(time.time() + id(self)) & 0xFFFFFFFF
         client = ClientConnection(server, self, prng_seed, reader, writer)
         client.task = asyncio.create_task(client.handler())

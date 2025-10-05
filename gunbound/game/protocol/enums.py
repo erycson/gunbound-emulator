@@ -44,8 +44,11 @@ class ServerPacket(IntEnum):
     SRV_LOGIN_RECORD = 0x1013
     SRV_LOGIN_TOKEN = 0x1015
 
-    SRV_CHANNEL_JOIN = 0x2001
+    SRV_CHANNEL_JOIN = 0x2001           # Resposta ao pedido de entrada no canal
+    SRV_CHANNEL_JOIN_UPDATE = 0x200E    # Notifica os outros usuários que um usuário entrou no canal
+    SRV_CHANNEL_JOIN_REMOVE = 0x200F    # Notifica os outros usuários que um usuário saiu do canal
 
+    SRV_ROOM_SORTED_LIST = 0x2103
     SRV_ROOM_CREATE = 0x2121
     SRV_ROOM_SELECT_TANK = 0x3201
 

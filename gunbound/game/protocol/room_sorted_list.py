@@ -1,7 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from gunbound.game.managers import ChannelManager
-from gunbound.game.protocol import ClientPacket, ServerPacket, ServerCode, RoomSortList
+from gunbound.game.protocol import ClientPacket, ServerPacket, RoomSortList
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
 if TYPE_CHECKING:
@@ -13,9 +12,11 @@ class RoomSelectTankRecv(BasePackageRecv):
     _strategy = None
 
     def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
+        from gunbound.game.managers import RoomManager
+
         self.conn = conn
         self.buf = buf
-        self.manager: ChannelManager = ChannelManager.get_instance()
+        self.manager: 'RoomManager' = RoomManager.get_instance()
 
     async def process(self):
         """
@@ -25,12 +26,12 @@ class RoomSelectTankRecv(BasePackageRecv):
             return
 
         sort_by = self.buf.read_uint8()
-        if sort_by not in RoomSortList:
+        if sort_by not in RoomSortList._value2member_map_:
             return
         current_page = self.buf.read_uint16()
         per_page = self.buf.read_uint16()
 
-        rooms = self.conn.channel.get_rooms(sort_by, current_page, per_page)
+        rooms = await self.manager.get_rooms(sort_by, current_page, per_page)
         await self.conn.on_send(RoomSelectTankResp.success(rooms))
 
     def log_command(self, conn):

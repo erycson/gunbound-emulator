@@ -1,15 +1,19 @@
-from asyncio import CancelledError, Task, StreamReader, StreamWriter
+from __future__ import annotations
 import asyncio
 import time
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict
+from asyncio import CancelledError, Task, StreamReader, StreamWriter
 from gunbound.base.protocol import BasePackageFactory, BasePackageSend
 from gunbound.game.channel import Channel
 from gunbound.game.room import Room
 from gunbound.repository import ServerRepository, UserRepository
 from gunbound.util import BinaryReader, GBWCGenerator, dump
+if TYPE_CHECKING:
+    from gunbound import GameServer
+    from gunbound.game.managers import ClientManager
 
 class ClientConnection:
-    def __init__(self, server, manager, prng_seed: int, reader: StreamReader, writer: StreamWriter):
+    def __init__(self, server: 'GameServer', manager: 'ClientManager', prng_seed: int, reader: StreamReader, writer: StreamWriter):
         """
         Representa uma conexão de cliente.
         Args:
@@ -20,8 +24,8 @@ class ClientConnection:
             writer (StreamWriter): StreamWriter para enviar dados ao cliente.
         """
         self.id = id(self) & 0xFFFFFFFF
-        self.server = server
-        self.manager = manager
+        self.server: 'GameServer' = server
+        self.manager: 'ClientManager' = manager
         self.reader: StreamReader = reader
         self.writer: StreamWriter = writer
         self.client_seq: int = 0 # Não sei se é compartilhado com outras conexões
@@ -84,7 +88,7 @@ class ClientConnection:
         self.closing = True
 
         if self.channel is not None:
-            self.channel.remove(self)
+            await self.channel.remove(self)
 
         if 'profile' in self.data:
             await asyncio.gather(
