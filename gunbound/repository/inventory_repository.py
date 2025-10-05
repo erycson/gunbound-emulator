@@ -3,7 +3,7 @@ from typing import Dict, Any, List
 
 class InventoryRepository:
     def __init__(self):
-        self.db = DatabaseManager.get()
+        self.db = DatabaseManager.get_instance()
 
     async def get_chest(self, user_id: str) -> List[Dict[str, Any]]:
         """
@@ -16,8 +16,7 @@ class InventoryRepository:
             List[Dict[str, Any]]: Lista de itens no baú do usuário.
         """
         items = await self.db.fetch_all(
-            "SELECT No, Item, Wearing, Acquisition, UNIX_TIMESTAMP(Expire)-UNIX_TIMESTAMP(), Volume, PlaceOrder, Recovered "
-            "FROM Chest WHERE Owner = :user_id",
+            "SELECT No, Item, Wearing, Acquisition, (UNIX_TIMESTAMP(Expire) - UNIX_TIMESTAMP()) AS Expire, Volume, PlaceOrder, Recovered FROM Chest WHERE Owner = :user_id",
             {'user_id': user_id}
         )
         return [dict(i) for i in items]

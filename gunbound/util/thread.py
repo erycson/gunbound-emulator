@@ -10,6 +10,7 @@ def synchronized(lock_attr: str = 'lock'):
         async def wrapper(self, *args, **kwargs):
             lock = getattr(self, lock_attr)
             async with lock:
-                return await func(self, *args, **kwargs)
+                result = await func(self, *args, **kwargs)
+                return result
         return wrapper
     return decorator

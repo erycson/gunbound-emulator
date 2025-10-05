@@ -126,8 +126,9 @@ class BinaryReader:
     def getvalue(self):
         return bytes(self._buffer)
 
-    def to_hex(self):
-        return ' '.join(f'{b:02X}' for b in self._buffer)
+    def to_hex(self, from_index=0, to_index=None):
+        to_index = to_index if to_index is not None else len(self._buffer)
+        return ' '.join(f'{b:02X}' for b in self._buffer[from_index:to_index])
 
     def size(self):
         return len(self._buffer)
@@ -203,28 +204,31 @@ class BinaryWriter:
         return self.write_bytes(b, 1, pos, insert=insert)
 
     def write_char(self, value, pos=None, insert=False):
-        return self.write_byte(value, pos, insert)
+        return self.write_byte(ord(value), pos, insert)
 
-    def write_string(self, value, length = None, pos=None, encoding='latin-1', insert=False):
+    def write_string(self, value, length=None, pos=None, encoding='latin-1', insert=False):
         b = value.encode(encoding)
         length = length if length is not None else len(b)
         b = b[:length] + b'\x00' * (length - len(b))
         return self.write_bytes(b, length, pos, insert=insert)
 
-    def write_bytes(self, b, length=None, pos=None, insert=False):
-        length = length if length is not None else len(b)
+    def write_bytes(self, data: bytearray | bytes, length=None, pos=None, insert=False):
+        if isinstance(data, bytearray):
+            data = bytes(data)
+
+        length = length if length is not None else len(data)
 
         if pos is None:
-            self._buffer[self._pos:self._pos+length] = b
+            self._buffer[self._pos:self._pos+length] = data
             self._pos += length
         else:
             if insert:
-                self._buffer[pos:pos] = b  # insere deslocando o resto
+                self._buffer[pos:pos] = data  # insere deslocando o resto
             else:
                 # Expand buffer if needed
                 if pos + length > len(self._buffer):
                     self._buffer.extend(b'\x00' * (pos + length - len(self._buffer)))
-                self._buffer[pos:pos+length] = b
+                self._buffer[pos:pos+length] = data
         return self
 
     def getvalue(self):
@@ -233,8 +237,9 @@ class BinaryWriter:
     def size(self):
         return len(self._buffer)
 
-    def to_hex(self):
-        return ' '.join(f'{b:02X}' for b in self._buffer)
+    def to_hex(self, from_index=0, to_index=None):
+        to_index = to_index if to_index is not None else len(self._buffer)
+        return ' '.join(f'{b:02X}' for b in self._buffer[from_index:to_index])
 
     def seek(self, pos):
         self._pos = pos

@@ -1,38 +1,33 @@
+from __future__ import annotations
 import asyncio
-from gunbound.game.client import ClientConnection
+from typing import TYPE_CHECKING
 from gunbound.util import synchronized
+if TYPE_CHECKING:
+    from gunbound.game.client import ClientConnection
 
 class Channel:
     """
     @todo Verificar limites de usuários por canal.
+    @todo Verificar limites de salas por canal.
     """
     def __init__(self, manager, id: int):
         self.id = id
-        self.manager = manager
-        self.clients: dict[int, ClientConnection] = {}
+        self.clients: dict[int, 'ClientConnection'] = {}
         self.lock = asyncio.Lock()
-    
-    def size(self) -> int:
-        return len(self.clients)
 
     @synchronized()
-    async def add(self, client: ClientConnection) -> bool:
+    async def add(self, client: 'ClientConnection') -> bool:
         if client.id in self.clients:
-            # Usuário está tentando entrar no mesmo canal novamente
             return False
-        elif client.channel is not None:
-            # Sai do canal anterior
-            await client.channel.remove(client)
-
         self.clients[client.id] = client
-        client.channel = self
         return True
-    
+
     @synchronized()
-    async def remove(self, client: ClientConnection) -> bool:
+    async def remove(self, client: 'ClientConnection') -> bool:
         if client.id not in self.clients:
             return False
-    
         del self.clients[client.id]
-        client.channel = None
         return True
+
+    def size(self) -> int:
+        return len(self.clients)

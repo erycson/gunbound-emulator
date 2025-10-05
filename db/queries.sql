@@ -29,14 +29,14 @@ INSERT DELAYED INTO BanLog SET Id='%s', StartTime=NOW(), Duration=%d, Reason=''
 INSERT DELAYED INTO Accuse SET Accuse='%s', ServerIp=%u, ServerPort=%u, Accused='%s', Time=NOW(), Complaint=''
 INSERT DELAYED INTO EventLog SET Id='%s', Code=%u, AcquiredScore=%d, Time=NOW(), ServerIp=%u, ServerPort=%u
 INSERT DELAYED INTO AbnormalUpdate SET Master='%s', Id='%s', ScoreDelta=%d, MoneyDelta=%d, Time=NOW()
-INSERT DELAYED INTO PlayLog SET 
+INSERT DELAYED INTO PlayLog SET ServerIP=26219180,gameRoomID=0,gameRoomTitle='asdasd',StartTime=FROM_UNIXTIME(1759505153),EndTime=FROM_UNIXTIME(1759505373),gameOption=25266,WinTeamOrPlayer=1,S0_ID='admin',S0_TeamID=0,S0_DeadCause=1,S0_ScoreDelta=0,S0_MoneyDelta=0,S0_DeadTime=FROM_UNIXTIME(1759505372),S1_ID='test',S1_TeamID=1,S1_DeadCause=0,S1_ScoreDelta=4,S1_MoneyDelta=255
 INSERT DELAYED INTO DropLog SET Id='%s', Dropper='%s', Time=NOW()
 INSERT DELAYED INTO LoginLog (Id, Ip, Ip_v, Port, Port_v, Time, ServerIp, ServerPort) VALUES ('%s', %u, %u, %u, %u, NOW(), %u, %u)
 INSERT INTO Collection SET _%d=1, User='%s'
 INSERT INTO GrandPrix_Personal SET Score=%d, Lose=1, User='%s'
 INSERT INTO GrandPrix_Personal SET Score=%d, Win=1, User='%s'
 INSERT INTO CurrentUser SET Id='%s', Context=%d, ServerIP=%d, ServerPort=%d, LoggingTime=NOW()
-insert into Game set id='%s', TotalGrade=19, SeasonGrade = 19, TotalScore=1000, Money=200000 
+INSERT INTO Game SET id='%s', TotalGrade=19, SeasonGrade = 19, TotalScore=1000, Money=200000
 INSERT INTO ReceiptGift (Id, Item, Expire, Volume, Receiver, ReceiverNick, Time) SELECT '%s', Item, Expire, Volume, Owner, '%s', NOW() FROM Chest WHERE No=%d
 INSERT INTO GiftMsg SET Receiver='%s', ItemId=%d, Sender='%s', SentTime=NOW(), Msg='%s'
 INSERT INTO ReceiptConsume SET Id='%s', Item=%d, Volume=%u, Recovered=%d, Refund=%u, Time=NOW(), ExpireType='%c', Expire=%d
@@ -81,7 +81,7 @@ DELETE FROM GiftItem WHERE No=%d
 DELETE FROM GiftMsg WHERE No IN (
 DELETE FROM Chest WHERE No IN (
 INSERT INTO UserCount (SerialNo, ServerIp, ServerPort, Time, UserCount) VALUES (%u, %u, %u, NOW(), %d)
-UPDATE user set country='%d' WHERE id='%s'
+UPDATE User set country='%d' WHERE id='%s'
 SELECT Reason FROM BanLog WHERE Id = '%s' ORDER BY StartTime DESC LIMIT 1
 SELECT c_num FROM records WHERE (0x%08X & Mask_Decimal) = start_decimal ORDER BY Mask_Decimal DESC Limit 1
 SELECT SerialNo, MsgBoxText, MsgBoxType, LinkUrl From Msg WHERE Id = '%s'

@@ -16,7 +16,7 @@ class LoginRecv(BasePackageRecv):
     @classmethod
     def get_strategy(cls):
         if cls._strategy is None:
-            config = ConfigManager.get()
+            config = ConfigManager.get_instance()
             strategy_class = config['broker']['strategies']['login']
             cls._strategy = instantiate_by_fullname(strategy_class)
         return cls._strategy
@@ -28,7 +28,7 @@ class LoginRecv(BasePackageRecv):
     def log_command(self, conn):
         cmd = ClientPacket.CLI_LOGIN.value
         seq = conn.expected_client_checksum(self.buf.size())
-        print(f"RECV<< [SS={conn.broker.id:08X} SQ={seq:04X} CD={cmd:04X}] {self.buf.to_hex()}")
+        print(f"RECV<< [SS={conn.broker.id:08X} SQ={seq:04X} CD={cmd:04X}] {self.buf.to_hex(4)}")
 
 class LoginResp(BasePackageSend):
     def __init__(self, buf: BinaryWriter):

@@ -4,14 +4,14 @@ import asyncio
 from asyncio import Task, CancelledError
 from gunbound.broker.gameserver import GameServer
 from gunbound.base.managers import ConfigManager
-from gunbound.respository import ServerRepository
+from gunbound.repository import ServerRepository
 
 class GameServerManager:
     _instance = None
     
     def __init__(self, configs=[]):
         self.servers = [GameServer(index, config) for index, config in enumerate(configs)] if configs else []
-        self.config = ConfigManager.get()
+        self.config = ConfigManager.get_instance()
         self.task: Task = None
         self.server_repository: ServerRepository = ServerRepository()
 
@@ -24,7 +24,7 @@ class GameServerManager:
         return cls._instance
 
     @classmethod
-    def get(cls):
+    def get_instance(cls):
         if cls._instance is None:
             raise RuntimeError("GameServerManager não inicializado!")
         return cls._instance
@@ -43,7 +43,7 @@ class GameServerManager:
         results = await asyncio.gather(*tasks, return_exceptions=False)
         
         await self.server_repository.insert_user_count(
-            self.config['broker']['version'],
+            self.config['broker']['product_version'],
             int.from_bytes(socket.inet_aton(self.config['broker']['host']), 'little'),
             self.config['broker']['port'],
             sum(results)

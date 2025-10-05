@@ -18,13 +18,13 @@ class ChannelManager:
         return cls._instance
 
     @classmethod
-    def get(cls):
+    def get_instance(cls):
         if cls._instance is None:
             raise RuntimeError("ChannelManager não inicializado!")
         return cls._instance
     
     def get(self, id: int) -> Channel:
         return self.channels[id]
-    
+
     def get_least_populated(self) -> Channel:
         return min(self.channels, key=lambda c: c.size())

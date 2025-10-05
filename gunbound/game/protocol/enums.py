@@ -46,6 +46,7 @@ class ServerPacket(IntEnum):
 
     SRV_CHANNEL_JOIN = 0x2001
 
+    SRV_ROOM_CREATE = 0x2121
     SRV_ROOM_SELECT_TANK = 0x3201
 
     SRV_ITEM = 0x6001
@@ -99,3 +100,43 @@ class Tank(IntEnum):
     KALSIDDON = 0x0E03
     J_FROG = 0x0F03
     RANDOM = 0xFF03
+
+class RoomStatus(IntEnum):
+    DESTROYING = -1
+    WAITING = 0
+    IN_GAME = 1
+    FINISHED = 2
+
+class RoomMode(IntEnum):
+    SOLO = 0x6200
+    SCORE = 0x6244
+    TAG = 0x6208
+    JEWEL = 0x620C
+
+class RoomSize(IntEnum):
+    X1 = 0x0200
+    X2 = 0x0400
+    X3 = 0x0600
+    X4 = 0x0800
+
+class RoomMap(IntEnum):
+    RAMDOM = 0x00B2
+    MIRAMO_TOWN = 0x01B2
+    NIRVANA = 0x02B2
+    METROPOLIS = 0x03B2
+    SEA_OF_HERO = 0x04B2
+    ADIUM_ROOT = 0x05B2
+    DRAGON = 0x06B2
+    COZY_TOWER = 0x07B2
+    DUMMY_SLOPE = 0x08B2
+    STGAR_DUST = 0x09B2
+    META_MINE = 0x0AB2
+
+class RoomSortList(IntEnum):
+    ALL = 0x01
+    WAITING = 0x02
+
+    SOLO = 0x03
+    SCORE = 0x04
+    TAG = 0x05
+    JEWEL = 0x06

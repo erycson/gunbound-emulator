@@ -17,14 +17,14 @@ class ServerSortedListRecv(BasePackageRecv):
         order = self.buf.read_uint8()
         filterFlag = self.buf.read_uint8()
         startIndex = self.buf.read_uint16()
-        servers = GameServerManager.get().all()
+        servers = GameServerManager.get_instance().all()
 
         await self.conn.on_send(ServerSortedListResp.success(servers))
 
     def log_command(self, conn):
         cmd = ClientPacket.CLI_SORTED_SERVER_LIST.value
         seq = conn.expected_client_checksum(self.buf.size())
-        print(f"RECV<< [SS={conn.broker.id:08X} SQ={seq:04X} CD={cmd:04X}] {self.buf.to_hex()}")
+        print(f"RECV<< [SS={conn.broker.id:08X} SQ={seq:04X} CD={cmd:04X}] {self.buf.to_hex(4)}")
 
 class ServerSortedListResp(BasePackageSend):
     def __init__(self, buf: BinaryWriter):
@@ -72,8 +72,8 @@ class ServerSortedListResp(BasePackageSend):
             buf.write_uint16(server.users_max) # RecommendedMan
             buf.write_int8(server.grade_max)
             buf.write_int8(server.grade_min)
-            buf.write_uint8(int(server.avatar_enabled))
-            buf.write_uint8(int(server.is_online))
+            buf.write_uint8(server.avatar_enabled)
+            buf.write_uint8(server.is_online)
 
         return cls(buf)
     
@@ -84,4 +84,4 @@ class ServerSortedListResp(BasePackageSend):
         reader = self.buf.to_reader()
         checksum = reader.read_uint16(pos=2)
         cmd = reader.read_uint16(pos=4)
-        print(f"SEND>> [SS={conn.broker.id:08X} SQ={checksum:04X} CD={cmd:04X}] {self.buf.to_hex()}")
+        print(f"SEND>> [SS={conn.broker.id:08X} SQ={checksum:04X} CD={cmd:04X}] {self.buf.to_hex(6)}")

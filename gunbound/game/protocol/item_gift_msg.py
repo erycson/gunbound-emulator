@@ -1,19 +1,22 @@
+from __future__ import annotations
 import datetime
-from gunbound.game.client import ClientConnection
+from typing import TYPE_CHECKING
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
-from gunbound.respository import UserRepository
+from gunbound.repository import UserRepository
+if TYPE_CHECKING:
+    from gunbound.game.client import ClientConnection
 
 @BasePackageFactory.register(ClientPacket.CLI_ITEM_GIFT_MSG.value)
 class ItemGiftMsgRecv(BasePackageRecv):
-
-    def __init__(self, conn: ClientConnection, buf: BinaryReader):
+    def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
+        self.buf = buf
         self.conn = conn
         self.user_repository: UserRepository = UserRepository()
 
     async def process(self):
-        gift_msgs = await self.user_repository.get_gift_msgs(self.conn.data['game']['Id'])
+        gift_msgs = await self.user_repository.get_gift_msgs(self.conn.data['profile']['Id'])
         if len(gift_msgs) > 0:
             await self.conn.on_send(ItemGiftMsgResp.success(gift_msgs))
 
@@ -52,4 +55,4 @@ class ItemGiftMsgResp(BasePackageSend):
         checksum = reader.read_uint16(pos=2)
         cmd = reader.read_uint16(pos=4)
 
-        print(f"SEND>> [SS={conn.broker.id:08X} SQ={checksum:04X} CD={cmd:04X}] {self.buf.to_hex()}")
+        print(f"SEND>> [SS={conn.server.id:08X} SQ={checksum:04X} CD={cmd:04X}] {self.buf.to_hex(6)}")

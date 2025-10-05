@@ -4,12 +4,12 @@ import time
 from typing import Any, Dict
 from gunbound.base.protocol import BasePackageFactory, BasePackageSend
 from gunbound.game.channel import Channel
-from gunbound.game.protocol.login import LoginResp
-from gunbound.respository import ServerRepository
-from gunbound.util import BinaryReader, PRNGGenerator
+from gunbound.game.room import Room
+from gunbound.repository import ServerRepository, UserRepository
+from gunbound.util import BinaryReader, GBWCGenerator, dump
 
 class ClientConnection:
-    def __init__(self, server, manager, prng_seed: int, id: int, reader: StreamReader, writer: StreamWriter):
+    def __init__(self, server, manager, prng_seed: int, reader: StreamReader, writer: StreamWriter):
         """
         Representa uma conexão de cliente.
         Args:
@@ -19,7 +19,7 @@ class ClientConnection:
             reader (StreamReader): StreamReader para ler dados do cliente.
             writer (StreamWriter): StreamWriter para enviar dados ao cliente.
         """
-        self.id = id
+        self.id = id(self) & 0xFFFFFFFF
         self.server = server
         self.manager = manager
         self.reader: StreamReader = reader
@@ -28,12 +28,14 @@ class ClientConnection:
         self.server_seq: int = 0
         self.task: Task | None = None
         self.closing: bool = False
-        self.prng: PRNGGenerator = PRNGGenerator(prng_seed)
+        self.prng: GBWCGenerator = GBWCGenerator(prng_seed)
         self.data: Dict[str, Any] = {}
+        self.user_repository: UserRepository = UserRepository()
         self.server_repository: ServerRepository = ServerRepository()
         self.last_activity: float = time.time() - 301 # o 301 é pra forçar o envio do token
         self.is_authenticated: bool = False
         self.channel: Channel | None = None
+        self.room: Room | None = None
 
         ip, port = writer.get_extra_info('peername')
         self.addr: str = f"{ip}:{port}"
@@ -61,11 +63,15 @@ class ClientConnection:
         """
         Verifica se a conexão está ativa com base na última atividade.
         """
-        if time.time() - self.last_activity <= 600:
-            if time.time() - self.last_activity > 300 and not self.is_authenticated:
+        from gunbound.game.protocol.login import LoginResp
+
+        now = time.time()
+        if now - self.last_activity <= 600:
+            if now - self.last_activity > 300 and not self.is_authenticated:
                 asyncio.create_task(self.on_send(LoginResp.success_token(self)))
                 self.is_authenticated = True
             return True
+        
         return False
 
     async def disconnect(self):
@@ -80,13 +86,11 @@ class ClientConnection:
         if self.channel is not None:
             self.channel.remove(self)
 
-        try:
-            if 'game' in self.data:
-                await self.user_repository.update_clientdata(self.data['game']['Id'], self.data['game']['ClientData'])
-            if 'profile' in self.data:
-                await self.server_repository.delete_current_user(self.data['profile']['Id'])
-        except:
-            pass
+        if 'profile' in self.data:
+            await asyncio.gather(
+                self.server_repository.delete_current_user(self.data['profile']['Id']),
+                self.user_repository.update_clientdata(self.data['profile']['Id'], self.data['game']['ClientData'])
+            )
 
         try:
             await self.disconnect()
@@ -96,13 +100,14 @@ class ClientConnection:
             pass
         finally:
             await self.manager.remove(self)
+
+        print(f"[{self.addr}] ClientConnection({self.server.id:08X}:{self.id:08X}) closed")
     
     async def handler(self):
         while True:
             # Leia o cabeçalho inicial (2 bytes para o tamanho, little-endian)
             header = await self.reader.read(2)
             if len(header) < 2:
-                print(f"[{self.id:08X}] Tamanho do cabeçalho inválido, fechando conexão")
                 await self.close()
                 break
 
@@ -111,9 +116,6 @@ class ClientConnection:
             if packet_size < 6:
                 print(f"[{self.id:08X}] Tamanho do pacote inválido, ignorando")
                 continue
-
-            # Atualiza o tempo da última atividade
-            self.last_activity = time.time()
 
             # Leia o restante do pacote
             payload = await self.reader.readexactly(packet_size - 2)

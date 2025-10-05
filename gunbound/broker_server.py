@@ -2,13 +2,12 @@ import socket
 import asyncio
 from asyncio import Task, CancelledError, StreamReader, StreamWriter
 from gunbound.broker.client import ClientConnection
-from gunbound.respository import ServerRepository
+from gunbound.repository import ServerRepository
 
 class BrokerServer:
     def __init__(self, config):
         self.id = id(self) & 0xFFFFFFFF
-        self.host = config['host']
-        self.port = config['port']
+        self.config = config
         self.task: Task = None
         self.connections = []
         self.servers = []
@@ -23,8 +22,8 @@ class BrokerServer:
         self.task = asyncio.create_task(self.tcp_listener())
         await self.server_repository.insert_service_status(
             self.config['product_version'],
-            int.from_bytes(socket.inet_aton(self.host), 'little'),
-            self.port,
+            int.from_bytes(socket.inet_aton(self.config['host']), 'little'),
+            self.config['port'],
             'S'
         )
 
@@ -40,16 +39,16 @@ class BrokerServer:
 
         await self.server_repository.insert_service_status(
             self.config['product_version'],
-            int.from_bytes(socket.inet_aton(self.host), 'little'),
-            self.port,
+            int.from_bytes(socket.inet_aton(self.config['host']), 'little'),
+            self.config['port'],
             'T'
         )
 
     async def tcp_listener(self):
         server = await asyncio.start_server(
             self.handler,
-            self.host,
-            self.port
+            self.config['host'],
+            self.config['port']
         )
         print(f'BrokerServer iniciado')
 

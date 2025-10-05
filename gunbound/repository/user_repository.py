@@ -14,7 +14,7 @@ class UserRepository:
     """
 
     def __init__(self):
-        self.db = DatabaseManager.get()
+        self.db = DatabaseManager.get_instance()
 
     async def logout(self, user_id: str, context: int) -> bool:
         """
@@ -44,7 +44,7 @@ class UserRepository:
             Optional[Dict[str, Any]]: Dados do perfil do usuário ou None se não encontrado.
         """
         data = await self.db.fetch_one(
-            "SELECT Id, User, Password, Nickname, Gender, User_Level, Authority, Authority2, RestrictTime FROM User WHERE Id = :user_id",
+            "SELECT Id, User, Password, Nickname, Gender, User_Level, Authority, Authority2, (CASE WHEN RestrictTime = '0000-00-00 00:00:00' THEN NULL ELSE RestrictTime END) as RestrictTime FROM User WHERE Id = :user_id",
             {'user_id': user_id}
         )
         return dict(data) if data else None
@@ -60,7 +60,7 @@ class UserRepository:
             Optional[Dict[str, Any]]: Dados das estatísticas do jogo ou None se não encontrado.
         """
         data = await self.db.fetch_one(
-            "SELECT Guild, TotalGrade, SeasonGrade, MemberCount, TotalRank, SeasonRank, GuildRank, AccumShot, AccumDamage, TotalScore, SeasonScore, Money, EventScore0, EventScore1, EventScore2, EventScore3, GiftProhibitTime, ClientData, Country, CountryGrade, CountryRank FROM game WHERE Id = :user_id",
+            "SELECT Guild, TotalGrade, SeasonGrade, MemberCount, TotalRank, SeasonRank, GuildRank, AccumShot, AccumDamage, TotalScore, SeasonScore, Money, EventScore0, EventScore1, EventScore2, EventScore3, (CASE WHEN GiftProhibitTime = '0000-00-00 00:00:00' THEN NULL ELSE GiftProhibitTime END) AS GiftProhibitTime, ClientData, Country, CountryGrade, CountryRank FROM game WHERE Id = :user_id",
             {'user_id': user_id}
         )
         return dict(data) if data else None
@@ -92,12 +92,6 @@ class UserRepository:
         Returns:
             bool: True se a atualização foi bem-sucedida, False caso contrário.
         """
-        # FF030102FF06FF0A24
-        # if len(client_data) > 100:
-        #     client_data = client_data[:100]
-        # elif len(client_data) < 100:
-        #     client_data = client_data + b'\x00' * (100 - len(client_data))
-        
         result = await self.db.execute(
             "UPDATE Game SET ClientData = :client_data, LastUpdateTime=NOW() WHERE Id = :user_id",
             {'client_data': client_data, 'user_id': user_id}

@@ -10,7 +10,7 @@ A tabela `Game` armazena as informações principais do jogador, incluindo dados
 CREATE TABLE `Game`  (
   `Id` varchar(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `Country` int(10) UNSIGNED NULL DEFAULT 28,
-  `NickName` varchar(12) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
+  `Nickname` varchar(12) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `Guild` varchar(8) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
   `MemberCount` smallint(6) NOT NULL DEFAULT 0,
   `Money` int(10) UNSIGNED NOT NULL DEFAULT 0,
@@ -52,7 +52,7 @@ CREATE TABLE `Game`  (
 |--------------------|------------------|------|--------|----------------------------------------------------|
 | `Id`               | varchar(16)      |      |        | **Chave primária.** Identificador único do jogador |
 | `Country`          | int(10) UNSIGNED |   X  |   28   | Código do país do jogador                          |
-| `NickName`         | varchar(12)      |      |        | Nome de exibição do jogador                        |
+| `Nickname`         | varchar(12)      |      |        | Nome de exibição do jogador                        |
 | `Guild`            | varchar(8)       |      | NULL   | Nome da guild do jogador                           |
 | `MemberCount`      | smallint(6)      |      | 0 | Contador de membros (possivelmente relacionado à guild) |
 | `Money`            | int(10) UNSIGNED |      | 0 | Dinheiro/moedas do jogador no jogo |

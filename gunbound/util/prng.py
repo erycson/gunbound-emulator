@@ -1,5 +1,5 @@
 
-class PRNGGenerator:
+class GBWCGenerator:
     """
     Replica o gerador de números pseudoaleatórios do servidor,
     que usa duas iterações de um PRNG Park-Miller (rand0).
@@ -48,7 +48,7 @@ class PRNGGenerator:
 
     def generate_value(self) -> int:
         """
-        Replica a função Server_PRNGGenerator, que chama _park_miller_step duas vezes.
+        Replica a função Server_GBWCGenerator, que chama _park_miller_step duas vezes.
         """
         val1 = self._park_miller_step()
         val2 = self._park_miller_step()
@@ -73,3 +73,14 @@ class PRNGGenerator:
         # por isso, por hora é ignorado.
         
         return result
+
+class MSVCRTRand:
+    def __init__(self, seed: int = 1):
+        self.seed = seed
+        self.current_value = 0
+
+    def next(self) -> int:
+        # Segue o padrão rand() do MSVCRT
+        self.seed = (self.seed * 214013 + 2531011) & 0xFFFFFFFF
+        self.current_value = (self.seed >> 16) & 0x7FFF
+        return self.current_value

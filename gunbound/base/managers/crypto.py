@@ -22,7 +22,7 @@ class CryptoManager:
         return cls._instance
     
     @classmethod
-    def get(cls):
+    def get_instance(cls):
         if cls._instance is None:
             raise RuntimeError("CryptoManager não inicializado!")
         return cls._instance
@@ -30,13 +30,13 @@ class CryptoManager:
     @classmethod
     def encrypt(cls, plain_text: bytes, key: bytes = None) -> bytes:
         if key is None:
-            key = cls.get().key
+            key = cls.get_instance().key
         return AES.new(key, AES.MODE_ECB).encrypt(plain_text)
 
     @classmethod
     def decrypt(cls, cipher_text: bytes, key: bytes = None) -> bytes:
         if key is None:
-            key = cls.get().key
+            key = cls.get_instance().key
         return AES.new(key, AES.MODE_ECB).decrypt(cipher_text)
 
     @classmethod

@@ -2,7 +2,7 @@ import sys
 import signal
 import asyncio
 from gunbound.base.managers import ConfigManager, DatabaseManager, CryptoManager
-from gunbound.game.managers import ClientManager, MonitorManager, ChannelManager
+from gunbound.game.managers import ClientManager, MonitorManager, ChannelManager, RoomManager
 from gunbound.game_server import GameServer
 import gunbound.game.protocol # Garante o registro automático dos protocolos
 
@@ -20,9 +20,10 @@ async def main(index = 0):
     # Inicia o servidor
     config = config['gameservers'][index]
     game = GameServer(index, config)
-    await game.start()
-
     monitor = MonitorManager.initialize(game, config)
+    RoomManager.initialize(game, config)
+    
+    await game.start()
     await monitor.start()
 
     shutdown_event = asyncio.Event()
@@ -31,7 +32,7 @@ async def main(index = 0):
         await monitor.stop()
         await game.stop()
         await database.disconnect()
-        print("GameeServer parado")
+        print("GameServer parado")
         
     def signal_handler(signum, frame):
         asyncio.get_running_loop().create_task(shutdown())

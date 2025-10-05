@@ -1,6 +1,5 @@
 import abc
-from gunbound.util.binary_buffer import BinaryReader, BinaryWriter
-from gunbound.util.dump import dump
+from gunbound.util.binary_buffer import BinaryWriter
 
 class BasePackageSend(abc.ABC):
     @abc.abstractmethod

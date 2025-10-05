@@ -22,7 +22,7 @@ class DatabaseManager:
             sys.exit(1)
 
     @classmethod
-    def get(cls) -> Database:
+    def get_instance(cls) -> Database:
         if cls._instance is None:
             raise RuntimeError("DatabaseManager não inicializado!")
         return cls._instance._database

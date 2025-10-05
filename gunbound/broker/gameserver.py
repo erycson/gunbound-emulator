@@ -2,8 +2,6 @@
 import asyncio
 import struct
 import time
-from enum import Enum
-from gunbound.util.dump import dump
 from gunbound.util.binary_buffer import BinaryReader
 from gunbound.util.udp_protocol import UDPFutureProtocol
 
@@ -26,6 +24,7 @@ class GameServer:
         self.last_check: float = 0
         
         # Dados recebidos pelo GameServer
+        self.rooms: int = 0
         self.users_online: int = 0
         self.users_max: int = 0
         self.grade_min: int = 0
@@ -41,7 +40,7 @@ class GameServer:
         17 00 -> PacketSize
         F0 00 -> Comand, 0xF000 = UDP_STATUS_RESP
         00 00 00 00 -> ServerIndex
-        00 00 -> 
+        00 00 -> Rooms
         00 00 -> UsersOnline
         00 00 -> UsersMax
         00 00 -> LevelMin (Grande possibilidade ser só um Byte)
@@ -69,7 +68,6 @@ class GameServer:
                 response, addr = await protocol.response_future
             
             reader = BinaryReader(response)
-            print(f"UDP-RECV [FROM={addr[0]}:{addr[1]} Accept=1] {reader.to_hex()}")
 
             length = reader.read_uint16()
             if length != 23 or length != reader.size():
@@ -83,15 +81,16 @@ class GameServer:
             if cmd != 0xF001 or index != self.index:
                 self.clear_status()
                 return 0
+            
+            print(f"UDP-RECV [FROM={addr[0]}:{addr[1]} Accept=1] {reader.to_hex()}")
 
             # O que falta descobrir, é como é enviado a informação dizendo que o serveridor tem muita ou pouca gente
-            # Se os itens afetam o jogo
-            reader.read_uint16()
+            self.rooms = reader.read_uint16()
             self.users_online = reader.read_uint16()
-            self.users_max = reader.read_uint16() # RecommendedMan
-            self.grade_min = reader.read_int16() # GradeLimitFirst
+            self.users_max = reader.read_uint16()
+            self.grade_max = reader.read_int16()
             reader.read_uint16()
-            self.grade_max = reader.read_int16() # GradeLimitLast
+            self.grade_min = reader.read_int16()
             reader.read_uint16()
             self.avatar_enabled = reader.read_uint8() == 1
 

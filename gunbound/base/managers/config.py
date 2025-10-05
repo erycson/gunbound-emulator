@@ -22,7 +22,7 @@ class ConfigManager:
         return cls._instance.config
 
     @classmethod
-    def get(cls):
+    def get_instance(cls):
         if cls._instance is None:
             raise RuntimeError("ConfigManager não inicializado. Chame ConfigManager.initialize(config_path) primeiro.")
         return cls._instance.config

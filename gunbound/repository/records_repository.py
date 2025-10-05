@@ -3,7 +3,7 @@ from typing import Dict, Any, List
 
 class RecordsRepository:
     def __init__(self):
-        self.db = DatabaseManager.get()
+        self.db = DatabaseManager.get_instance()
 
     async def get_stage(self, user_id: str) -> List[Dict[str, Any]]:
         """Fetch stage win/lose records."""

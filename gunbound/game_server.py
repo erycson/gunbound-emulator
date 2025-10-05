@@ -2,18 +2,16 @@ import socket
 import asyncio
 from asyncio import Task, CancelledError, StreamReader, StreamWriter
 from gunbound.game.managers import ClientManager, ChannelManager
-from gunbound.respository import ServerRepository
+from gunbound.repository import ServerRepository
 
 class GameServer:
     def __init__(self, index, config):
         self.id = id(self) & 0xFFFFFFFF
         self.index = index
-        self.host = config['host']
-        self.port = config['port']
         self.config = config
         self.task: Task = None
-        self.channels: ChannelManager = ChannelManager.get()
-        self.clients: ClientManager = ClientManager.get()
+        self.channels: ChannelManager = ChannelManager.get_instance()
+        self.clients: ClientManager = ClientManager.get_instance()
         self.features = self.calc_features(config)
         self.server_repository: ServerRepository = ServerRepository()
 
@@ -24,8 +22,8 @@ class GameServer:
         self.task = asyncio.create_task(self.tcp_listener())
         await self.server_repository.insert_service_status(
             self.config['product_version'],
-            int.from_bytes(socket.inet_aton(self.host), 'little'),
-            self.port,
+            int.from_bytes(socket.inet_aton(self.config['host']), 'little'),
+            self.config['port'],
             'S'
         )
 
@@ -37,20 +35,22 @@ class GameServer:
         except CancelledError:
             pass
 
+        await self.server_repository.delete_all_users(self.config['host'], self.config['port'])
+
         await self.server_repository.insert_service_status(
             self.config['product_version'],
-            int.from_bytes(socket.inet_aton(self.host), 'little'),
-            self.port,
+            int.from_bytes(socket.inet_aton(self.config['host']), 'little'),
+            self.config['port'],
             'T'
         )
 
     async def tcp_listener(self):
         server = await asyncio.start_server(
             self.handler,
-            self.host,
-            self.port
+            self.config['host'],
+            self.config['port']
         )
-        print(f'GameServer iniciado em {self.host}:{self.port} (features={self.features:04X})')
+        print(f'GameServer iniciado em {self.config["host"]}:{self.config["port"]} (features={self.features:04X})')
 
         async with server:
             await server.serve_forever()

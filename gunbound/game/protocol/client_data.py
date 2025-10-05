@@ -1,7 +1,11 @@
-from gunbound.game.client import ClientConnection
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
+from gunbound.repository import UserRepository
+if TYPE_CHECKING:
+    from gunbound.game.client import ClientConnection
 
 """
 A inicialização da criptografia dos dados enviado pelo cliente é feita pela função sub_40B420 no GBS v440
@@ -9,16 +13,18 @@ A inicialização da criptografia dos dados enviado pelo cliente é feita pela f
 @BasePackageFactory.register(ClientPacket.CLI_CLIENT_DATA.value)
 class ClientDataRecv(BasePackageRecv):
 
-    def __init__(self, conn: ClientConnection, buf: BinaryReader):
+    def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
+        self.buf = buf 
         self.conn = conn
+        self.user_repository: UserRepository = UserRepository()
 
     async def process(self):
-        self.buf.read_uint8() # Desconhecido, sem sempre 1
-        client_data = self.buf.read_bytes(100)
-        client_data[9] = 0x24 # Sempre tem o 24, não sei o pq
-        self
+        self.buf.read_uint8(0) # Desconhecido, sem sempre 0
+        client_data = self.conn.data['game']['ClientData']
+        client_data = bytearray([ord(char) for char in client_data])
+        client_data[8] = 0 & 0xFF # AS vezes tem um 0x24 e outras não
 
-        await self.conn.on_send(ClientDataResp.success(self.conn))
+        await self.conn.on_send(ClientDataResp.success(client_data))
 
     def log_command(self, conn):
         cmd = ClientPacket.CLI_CLIENT_DATA.value
@@ -30,11 +36,11 @@ class ClientDataResp(BasePackageSend):
         self.buf = buf 
 
     @classmethod
-    def success(cls, conn):
+    def success(cls, client_data: bytearray):
         buf = BinaryWriter()
         buf.write_uint16(ServerPacket.SRV_CLIENT_DATA)
         buf.write_uint16(ServerCode.SRV_OK)
-
+        buf.write_bytes(client_data)
         return cls(buf)
     
     def get_buf(self) -> BinaryWriter:
@@ -46,4 +52,4 @@ class ClientDataResp(BasePackageSend):
         cmd = reader.read_uint16(pos=4)
         rtc = reader.read_uint16(pos=6)
 
-        print(f"SEND>> [SS={conn.broker.id:08X} SQ={checksum:04X} CD={cmd:04X} RTC={rtc:04X}]")
+        print(f"SEND>> [SS={conn.server.id:08X} SQ={checksum:04X} CD={cmd:04X} RTC={rtc:04X}]")

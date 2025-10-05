@@ -49,7 +49,7 @@ gameservers:
     version_min: 440
     version_max: 440
     product_version: *PRODUCT_VERSION
-    users_max: 100 # max 65535
+    users_max: 3000 # max 65535
     event: 0 # 1 = wowlg, é a imagem de fundo do servidor na lista de servidores
     grade_min: 19
     grade_max: -4
