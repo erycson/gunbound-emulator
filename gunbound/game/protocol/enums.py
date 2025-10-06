@@ -13,7 +13,7 @@ class ClientPacket(IntEnum):
     CLI_ROOM_SORTED_LIST = 0x2100
     CLI_ROOM_DETAIL = 0x2104
     CLI_ROOM_JOIN = 0x2110
-    CLI_CHANNEL_CHAT = 0x2010
+    CLI_CHANNEL_CHAT = 0x2010           # Recebe uma mensagem de chat do canal
     CLI_ROOM_CREATE = 0x2120
     CLI_ROOM_CHANGE_STAGE = 0x3100
     CLI_ROOM_CHANGE_OPTION = 0x3101
@@ -48,6 +48,8 @@ class ServerPacket(IntEnum):
     SRV_CHANNEL_JOIN_UPDATE = 0x200E    # Notifica os outros usuários que um usuário entrou no canal
     SRV_CHANNEL_JOIN_REMOVE = 0x200F    # Notifica os outros usuários que um usuário saiu do canal
 
+    SRV_CHANNEL_CHAT = 0x201F           # Envia a mensagem de chat do canal
+    
     SRV_ROOM_SORTED_LIST = 0x2103
     SRV_ROOM_CREATE = 0x2121
     SRV_ROOM_SELECT_TANK = 0x3201

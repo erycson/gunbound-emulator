@@ -54,9 +54,8 @@ class ChannelJoinRecv(BasePackageRecv):
         print(f"RECV<< [SS={conn.server.id:08X} SQ={seq:04X} CD={cmd:04X}] {self.buf.to_hex(4)}")
 
 class ChannelJoinResp(BasePackageSend):
-    def __init__(self, buf: BinaryWriter, origin):
+    def __init__(self, buf: BinaryWriter):
         self.buf = buf
-        self.origin = origin
 
     @classmethod
     async def success(cls, channel: Channel, conn: ClientConnection):
@@ -80,7 +79,7 @@ class ChannelJoinResp(BasePackageSend):
             buf.write_uint16(conn.data['game']['Country'])
         
         buf.write_string(conn.server.config['announcement'])
-        return cls(buf, 'success')
+        return cls(buf)
     
     @classmethod
     def success_update(cls, conn: ClientConnection, position: int):
@@ -94,25 +93,22 @@ class ChannelJoinResp(BasePackageSend):
         buf.write_int16(conn.data['game']['SeasonGrade'])
         buf.write_int16(conn.data['game']['CountryGrade'])
         buf.write_uint16(conn.data['game']['Country'])
-        return cls(buf, 'success_update')
+        return cls(buf)
 
     @classmethod
     def success_remove(cls, position: int):
         buf = BinaryWriter()
         buf.write_uint16(ServerPacket.SRV_CHANNEL_JOIN_REMOVE)
         buf.write_uint8(position)
-        return cls(buf, 'success_remove')
+        return cls(buf)
 
     @classmethod
     def channel_full(cls, conn: ClientConnection):
         buf = BinaryWriter()
         buf.write_uint16(ServerPacket.SRV_CHANNEL_JOIN)
         buf.write_uint16(0x1001)
-        return cls(buf, 'channel_full')
+        return cls(buf)
 
-    def get_buf(self) -> BinaryWriter:
-        return self.buf
-    
     def log_command(self, conn):
         reader = self.buf.to_reader()
         checksum = reader.read_uint16(pos=2)

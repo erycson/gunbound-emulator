@@ -4,6 +4,7 @@ import time
 from typing import TYPE_CHECKING, Any, Dict
 from asyncio import CancelledError, Task, StreamReader, StreamWriter
 from gunbound.base.protocol import BasePackageFactory, BasePackageSend
+from gunbound.base.managers import CryptoManager
 from gunbound.game.channel import Channel
 from gunbound.game.room import Room
 from gunbound.repository import ServerRepository, UserRepository
@@ -40,11 +41,29 @@ class ClientConnection:
         self.is_authenticated: bool = False
         self.channel: Channel | None = None
         self.room: Room | None = None
+        self.crypto: CryptoManager = CryptoManager.get_instance()
 
         ip, port = writer.get_extra_info('peername')
         self.addr: str = f"{ip}:{port}"
 
         print(f"[{self.addr}] ClientConnection({self.server.id:08X}:{self.id:08X})")
+
+    def set_token(self, token: int) -> None:
+        self.data['token'] = token
+        self.data['derived_key'] = self.crypto.derive_key(
+            self.data['profile']['Id'],
+            self.data['profile']['Password'],
+            token.to_bytes(4, 'little', signed=False)
+        )
+
+    def get_derived_key(self) -> bytes | None:
+        return self.data['derived_key'] if 'derived_key' in self.data else None
+    
+    def decrypt(self, data: bytes) -> bytes:
+        return self.crypto.decrypt(data, self.get_derived_key())
+    
+    def encrypt(self, data: bytes) -> bytes:
+        return self.crypto.encrypt(data, self.get_derived_key())
 
     def is_closed(self):
         return self.writer.is_closing()
@@ -141,16 +160,25 @@ class ClientConnection:
         self.advance_client_seq(packet_size)
         await BasePackageFactory.from_data(cmd, self, buf)
 
-    async def on_send(self, data: BasePackageSend):
-        buf = data.get_buf()
-        total_len = buf.size() + 4
-        buf.write_uint16(total_len, pos=0, insert=True)
-        buf.write_uint16(self.expected_server_checksum(total_len), pos=2, insert=True)
+    async def on_send(self, packet: BasePackageSend):
+        """
+        Envia um pacote para o cliente.
 
-        data.log_command(self)
+        Args:
+            packet (BasePackageSend): O pacote a ser enviado.
+        """
+        total_len = packet.buf.size() + 4
+        packet.buf.write_uint16(total_len, pos=0, insert=True)
+        packet.buf.write_uint16(self.expected_server_checksum(total_len), pos=2, insert=True)
+
+        # Log do comando
+        packet.log_command(self)
+
+        # Criptografa se necessário, usando a chave derivada da autenticação
+        packet.encrypt(self)
         
         try:
-            self.writer.write(buf.getvalue())
+            self.writer.write(packet.buf.getvalue())
             await self.writer.drain()
             self.advance_server_seq(total_len)
         except ConnectionResetError as e:

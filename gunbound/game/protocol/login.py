@@ -4,7 +4,7 @@ import asyncio
 import time
 from typing import TYPE_CHECKING, Dict, Any, List
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket
-from gunbound.base.managers import CryptoManager, ConfigManager
+from gunbound.base.managers import CryptoManager
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util import BinaryWriter, BinaryReader
 from gunbound.repository import UserRepository, RecordsRepository, ServerRepository
@@ -22,7 +22,6 @@ class LoginRecv(BasePackageRecv):
         self.conn = conn
         self.buf = buf
         self.crypto: CryptoManager = CryptoManager.get_instance()
-        self.sign_key: bytes = bytes.fromhex(ConfigManager.get_instance()['crypto']['game_key'])
         self.user_repository: UserRepository = UserRepository()
         self.records_repository: RecordsRepository = RecordsRepository()
         self.server_repository: ServerRepository = ServerRepository()
@@ -94,6 +93,8 @@ class LoginRecv(BasePackageRecv):
             'profile': profile,
         }
 
+        self.conn.set_token(self.conn.manager.rand.current_value)
+
         await self.conn.on_send(LoginResp.success(self.conn))
         await self.conn.on_send(LoginResp.success_record(stage, mobile))
         self.conn.is_alive()
@@ -154,7 +155,7 @@ class LoginResp(BasePackageSend):
         buf = BinaryWriter()
         buf.write_uint16(ServerPacket.SRV_LOGIN)
         buf.write_uint16(0)
-        buf.write_uint32(conn.manager.rand.next())
+        buf.write_uint32(conn.data['token'])
         buf.write_string(conn.data['profile']['Nickname'], 12)
         buf.write_uint8(conn.data['profile']['Gender'])
         buf.write_string(conn.data['game']['Guild'], 8)
@@ -191,7 +192,7 @@ class LoginResp(BasePackageSend):
         server_buf.write_uint32(0) # Uso desconhecido
         server_buf.write_uint32(0) # Uso desconhecido
 
-        # pega os dados 
+        # Criptografa os dados
         crypto = CryptoManager.get_instance()
         server_salt = conn.manager.rand.current_value.to_bytes(4, byteorder='little')
         server_derived_key = crypto.derive_key(conn.data['profile']['User'], conn.data['profile']['Password'], server_salt)
@@ -229,9 +230,6 @@ class LoginResp(BasePackageSend):
         buf.write_uint16(ServerPacket.SRV_LOGIN_TOKEN)
         buf.write_uint32(conn.prng.generate_value())
         return cls(buf)
-    
-    def get_buf(self) -> BinaryWriter:
-        return self.buf
     
     def log_command(self, conn):
         reader = self.buf.to_reader()

@@ -108,8 +108,9 @@ class BinaryReader:
             self._pos += 1
         return value
     
-    def read_bytes(self, length, pos=None):
+    def read_bytes(self, length=None, pos=None):
         p = self._pos if pos is None else pos
+        length = length if length is not None else self.size() - p
         b = self._buffer[p:p+length]
         if pos is None:
             self._pos += length
@@ -141,8 +142,8 @@ class BinaryReader:
 
 class BinaryWriter:
     def __init__(self):
-        self._buffer = bytearray()
-        self._pos = 0
+        self._buffer: bytearray = bytearray()
+        self._pos: int = 0
 
     def write_int8(self, value, pos=None, le=True, insert=False):
         fmt = '<b' if le else '>b'
@@ -216,7 +217,10 @@ class BinaryWriter:
         if isinstance(data, bytearray):
             data = bytes(data)
 
-        length = length if length is not None else len(data)
+        if length is not None:
+            data = data + b'\0' * (length - len(data))
+        else:
+            length = len(data)
 
         if pos is None:
             self._buffer[self._pos:self._pos+length] = data
@@ -231,21 +235,32 @@ class BinaryWriter:
                 self._buffer[pos:pos+length] = data
         return self
 
-    def getvalue(self):
-        return bytes(self._buffer)
+    def getraw(self, from_index=0, to_index=None) -> bytearray:
+        buffer = bytearray(len(self._buffer))
+        buffer[:] = self._buffer
+        return buffer
     
-    def size(self):
+    def getvalue(self, from_index=0, to_index=None) -> bytes:
+        to_index = to_index if to_index is not None else len(self._buffer)
+        return bytes(self._buffer[from_index:to_index]) 
+    
+    def size(self) -> int:
         return len(self._buffer)
 
-    def to_hex(self, from_index=0, to_index=None):
+    def to_hex(self, from_index=0, to_index=None) -> str:
         to_index = to_index if to_index is not None else len(self._buffer)
         return ' '.join(f'{b:02X}' for b in self._buffer[from_index:to_index])
 
-    def seek(self, pos):
+    def seek(self, pos: int):
         self._pos = pos
 
-    def tell(self):
+    def tell(self) -> int:
         return self._pos
 
     def to_reader(self):
         return BinaryReader(self.getvalue())
+    
+    def clone(self):
+        writer = BinaryWriter()
+        writer.write_bytes(self.getraw())
+        return writer

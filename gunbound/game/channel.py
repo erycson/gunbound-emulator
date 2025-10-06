@@ -50,6 +50,11 @@ class Channel:
         """
         Envia um ou vários pacotes para todos os usuários conectados no canal de forma assíncrona e de alta performance, sem aguardar conclusão.
         packets pode ser um BasePackageSend único ou uma lista deles.
+        Args:
+            packet (BasePackageSend): O pacote a ser enviado.
+            onlys (list[int] | None): Lista de IDs de clientes que devem receber o pacote. Se None, todos recebem.
+            excepts (list[int] | None): Lista de IDs de clientes que não devem receber
+            encrypted (bool): Se o pacote deve ser criptografado antes do envio usando a chave de criptografia do cliente.
         """
         clients = await self.get_all()
         for _, client in clients:
@@ -57,7 +62,7 @@ class Channel:
                 continue
             if excepts and client.id in excepts:
                 continue
-            asyncio.create_task(client.on_send(packet))
+            asyncio.create_task(client.on_send(packet.clone()))
 
     def size(self) -> int:
         return len(self.clients)

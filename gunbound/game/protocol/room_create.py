@@ -70,9 +70,6 @@ class RoomCreateResp(BasePackageSend):
         buf.write_string(announcement)
         return cls(buf)
     
-    def get_buf(self) -> BinaryWriter:
-        return self.buf
-    
     def log_command(self, conn):
         reader = self.buf.to_reader()
         checksum = reader.read_uint16(pos=2)

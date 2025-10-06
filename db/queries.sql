@@ -87,15 +87,15 @@ SELECT c_num FROM records WHERE (0x%08X & Mask_Decimal) = start_decimal ORDER BY
 SELECT SerialNo, MsgBoxText, MsgBoxType, LinkUrl From Msg WHERE Id = '%s'
 SELECT Authority, UNIX_TIMESTAMP(RestrictTime), Password, Nickname FROM User WHERE User = '%s'
 
-
-
-
-
-
-
-
-
-
-
-
-
+SELECT Password FROM User WHERE Id='test'
+SELECT NickName FROM User WHERE Id='test'
+SELECT p.SerialNo, p.Sender, p.Code, p.Body, UNIX_TIMESTAMP(p.Time), a.NickName FROM Packet AS p INNER JOIN User AS a ON p.Sender = a.Id WHERE p.Receiver = 'test' ORDER BY p.SerialNo
+SELECT %s, %s FROM %s WHERE %s = '%s'
+SELECT u.Id, BuddyList.Category, u.Guild, u.TotalGrade, a.NickName FROM Game AS u INNER JOIN User AS a ON u.Id = a.Id INNER JOIN BuddyList ON u.Id = BuddyList.Buddy WHERE BuddyList.Id = 'test' ORDER BY BuddyList.Category
+SELECT Guild, TotalGrade FROM Game WHERE Id = 'test'
+SELECT u.Guild, u.TotalGrade, a.NickName FROM Game AS u INNER JOIN User AS a ON u.Id = a.Id WHERE u.Id='admin'
+UPDATE BuddyList SET Category='%s' WHERE Id='%s' AND Category='%s'
+DELETE FROM BuddyList WHERE Id='%s' AND Buddy='%s'
+DELETE FROM Packet WHERE SerialNo IN (
+INSERT INTO BuddyList SET Id='admin', Category='', Buddy='test'
+INSERT INTO Packet SET Receiver='%s', Sender='%s', Code=%u, Body='%s', Time=NOW()
