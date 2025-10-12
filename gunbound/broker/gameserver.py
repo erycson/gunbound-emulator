@@ -31,24 +31,6 @@ class GameServer:
         self.grade_max: int = 0
         self.avatar_enabled: int = 0
 
-    """
-    SEND 08 00 00 F0 00 00 00 00
-        08 00 -> PacketSize)
-        F0 00 -> Command, 0xF000 = UDP_STATUS_REQ
-        00 00 00 00 -> ServerIndex
-    RECV 17 00 01 F0 00 00 00 00 00 00 00 00 B8 0B FC FF FF FF 13 00 00 00 00
-        17 00 -> PacketSize
-        F0 00 -> Comand, 0xF000 = UDP_STATUS_RESP
-        00 00 00 00 -> ServerIndex
-        00 00 -> Rooms
-        00 00 -> UsersOnline
-        00 00 -> UsersMax
-        00 00 -> LevelMin (Grande possibilidade ser só um Byte)
-        00 00 ->
-        00 00 -> LevelMax (Grande possibilidade ser só um Byte)
-        00 00 -> 
-        00 -> Avatar ativo
-    """
     async def check_status(self, timeout: float = 2.0) -> int:
         transport: asyncio.DatagramTransport | None = None
         self.last_check = time.time()
@@ -84,14 +66,13 @@ class GameServer:
             
             print(f"UDP-RECV [FROM={addr[0]}:{addr[1]} Accept=1] {reader.to_hex()}")
 
-            # O que falta descobrir, é como é enviado a informação dizendo que o serveridor tem muita ou pouca gente
             self.rooms = reader.read_uint16()
             self.users_online = reader.read_uint16()
             self.users_max = reader.read_uint16()
             self.grade_max = reader.read_int16()
-            reader.read_uint16()
+            reader.read_int16() # 0xFFFF - Desconhecido
             self.grade_min = reader.read_int16()
-            reader.read_uint16()
+            reader.read_int16() # 0x0000 - Desconhecido
             self.avatar_enabled = reader.read_uint8() == 1
 
             self.is_online = True

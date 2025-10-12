@@ -45,7 +45,7 @@ class ServerSortedListResp(BasePackageSend):
         00 00 -> Desconhecido
         00 00 -> Desconhecido
         B8 0B -> Max Players
-        13 -> Leve Min
+        13 -> Level Min
         FC -> Level Max
         00 -> Is Online
         01 -> Avatar Enabled
@@ -68,7 +68,8 @@ class ServerSortedListResp(BasePackageSend):
             buf.write_string(server.description)
             buf.write_bytes(socket.inet_aton(server.host))
             buf.write_uint16(server.port, le=False)
-            buf.write_bytes([0x00, 0x00, 0x00, 0x00]) # Desconhecido
+            buf.write_uint16(0) # Desconhecido
+            buf.write_uint16(server.users_online)
             buf.write_uint16(server.users_max) # RecommendedMan
             buf.write_int8(server.grade_max)
             buf.write_int8(server.grade_min)
