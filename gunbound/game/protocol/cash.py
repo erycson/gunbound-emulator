@@ -1,7 +1,6 @@
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
-from gunbound.repository import InventoryRepository
 
 """
 A inicialização da criptografia dos dados enviado pelo cliente é feita pela função sub_40B420 no GBS v440
@@ -10,6 +9,7 @@ A inicialização da criptografia dos dados enviado pelo cliente é feita pela f
 class CashRecv(BasePackageRecv):
 
     def __init__(self, conn, buf: BinaryReader):
+        from gunbound.repository import InventoryRepository
         self.buf = buf 
         self.conn = conn
         self.inventory_repository: InventoryRepository = InventoryRepository()

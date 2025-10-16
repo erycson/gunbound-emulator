@@ -49,6 +49,36 @@ class UserRepository:
         )
         return dict(data) if data else None
 
+    async def get_gender(self, user_id: str) -> int | None:
+        """
+        Busca dados básicos do perfil do usuário das tabelas User e gbwc.user.
+
+        Args:
+            user_id (str): O identificador único do usuário.
+
+        Returns:
+            int: Sexo do usuário, 0 = Masculino, 1 = Feminino.
+        """
+        data = await self.db.fetch_one("SELECT Gender FROM User WHERE Id=:user_id", {'user_id': user_id})
+        return data.get('Gender') if data else None
+
+    async def find_by_nickname(self, nickname: str) -> List[Dict[str, Any]]:
+        """
+        Pesquisa usuários pelo apelido (nickname).
+
+        Args:
+            nickname (str): O apelido do usuário.
+
+        Returns:
+            Optional[Dict[str, Any]]: Dados do perfil do usuário ou None se não encontrado.
+        """
+        data = await self.db.fetch_all(
+            "SELECT Id, Nickname FROM user WHERE Nickname IN (:nickname) LIMIT 100",
+            {'nickname': nickname}
+        )
+        
+        return [dict(d) for d in data] if data else []
+
     async def get_game(self, user_id: str) -> Optional[Dict[str, Any]]:
         """
         Busca estatísticas do jogo da tabela game.

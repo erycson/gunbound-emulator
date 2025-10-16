@@ -30,26 +30,6 @@ class ServerSortedListResp(BasePackageSend):
     def __init__(self, buf: BinaryWriter):
         self.buf = buf 
 
-    """
-    00 00 Desconhecido
-    01 -> isLastPacket
-    01 ->  serverCount
-        00 00 -> ServerId
-        00 -> Event
-        10 -> Name Len
-        5B 53 31 5D 20 47 75 6E 62 6F 75 6E 64 20 57 43 -> Name
-        16 -> Desc Len
-        C1 72 65 61 20 6C 69 76 72 65 5C 6E 53 65 6D 20 61 76 61 74 61 72 -> Desc
-        7F 00 00 01 -> IP
-        20 A8 -> Port
-        00 00 -> Desconhecido
-        00 00 -> Desconhecido
-        B8 0B -> Max Players
-        13 -> Level Min
-        FC -> Level Max
-        00 -> Is Online
-        01 -> Avatar Enabled
-    """
     @classmethod
     def success(cls, servers: list[GameServer]):
         buf = BinaryWriter()

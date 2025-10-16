@@ -7,7 +7,6 @@ from gunbound.base.protocol import BasePackageFactory, BasePackageSend
 from gunbound.base.managers import CryptoManager
 from gunbound.game.channel import Channel
 from gunbound.game.room import Room
-from gunbound.repository import ServerRepository, UserRepository
 from gunbound.util import BinaryReader, GBWCGenerator, dump
 if TYPE_CHECKING:
     from gunbound import GameServer
@@ -24,6 +23,7 @@ class ClientConnection:
             reader (StreamReader): StreamReader para ler dados do cliente.
             writer (StreamWriter): StreamWriter para enviar dados ao cliente.
         """
+        from gunbound.repository import ServerRepository, UserRepository
         self.id = id(self) & 0xFFFFFFFF
         self.server: 'GameServer' = server
         self.manager: 'ClientManager' = manager

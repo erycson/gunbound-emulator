@@ -1,4 +1,4 @@
-from enum import IntEnum
+from enum import IntEnum, StrEnum
 
 class ClientPacket(IntEnum):
     # Solicita a lista de servidores de jogo, ordenada por algum critério.
@@ -29,8 +29,14 @@ class ClientPacket(IntEnum):
     CLI_CLIENT_DATA = 0x1090
     CLI_ITEM = 0x6000
     CLI_ITEM_GIFT_MSG = 0x6004
+    CLI_ITEM_GIFT_CONFIRM = 0x6008
+    CLI_ITEM_LOCATION = 0x600A # ???
+    CLI_ITEM_BUY = 0x6020
+    CLI_ITEM_CONSUME = 0x6024
+    CLI_ITEM_GIFT_BUY = 0x6030
     CLI_CASH = 0x6100
     CLI_GOLD = 0x6104
+
 
 """
 Enums para pacotes enviados pelo broker ao cliente.
@@ -43,6 +49,8 @@ class ServerPacket(IntEnum):
     SRV_LOGIN = 0x1012
     SRV_LOGIN_RECORD = 0x1013
     SRV_LOGIN_TOKEN = 0x1015
+    SRV_USER_ID = 0x1020
+    SRV_CLIENT_DATA = 0x1091
 
     SRV_CHANNEL_JOIN = 0x2001           # Resposta ao pedido de entrada no canal
     SRV_CHANNEL_JOIN_UPDATE = 0x200E    # Notifica os outros usuários que um usuário entrou no canal
@@ -56,9 +64,13 @@ class ServerPacket(IntEnum):
 
     SRV_ITEM = 0x6001
     SRV_ITEM_GIFT_MSG = 0x6004
+    SRV_ITEM_GIFT_CONFIRM = 0x6009
+    SRV_ITEM_LOCATION = 0x600A  # ???
+    SRV_ITEM_BUY = 0x6021
     SRV_CASH = 0x6101
     SRV_GOLD = 0x6105
-    SRV_CLIENT_DATA = 0x1091
+    SRV_ITEM_GIFT_BUY = 0x6031
+    SRV_ITEM_CONSUME = 0x6025
 
     SRV_ERROR_UNKNOWN_1090 = 0x1090
     SRV_ERROR_UNKNOWN_1FFF = 0x1FFF
@@ -72,6 +84,99 @@ class ServerCode(IntEnum):
     SRV_OK = 0x00
     SRV_UPDATED = 0x01
     SRV_WRONG_VERSION = 0x60
+    SRV_WRONG_GENDER = 0x2101
+
+class ExpireType(StrEnum):
+    Week = "W"
+    Month = "M"
+    Infinite = "I"
+    
+    @classmethod
+    def try_parse(cls, value: str):
+        try:
+            return cls(value)
+        except ValueError:
+            return None
+        
+    @classmethod
+    def try_parse_int(cls, value: int):
+        match value:
+            case 1:
+                return cls.Week
+            case 3:
+                return cls.Month
+            case 7:
+                return cls.Infinite
+            case _:
+                return None
+        
+class AcquisitionType(StrEnum):
+    Cash = "C"
+    Gold = "G"
+    Gift = "T"
+    
+    @classmethod
+    def try_parse(cls, value: str):
+        try:
+            return cls(value)
+        except ValueError:
+            return None
+        
+    @classmethod
+    def try_parse_int(cls, value: int):
+        match value:
+            case 0:
+                return cls.Cash
+            case 1:
+                return cls.Gold
+            case _:
+                return None
+
+class ReceiptBuyType(StrEnum):
+    Self = "S"
+    Gift = "G"
+    
+    @classmethod
+    def try_parse(cls, value: str):
+        try:
+            return cls(value)
+        except ValueError:
+            return None
+
+class MessageType(StrEnum):
+    Self = "S"
+    Gift = "G"
+    
+    @classmethod
+    def try_parse(cls, value):
+        try:
+            return cls(value)
+        except ValueError:
+            return None
+
+class GiftMsgType(StrEnum):
+    Gift = "G"
+    Accepted = "A"
+    Denied = "D"
+    
+    @classmethod
+    def try_parse(cls, value):
+        try:
+            return cls(value)
+        except ValueError:
+            return None
+        
+class ReceiptGiftResult(StrEnum):
+    Requested = "R"
+    Accepted = "A"
+    Denied = "D"
+    
+    @classmethod
+    def try_parse(cls, value):
+        try:
+            return cls(value)
+        except ValueError:
+            return None
 
 class Feature(IntEnum):
     AVATAR_ENABLED = 1 << 4

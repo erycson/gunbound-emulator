@@ -3,12 +3,23 @@ crypto:
   game_key:   "FFB3B3BEAE97AD83B9610E23A43C2EB0"
 
 global:
-  PRODUCT_VERSION: &PRODUCT_VERSION 8452169
+  super_user_item: 204801 # ID do item Power User
+  product_version: &product_version 8452169
   
 database:
   uri: "mysql+asyncmy://gbuser:gbpass@127.0.0.1:3306/gbwc?min_size=1&max_size=2"
 
 features:
+  UNK_1: 1
+  UNK_4: 4
+  UNK_8: 8
+  UNK_32: 32
+  UNK_256: 256
+  UNK_512: 512
+  UNK_768: 768
+  UNK_3072: 3072
+  UNK_4096: 4096
+
   AVATAR_ENABLED: &AVATAR_ENABLED 16 # 1 << 4
   EFFECT_FORCE: &EFFECT_FORCE 8192 # 1 << 13
   EFFECT_TORNADO: &EFFECT_TORNADO 16384 # 1 << 14
@@ -25,7 +36,7 @@ features:
 broker:
   host: "127.0.0.1"
   port: 8372
-  product_version: *PRODUCT_VERSION
+  product_version: *product_version
   strategies:
     login: "gunbound.broker.strategy.login_strategy.GBWC_v440_LoginStrategy"
 
@@ -48,7 +59,7 @@ gameservers:
       - 64.0/1
     version_min: 440
     version_max: 440
-    product_version: *PRODUCT_VERSION
+    product_version: *product_version
     users_max: 3000 # max 65535
     event: 0 # 1 = wowlg, é a imagem de fundo do servidor na lista de servidores
     grade_min: 19

@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
-from gunbound.repository import InventoryRepository
 if TYPE_CHECKING:
     from gunbound.game.client import ClientConnection
 
@@ -11,6 +10,7 @@ if TYPE_CHECKING:
 class GoldRecv(BasePackageRecv):
 
     def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
+        from gunbound.repository import InventoryRepository
         self.buf = buf
         self.conn = conn
         self.inventory_repository: InventoryRepository = InventoryRepository()

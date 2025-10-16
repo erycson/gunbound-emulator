@@ -5,13 +5,13 @@ from asyncio import CancelledError, Task
 from gunbound.game.managers import ClientManager
 from gunbound.game.protocol import Feature
 from gunbound.game_server import GameServer
-from gunbound.repository import ServerRepository
 from gunbound.util import dump, BinaryReader, BinaryWriter, UDPFutureProtocol
 
 class MonitorManager:
     _instance = None
     
     def __init__(self, game: GameServer, config):
+        from gunbound.repository import ServerRepository
         self.game = game
         self.config = config
         self.task_broker: Task = None

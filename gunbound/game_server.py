@@ -2,10 +2,10 @@ import socket
 import asyncio
 from asyncio import Task, CancelledError, StreamReader, StreamWriter
 from gunbound.game.managers import ClientManager, ChannelManager
-from gunbound.repository import ServerRepository
 
 class GameServer:
     def __init__(self, index, config):
+        from gunbound.repository import ServerRepository
         self.id = id(self) & 0xFFFFFFFF
         self.index = index
         self.config = config
