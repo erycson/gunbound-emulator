@@ -1,3 +1,4 @@
+from functools import cache
 from Crypto.Cipher import AES
 from gunbound.util.sha1 import SHA1WithoutROTL
 
@@ -6,17 +7,20 @@ class CryptoManager:
         self.key = bytes.fromhex(key)
         if len(self.key) != 16:
             raise ValueError("A chave de criptografia deve ter 16 bytes (128 bits)")
-        self.aes = AES.new(self.key, AES.MODE_ECB)
+
+    @cache
+    def aes(self):
+        return AES.new(self.key, AES.MODE_ECB)
 
     def encrypt(self, plain_text: bytes, key: bytes = None) -> bytes:
         if key is None:
             key = self.key
-        return self.aes.encrypt(plain_text)
+        return self.aes().encrypt(plain_text)
 
     def decrypt(self, cipher_text: bytes, key: bytes = None) -> bytes:
         if key is None:
             key = self.key
-        return self.aes.decrypt(cipher_text)
+        return self.aes().decrypt(cipher_text)
 
     def decrypt_custom(self, data: bytes, key: bytes) -> bytes:
         dec = self.decrypt(data, key)

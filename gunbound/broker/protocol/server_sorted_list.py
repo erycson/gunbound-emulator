@@ -9,12 +9,12 @@ if TYPE_CHECKING:
     from gunbound.broker.managers import MonitorManager
     from gunbound.broker.gameserver import GameServer
 
-@inject
 @BasePackageFactory.register(ClientPacket.CLI_SORTED_SERVER_LIST.value)
+@inject
 class ServerSortedListRecv(BasePackageRecv):
     _strategy = None
 
-    def __init__(self, conn, buf: BinaryReader, server: 'MonitorManager' = Provide['Container.monitor']):
+    def __init__(self, conn, buf: BinaryReader, server: 'MonitorManager' = Provide['monitor']):
         self.conn = conn
         self.buf = buf
         self.server = server

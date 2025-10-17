@@ -8,15 +8,15 @@ if TYPE_CHECKING:
     from gunbound.repository import InventoryRepository
     from gunbound.game.client import ClientConnection
 
-@inject
 @BasePackageFactory.register(ClientPacket.CLI_ITEM_CONSUME.value)
+@inject
 class ItemConsumeRecv(BasePackageRecv):
 
     def __init__(
         self,
         conn: 'ClientConnection',
         buf: BinaryReader,
-        inventory_repository: 'InventoryRepository' = Provide['Container.inventory_repository']
+        inventory_repository: 'InventoryRepository' = Provide['inventory_repository']
     ):
         self.buf = buf
         self.conn = conn

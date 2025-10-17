@@ -9,8 +9,8 @@ if TYPE_CHECKING:
     from gunbound.repository import UserRepository
     from gunbound.game.client import ClientConnection
 
-@inject
 @BasePackageFactory.register(ClientPacket.CLI_ROOM_SELECT_TANK.value)
+@inject
 class RoomSelectTankRecv(BasePackageRecv):
     _strategy = None
 
@@ -18,7 +18,7 @@ class RoomSelectTankRecv(BasePackageRecv):
         self,
         conn: 'ClientConnection',
         buf: BinaryReader,
-        user_repository: 'UserRepository' = Provide['Container.user_repository'],
+        user_repository: 'UserRepository' = Provide['user_repository'],
     ):
         self.conn = conn
         self.buf = buf

@@ -9,14 +9,14 @@ if TYPE_CHECKING:
     from gunbound.game.managers import ChannelManager
     from gunbound.game.client import ClientConnection
 
-@inject
 @BasePackageFactory.register(ClientPacket.CLI_CHANNEL_JOIN.value)
+@inject
 class ChannelJoinRecv(BasePackageRecv):
     def __init__(
         self,
         conn: 'ClientConnection',
         buf: BinaryReader,
-        channel_manager: 'ChannelManager' = Provide['Container.channels'],
+        channel_manager: 'ChannelManager' = Provide['channels'],
     ):
         self.conn = conn
         self.buf = buf

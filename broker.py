@@ -1,13 +1,12 @@
 import asyncio
 import signal
 from gunbound.broker.containers import Container
-from gunbound.util.dump import dump
+# from gunbound.util.dump import dump
 import gunbound.broker.protocol # Garante o registro automático dos protocolos
 
 async def main():
     container = Container()
-    # Fazer o wire APÓS importar todos os protocolos
-    container.wire(modules=["gunbound.broker.protocol.login"])
+    container.wire(packages=["gunbound.broker.protocol"])
 
     database = container.database()
     await database.connect()

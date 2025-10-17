@@ -5,7 +5,6 @@ from gunbound.base.managers import CryptoManager
 from gunbound.broker.managers import MonitorManager
 from gunbound.broker_server import BrokerServer
 from gunbound.repository import ServerRepository
-from gunbound.broker.strategy.login_strategy import GBWC_v440_LoginStrategy
 
 class Container(containers.DeclarativeContainer):
     config = providers.Configuration()
@@ -17,7 +16,7 @@ class Container(containers.DeclarativeContainer):
     server_repository = providers.Factory(ServerRepository, db=database)
     
     login_strategy = providers.Singleton(
-        GBWC_v440_LoginStrategy, # config.broker.strategies.login()
+        config.broker.strategies.login(),
         db=database,
         crypto=crypto
     )

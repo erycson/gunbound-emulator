@@ -10,8 +10,8 @@ if TYPE_CHECKING:
     from gunbound.game.room import Room
     from gunbound.game.client import ClientConnection
 
-@inject
 @BasePackageFactory.register(ClientPacket.CLI_ROOM_CREATE.value)
+@inject
 class RoomCreateRecv(BasePackageRecv):
     _strategy = None
 
@@ -19,7 +19,7 @@ class RoomCreateRecv(BasePackageRecv):
         self,
         conn: 'ClientConnection',
         buf: BinaryReader,
-        room_manager: 'RoomManager' = Provide['Container.rooms'],
+        room_manager: 'RoomManager' = Provide['rooms'],
     ):
         self.conn = conn
         self.buf = buf

@@ -8,8 +8,8 @@ if TYPE_CHECKING:
     from gunbound.repository import InventoryRepository
     from gunbound.game.client import ClientConnection
 
-@inject
 @BasePackageFactory.register(ClientPacket.CLI_CASH.value)
+@inject
 class CashRecv(BasePackageRecv):
     """
     A inicialização da criptografia dos dados enviado pelo cliente é feita pela função sub_40B420 no GBS v440
@@ -19,7 +19,7 @@ class CashRecv(BasePackageRecv):
         self,
         conn: 'ClientConnection',
         buf: BinaryReader,
-        inventory_repository: 'InventoryRepository' = Provide['Container.inventory_repository']
+        inventory_repository: 'InventoryRepository' = Provide['inventory_repository']
     ):
         self.buf = buf
         self.conn = conn

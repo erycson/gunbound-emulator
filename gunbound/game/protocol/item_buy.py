@@ -11,17 +11,17 @@ if TYPE_CHECKING:
     from gunbound.repository import InventoryRepository
     from gunbound.game.client import ClientConnection
 
-@inject
 @BasePackageFactory.register(ClientPacket.CLI_ITEM_BUY.value)
+@inject
 class ItemBuyRecv(BasePackageRecv):
 
     def __init__(
         self,
         conn: 'ClientConnection',
         buf: BinaryReader,
-        db: Database = Provide['Container.database'],
-        config: Configuration = Provide['Container.config'],
-        inventory_repository: 'InventoryRepository' = Provide['Container.inventory_repository']
+        db: Database = Provide['database'],
+        config: Configuration = Provide['config'],
+        inventory_repository: 'InventoryRepository' = Provide['inventory_repository']
     ):
         self.buf = buf
         self.conn = conn

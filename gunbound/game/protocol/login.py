@@ -12,8 +12,8 @@ if TYPE_CHECKING:
     from gunbound.repository import UserRepository, RecordsRepository, ServerRepository
     from gunbound.game.client import ClientConnection
 
-@inject
 @BasePackageFactory.register(ClientPacket.CLI_LOGIN.value)
+@inject
 class LoginRecv(BasePackageRecv):
     _strategy = None
 
@@ -21,10 +21,10 @@ class LoginRecv(BasePackageRecv):
         self,
         conn: 'ClientConnection',
         buf: BinaryReader,
-        crypto: CryptoManager = Provide['Container.crypto'],
-        user_repository: 'UserRepository' = Provide['Container.user_repository'],
-        server_repository: 'ServerRepository' = Provide['Container.server_repository'],
-        records_repository: 'RecordsRepository' = Provide['Container.records_repository'],
+        crypto: CryptoManager = Provide['crypto'],
+        user_repository: 'UserRepository' = Provide['user_repository'],
+        server_repository: 'ServerRepository' = Provide['server_repository'],
+        records_repository: 'RecordsRepository' = Provide['records_repository'],
     ):
         self.conn = conn
         self.buf = buf

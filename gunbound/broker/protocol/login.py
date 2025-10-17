@@ -1,12 +1,16 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.broker.protocol.enums import ClientPacket, ServerPacket, ServerCode
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
+if TYPE_CHECKING:
+    from gunbound.broker.strategy.login_strategy import LoginStrategy
 
-@inject
 @BasePackageFactory.register(ClientPacket.CLI_LOGIN.value)
+@inject
 class LoginRecv(BasePackageRecv):
-    def __init__(self, conn, buf: BinaryReader, login_strategy = Provide['login_strategy']):
+    def __init__(self, conn, buf: BinaryReader, login_strategy: 'LoginStrategy' = Provide['login_strategy']):
         self.conn = conn
         self.buf = buf
         self.login_strategy = login_strategy

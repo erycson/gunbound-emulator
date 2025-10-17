@@ -8,14 +8,14 @@ if TYPE_CHECKING:
     from gunbound.repository import UserRepository
     from gunbound.game.client import ClientConnection
 
-@inject
 @BasePackageFactory.register(ClientPacket.CLI_CLIENT_DATA.value)
+@inject
 class ClientDataRecv(BasePackageRecv):
     """
     A inicialização da criptografia dos dados enviado pelo cliente é feita pela função sub_40B420 no GBS v440
     """
 
-    def __init__(self, conn: 'ClientConnection', buf: BinaryReader, user_repository: 'UserRepository' = Provide['Container.user_repository']):
+    def __init__(self, conn: 'ClientConnection', buf: BinaryReader, user_repository: 'UserRepository' = Provide['user_repository']):
         self.buf = buf 
         self.conn = conn
         self.user_repository = user_repository

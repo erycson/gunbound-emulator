@@ -1,16 +1,14 @@
 from __future__ import annotations
+import abc
 from typing import TYPE_CHECKING
 from databases import Database
-from dependency_injector.wiring import Provide, inject
 from gunbound.broker.protocol.login import LoginResp
 from gunbound.util.binary_buffer import BinaryReader
 if TYPE_CHECKING:
     from gunbound.base.managers import CryptoManager
-    from gunbound.game.client import ClientConnection
+    from gunbound.broker.client import ClientConnection
 
-class GBWC_v440_LoginStrategy:
-    """Implementação para o cliente GBS WC v440"""
-
+class LoginStrategy(abc.ABC):
     def __init__(
         self,
         db: Database,
@@ -18,6 +16,13 @@ class GBWC_v440_LoginStrategy:
     ):
         self.db = db
         self.crypto = crypto
+
+    @abc.abstractmethod
+    async def process(self, conn: 'ClientConnection', buf: BinaryReader):
+        pass
+
+class GBWC_v440_LoginStrategy(LoginStrategy):
+    """Implementação para o cliente GBS WC v440"""
 
     async def process(self, conn: 'ClientConnection', buf: BinaryReader):
         self.buf = buf
@@ -33,6 +38,8 @@ class GBWC_v440_LoginStrategy:
 
         username = self.c_str(username_bytes)
         session_id = int.from_bytes(session_bytes, "little", signed=True)
+        print('[GBWC_v440_LoginStrategy] Username:', username)
+        print('[GBWC_v440_LoginStrategy] Session ID:', session_id)
 
         user = await self.find_user(username)
         if not user:
@@ -41,7 +48,9 @@ class GBWC_v440_LoginStrategy:
             return
 
         key_derived = self.crypto.derive_key(username, user.Password, session_bytes)
+        print('[GBWC_v440_LoginStrategy] Derived Key:', key_derived)
         password = self.c_str(self.crypto.decrypt_custom(block_b, key_derived))
+        print('[GBWC_v440_LoginStrategy] Password:', password)
 
         if user.Password != password:
             print(f"[LoginStrategy] Senha incorreta para o usuário: {username}, senha recebida: {password}, esperada: {user.Password}")
