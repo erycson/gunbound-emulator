@@ -1,18 +1,29 @@
-from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
+from __future__ import annotations
+from typing import TYPE_CHECKING
+from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
+from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
+if TYPE_CHECKING:
+    from gunbound.repository import InventoryRepository
+    from gunbound.game.client import ClientConnection
 
-"""
-A inicialização da criptografia dos dados enviado pelo cliente é feita pela função sub_40B420 no GBS v440
-"""
+@inject
 @BasePackageFactory.register(ClientPacket.CLI_CASH.value)
 class CashRecv(BasePackageRecv):
+    """
+    A inicialização da criptografia dos dados enviado pelo cliente é feita pela função sub_40B420 no GBS v440
+    """
 
-    def __init__(self, conn, buf: BinaryReader):
-        from gunbound.repository import InventoryRepository
-        self.buf = buf 
+    def __init__(
+        self,
+        conn: 'ClientConnection',
+        buf: BinaryReader,
+        inventory_repository: 'InventoryRepository' = Provide['Container.inventory_repository']
+    ):
+        self.buf = buf
         self.conn = conn
-        self.inventory_repository: InventoryRepository = InventoryRepository()
+        self.inventory_repository = inventory_repository
 
     async def process(self):
         cash = await self.inventory_repository.get_cash(self.conn.data['profile']['Id'])

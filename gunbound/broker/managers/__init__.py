@@ -1,1 +1,1 @@
-from .gameserver import GameServerManager
+from .monitor import MonitorManager

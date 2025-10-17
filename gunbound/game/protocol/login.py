@@ -3,28 +3,35 @@ import socket
 import asyncio
 import time
 from typing import TYPE_CHECKING, Dict, Any, List
-from gunbound.game.protocol.enums import ClientPacket, ServerPacket
+from dependency_injector.wiring import Provide, inject
 from gunbound.base.managers import CryptoManager
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util import BinaryWriter, BinaryReader
-from gunbound.repository import UserRepository, RecordsRepository, ServerRepository
+from gunbound.game.protocol.enums import ClientPacket, ServerPacket
 if TYPE_CHECKING:
+    from gunbound.repository import UserRepository, RecordsRepository, ServerRepository
     from gunbound.game.client import ClientConnection
 
-"""
-A inicialização da criptografia dos dados enviado pelo cliente é feita pela função sub_40B420 no GBS v440
-"""
+@inject
 @BasePackageFactory.register(ClientPacket.CLI_LOGIN.value)
 class LoginRecv(BasePackageRecv):
     _strategy = None
 
-    def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
+    def __init__(
+        self,
+        conn: 'ClientConnection',
+        buf: BinaryReader,
+        crypto: CryptoManager = Provide['Container.crypto'],
+        user_repository: 'UserRepository' = Provide['Container.user_repository'],
+        server_repository: 'ServerRepository' = Provide['Container.server_repository'],
+        records_repository: 'RecordsRepository' = Provide['Container.records_repository'],
+    ):
         self.conn = conn
         self.buf = buf
-        self.crypto: CryptoManager = CryptoManager.get_instance()
-        self.user_repository: UserRepository = UserRepository()
-        self.records_repository: RecordsRepository = RecordsRepository()
-        self.server_repository: ServerRepository = ServerRepository()
+        self.crypto = crypto
+        self.user_repository = user_repository
+        self.server_repository = server_repository
+        self.records_repository = records_repository
 
     async def process(self):
         username = self.crypto.decrypt(self.buf.read_bytes(16)).decode('latin-1').rstrip('\x00')
@@ -95,7 +102,7 @@ class LoginRecv(BasePackageRecv):
 
         self.conn.set_token(self.conn.manager.rand.current_value)
 
-        await self.conn.on_send(LoginResp.success(self.conn))
+        await self.conn.on_send(LoginResp.success(self.crypto, self.conn))
         await self.conn.on_send(LoginResp.success_record(stage, mobile))
         self.conn.is_alive()
         self.conn.last_activity = time.time()
@@ -151,7 +158,7 @@ class LoginResp(BasePackageSend):
         self.buf = buf
 
     @classmethod
-    def success(cls, conn: 'ClientConnection'):
+    def success(cls, crypto: 'CryptoManager', conn: 'ClientConnection'):
         buf = BinaryWriter()
         buf.write_uint16(ServerPacket.SRV_LOGIN)
         buf.write_uint16(0)
@@ -193,7 +200,6 @@ class LoginResp(BasePackageSend):
         server_buf.write_uint32(0) # Uso desconhecido
 
         # Criptografa os dados
-        crypto = CryptoManager.get_instance()
         server_salt = conn.manager.rand.current_value.to_bytes(4, byteorder='little')
         server_derived_key = crypto.derive_key(conn.data['profile']['User'], conn.data['profile']['Password'], server_salt)
         server_crypted = crypto.encrypt(server_buf.getvalue(), server_derived_key)

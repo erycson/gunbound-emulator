@@ -1,20 +1,26 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from gunbound.base.managers import DatabaseManager
+from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
-from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
-from gunbound.repository import InventoryRepository
+from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 if TYPE_CHECKING:
+    from gunbound.repository import InventoryRepository
     from gunbound.game.client import ClientConnection
 
+@inject
 @BasePackageFactory.register(ClientPacket.CLI_ITEM_CONSUME.value)
 class ItemConsumeRecv(BasePackageRecv):
 
-    def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
+    def __init__(
+        self,
+        conn: 'ClientConnection',
+        buf: BinaryReader,
+        inventory_repository: 'InventoryRepository' = Provide['Container.inventory_repository']
+    ):
         self.buf = buf
         self.conn = conn
-        self.inventory_repository: InventoryRepository = InventoryRepository()
+        self.inventory_repository = inventory_repository
 
     async def process(self):
         command = (self.buf.read_int32() - 0x8631607E) & 0xFFFFFFFF

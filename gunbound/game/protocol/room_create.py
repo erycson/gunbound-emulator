@@ -1,21 +1,29 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from gunbound.game.protocol import ClientPacket, ServerPacket, ServerCode, RoomMap, RoomSize
+from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
+from gunbound.base.enums import RoomMap, RoomSize
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
+from gunbound.game.protocol import ClientPacket, ServerPacket, ServerCode
 if TYPE_CHECKING:
+    from gunbound.game.managers import RoomManager
     from gunbound.game.room import Room
     from gunbound.game.client import ClientConnection
 
+@inject
 @BasePackageFactory.register(ClientPacket.CLI_ROOM_CREATE.value)
 class RoomCreateRecv(BasePackageRecv):
     _strategy = None
 
-    def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
-        from gunbound.game.managers import RoomManager
+    def __init__(
+        self,
+        conn: 'ClientConnection',
+        buf: BinaryReader,
+        room_manager: 'RoomManager' = Provide['Container.rooms'],
+    ):
         self.conn = conn
         self.buf = buf
-        self.manager: RoomManager = RoomManager.get_instance()
+        self.manager = room_manager
 
     # 01 61 B2 62 00 00 61 00 00 00 02
     async def process(self):
@@ -45,7 +53,7 @@ class RoomCreateRecv(BasePackageRecv):
         password = None if password[0] == 0 else password.rstrip(b'\x00').decode('latin-1')    
 
         options = RoomOptions(name, RoomMap.RAMDOM, mode, size, password)
-        room = await self.manager.create_room(self.conn, options)
+        room = await self.manager.create(self.conn, options)
 
         await self.conn.on_send(RoomCreateResp.success(room, self.manager.config['announcement']))
 
@@ -56,9 +64,7 @@ class RoomCreateRecv(BasePackageRecv):
 
 class RoomCreateResp(BasePackageSend):
     def __init__(self, buf: BinaryWriter):
-        from gunbound.game.managers import RoomManager
         self.buf = buf 
-        self.manager: RoomManager = RoomManager.get_instance()
 
     @classmethod
     def success(cls, room: Room, announcement: str) -> 'RoomCreateResp':

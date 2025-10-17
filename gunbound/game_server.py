@@ -1,22 +1,33 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
 import socket
 import asyncio
 from asyncio import Task, CancelledError, StreamReader, StreamWriter
-from gunbound.game.managers import ClientManager, ChannelManager
+from dependency_injector.providers import Configuration
+if TYPE_CHECKING:
+    from gunbound.repository import ServerRepository
+    from gunbound.game.managers import ClientManager, ChannelManager
 
 class GameServer:
-    def __init__(self, index, config):
-        from gunbound.repository import ServerRepository
+    def __init__(
+        self,
+        index: int,
+        config: Configuration,
+        channel_manager: 'ChannelManager',
+        client_manager: 'ClientManager',
+        server_repository: 'ServerRepository',
+    ):
         self.id = id(self) & 0xFFFFFFFF
         self.index = index
         self.config = config
         self.task: Task = None
-        self.channels: ChannelManager = ChannelManager.get_instance()
-        self.clients: ClientManager = ClientManager.get_instance()
+        self.channels = channel_manager
+        self.clients = client_manager
+        self.server_repository = server_repository
         self.features = self.calc_features(config)
-        self.server_repository: ServerRepository = ServerRepository()
 
     async def handler(self, reader: StreamReader, writer: StreamWriter):
-        await self.clients.add(self, reader, writer)
+        await self.clients.add(reader, writer)
 
     async def start(self):
         self.task = asyncio.create_task(self.tcp_listener())
@@ -57,7 +68,7 @@ class GameServer:
 
     def calc_features(self, config) -> int:
         features: int = 0
-        for feature in config.get('features', []):
+        for feature in config['features']:
             features |= feature
         return features
     

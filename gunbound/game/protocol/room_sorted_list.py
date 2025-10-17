@@ -1,22 +1,29 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from gunbound.game.protocol import ClientPacket, ServerPacket, RoomSortList
+from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
+from gunbound.base.enums import RoomSortList
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
+from gunbound.game.protocol import ClientPacket, ServerPacket
 if TYPE_CHECKING:
+    from gunbound.game.managers import RoomManager
     from gunbound.game.room import Room
     from gunbound.game.client import ClientConnection
 
+@inject
 @BasePackageFactory.register(ClientPacket.CLI_ROOM_SORTED_LIST.value)
 class RoomSelectTankRecv(BasePackageRecv):
     _strategy = None
 
-    def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
-        from gunbound.game.managers import RoomManager
-
+    def __init__(
+        self,
+        conn: 'ClientConnection',
+        buf: BinaryReader,
+        room_manager: 'RoomManager' = Provide['Container.rooms'],
+    ):
         self.conn = conn
         self.buf = buf
-        self.manager: 'RoomManager' = RoomManager.get_instance()
+        self.manager = room_manager
 
     async def process(self):
         """

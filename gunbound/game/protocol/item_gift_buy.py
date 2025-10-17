@@ -1,24 +1,38 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from gunbound.base.managers import ConfigManager, CryptoManager, DatabaseManager
+from databases import Database
+from dependency_injector.wiring import Provide, inject
+from dependency_injector.providers import Configuration
+from gunbound.base.managers import CryptoManager
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
-from gunbound.game.protocol.enums import AcquisitionType, ClientPacket, ServerPacket, ServerCode, MessageType, ReceiptBuyType, ReceiptGiftResult, ExpireType
-from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
-from gunbound.repository import UserRepository, InventoryRepository
+from gunbound.base.enums import ReceiptGiftResult, AcquisitionType, ReceiptBuyType, MessageType, ExpireType
+from gunbound.util import BinaryReader, BinaryWriter
+from gunbound.game.protocol import ClientPacket, ServerPacket, ServerCode
 if TYPE_CHECKING:
+    from gunbound.repository import UserRepository, InventoryRepository
     from gunbound.game.client import ClientConnection
 
+@inject
 @BasePackageFactory.register(ClientPacket.CLI_ITEM_GIFT_BUY.value)
 class ItemGiftBuyRecv(BasePackageRecv):
 
-    def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
+    def __init__(
+        self,
+        conn: 'ClientConnection',
+        buf: BinaryReader,
+        db: Database = Provide['Container.database'],
+        config: Configuration = Provide['Container.config'],
+        crypto: CryptoManager = Provide['Container.crypto'],
+        user_repository: 'UserRepository' = Provide['Container.user_repository'],
+        inventory_repository: 'InventoryRepository' = Provide['Container.inventory_repository'],
+    ):
         self.buf = buf
         self.conn = conn
-        self.db: DatabaseManager = DatabaseManager.get_instance()
-        self.config: ConfigManager = ConfigManager.get_instance()
-        self.crypto: CryptoManager = CryptoManager.get_instance()
-        self.user_repository: UserRepository = UserRepository()
-        self.inventory_repository: InventoryRepository = InventoryRepository()
+        self.db: Database = db
+        self.config = config
+        self.crypto = crypto
+        self.user_repository = user_repository
+        self.inventory_repository = inventory_repository
 
     async def process(self):
         data = self.crypto.decrypt(self.buf.read_bytes())
@@ -85,7 +99,7 @@ class ItemGiftBuyRecv(BasePackageRecv):
                     return
             
             if (acquisition == AcquisitionType.Cash):
-                await self.inventory_repository.insert_buy_info(self.config['product_version'], menu_no, price, asset, acquisition)
+                await self.inventory_repository.insert_buy_info(self.config.product_version(), menu_no, price, asset, acquisition)
             
             await transaction.commit()
             

@@ -1,25 +1,30 @@
+from __future__ import annotations
 import socket
-from gunbound.broker.protocol.enums import ClientPacket, ServerPacket
+from typing import TYPE_CHECKING
+from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
-from gunbound.broker.managers.gameserver import GameServerManager
-from gunbound.broker.gameserver import GameServer
+from gunbound.broker.protocol.enums import ClientPacket, ServerPacket
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
+if TYPE_CHECKING:
+    from gunbound.broker.managers import MonitorManager
+    from gunbound.broker.gameserver import GameServer
 
+@inject
 @BasePackageFactory.register(ClientPacket.CLI_SORTED_SERVER_LIST.value)
 class ServerSortedListRecv(BasePackageRecv):
     _strategy = None
 
-    def __init__(self, conn, buf: BinaryReader):
+    def __init__(self, conn, buf: BinaryReader, server: 'MonitorManager' = Provide['Container.monitor']):
         self.conn = conn
         self.buf = buf
+        self.server = server
 
     async def process(self):
         order = self.buf.read_uint8()
         filterFlag = self.buf.read_uint8()
         startIndex = self.buf.read_uint16()
-        servers = GameServerManager.get_instance().all()
 
-        await self.conn.on_send(ServerSortedListResp.success(servers))
+        await self.conn.on_send(ServerSortedListResp.success(self.server.all()))
 
     def log_command(self, conn):
         cmd = ClientPacket.CLI_SORTED_SERVER_LIST.value
@@ -31,7 +36,7 @@ class ServerSortedListResp(BasePackageSend):
         self.buf = buf 
 
     @classmethod
-    def success(cls, servers: list[GameServer]):
+    def success(cls, servers: list['GameServer']):
         buf = BinaryWriter()
         buf.write_uint16(ServerPacket.SRV_SERVER_LIST)
         buf.write_uint8(0) # Desconhecido

@@ -1,17 +1,21 @@
+from __future__ import annotations
 import socket
 import asyncio
+from typing import TYPE_CHECKING
 from asyncio import Task, CancelledError, StreamReader, StreamWriter
+from dependency_injector.providers import Configuration
 from gunbound.broker.client import ClientConnection
-from gunbound.repository import ServerRepository
+if TYPE_CHECKING:
+    from gunbound.repository import ServerRepository
 
 class BrokerServer:
-    def __init__(self, config):
+    def __init__(self, config: Configuration, server_repository: 'ServerRepository'):
         self.id = id(self) & 0xFFFFFFFF
         self.config = config
         self.task: Task = None
         self.connections = []
         self.servers = []
-        self.server_repository: ServerRepository = ServerRepository()
+        self.server_repository = server_repository
 
     async def handler(self, reader: StreamReader, writer: StreamWriter):
         conn = ClientConnection(self, reader, writer)

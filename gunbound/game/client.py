@@ -7,13 +7,19 @@ from gunbound.base.protocol import BasePackageFactory, BasePackageSend
 from gunbound.base.managers import CryptoManager
 from gunbound.game.channel import Channel
 from gunbound.game.room import Room
-from gunbound.util import BinaryReader, GBWCGenerator, dump
+from gunbound.util import BinaryReader, GBWCGenerator
 if TYPE_CHECKING:
     from gunbound import GameServer
-    from gunbound.game.managers import ClientManager
+    from gunbound.repository import ServerRepository, UserRepository
+    from gunbound.game.managers import ClientManager, CryptoManager
 
 class ClientConnection:
-    def __init__(self, server: 'GameServer', manager: 'ClientManager', prng_seed: int, reader: StreamReader, writer: StreamWriter):
+    def __init__(
+        self,
+        prng_seed: int,
+        reader: StreamReader,
+        writer: StreamWriter,
+    ):
         """
         Representa uma conexão de cliente.
         Args:
@@ -23,10 +29,12 @@ class ClientConnection:
             reader (StreamReader): StreamReader para ler dados do cliente.
             writer (StreamWriter): StreamWriter para enviar dados ao cliente.
         """
-        from gunbound.repository import ServerRepository, UserRepository
         self.id = id(self) & 0xFFFFFFFF
-        self.server: 'GameServer' = server
-        self.manager: 'ClientManager' = manager
+        self.server: 'GameServer' = None
+        self.client_manager: 'ClientManager' = None
+        self.crypto_manager: 'CryptoManager' = None
+        self.user_repository: 'UserRepository' = None
+        self.server_repository: 'ServerRepository' = None
         self.reader: StreamReader = reader
         self.writer: StreamWriter = writer
         self.client_seq: int = 0 # Não sei se é compartilhado com outras conexões
@@ -35,13 +43,10 @@ class ClientConnection:
         self.closing: bool = False
         self.prng: GBWCGenerator = GBWCGenerator(prng_seed)
         self.data: Dict[str, Any] = {}
-        self.user_repository: UserRepository = UserRepository()
-        self.server_repository: ServerRepository = ServerRepository()
         self.last_activity: float = time.time() - 301 # o 301 é pra forçar o envio do token
         self.is_authenticated: bool = False
         self.channel: Channel | None = None
         self.room: Room | None = None
-        self.crypto: CryptoManager = CryptoManager.get_instance()
 
         ip, port = writer.get_extra_info('peername')
         self.addr: str = f"{ip}:{port}"
@@ -50,7 +55,7 @@ class ClientConnection:
 
     def set_token(self, token: int) -> None:
         self.data['token'] = token
-        self.data['derived_key'] = self.crypto.derive_key(
+        self.data['derived_key'] = self.crypto_manager.derive_key(
             self.data['profile']['Id'],
             self.data['profile']['Password'],
             token.to_bytes(4, 'little', signed=False)
@@ -60,10 +65,10 @@ class ClientConnection:
         return self.data['derived_key'] if 'derived_key' in self.data else None
     
     def decrypt(self, data: bytes) -> bytes:
-        return self.crypto.decrypt(data, self.get_derived_key())
+        return self.crypto_manager.decrypt(data, self.get_derived_key())
     
     def encrypt(self, data: bytes) -> bytes:
-        return self.crypto.encrypt(data, self.get_derived_key())
+        return self.crypto_manager.encrypt(data, self.get_derived_key())
 
     def is_closed(self):
         return self.writer.is_closing()
@@ -122,7 +127,7 @@ class ClientConnection:
         except CancelledError:
             pass
         finally:
-            await self.manager.remove(self)
+            await self.client_manager.remove(self)
 
         print(f"[{self.addr}] ClientConnection({self.server.id:08X}:{self.id:08X}) closed")
     

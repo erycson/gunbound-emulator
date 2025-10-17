@@ -1,9 +1,9 @@
-from gunbound.base.managers import DatabaseManager
+from databases import Database
 from typing import Dict, Any, List
 
 class RecordsRepository:
-    def __init__(self):
-        self.db = DatabaseManager.get_instance()
+    def __init__(self, db: Database):
+        self.db = db
 
     async def get_stage(self, user_id: str) -> List[Dict[str, Any]]:
         """Fetch stage win/lose records."""

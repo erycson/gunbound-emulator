@@ -1,34 +1,21 @@
+from __future__ import annotations
 import time
 import socket
 import asyncio
+from typing import TYPE_CHECKING
 from asyncio import Task, CancelledError
+from dependency_injector.providers import Configuration
 from gunbound.broker.gameserver import GameServer
-from gunbound.base.managers import ConfigManager
-from gunbound.repository import ServerRepository
+if TYPE_CHECKING:
+    from gunbound.repository import ServerRepository
 
-class GameServerManager:
-    _instance = None
-    
-    def __init__(self, configs=[]):
-        self.servers = [GameServer(index, config) for index, config in enumerate(configs)] if configs else []
-        self.config = ConfigManager.get_instance()
+class MonitorManager:
+    def __init__(self, config: Configuration, server_repository: 'ServerRepository'):
+        self.config = config
+        self.server_repository = server_repository
+        self.servers = [GameServer(index, gameserver) for index, gameserver in enumerate(config['gameservers'])] if config['gameservers'] else []
         self.task: Task = None
-        self.server_repository: ServerRepository = ServerRepository()
 
-    @classmethod
-    def initialize(cls, configs):
-        if cls._instance is not None:
-            raise RuntimeError("GameServerManager já inicializado!")
-
-        cls._instance = cls(configs)
-        return cls._instance
-
-    @classmethod
-    def get_instance(cls):
-        if cls._instance is None:
-            raise RuntimeError("GameServerManager não inicializado!")
-        return cls._instance
-    
     def find(self, index) -> GameServer | None:
         for server in self.servers:
             if server.index == index:

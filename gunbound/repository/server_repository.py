@@ -1,10 +1,10 @@
 import socket
-from gunbound.base.managers import DatabaseManager
+from databases import Database
 from asyncmy.errors import OperationalError
 
-class ServerRepository:
-    def __init__(self):
-        self.db = DatabaseManager.get_instance()
+class ServerRepository():
+    def __init__(self, db: Database):
+        self.db = db
 
     async def is_ip_blocked(self, client_ip: int | str) -> bool:
         """Verifica se o IP do cliente está bloqueado. Retorna True se bloqueado, False caso contrário."""

@@ -1,39 +1,37 @@
+from __future__ import annotations
 import time
 import socket
 import asyncio
+from typing import TYPE_CHECKING
 from asyncio import CancelledError, Task
-from gunbound.game.managers import ClientManager
-from gunbound.game.protocol import Feature
+from gunbound.base.enums import Feature
 from gunbound.game_server import GameServer
-from gunbound.util import dump, BinaryReader, BinaryWriter, UDPFutureProtocol
+from gunbound.util import BinaryReader, BinaryWriter, UDPFutureProtocol
+from dependency_injector.providers import Configuration
+
+if TYPE_CHECKING:
+    from gunbound.game.managers import ClientManager, RoomManager
+    from gunbound.game_server import GameServer
+    from gunbound.repository import ServerRepository
 
 class MonitorManager:
-    _instance = None
-    
-    def __init__(self, game: GameServer, config):
-        from gunbound.repository import ServerRepository
-        self.game = game
+    def __init__(
+        self,
+        server: 'GameServer',
+        config: Configuration,
+        client_manager: 'ClientManager',
+        room_manager: 'RoomManager',
+        server_repository: 'ServerRepository'
+    ):
+        self.server = server
         self.config = config
+        self.client_manager = client_manager
+        self.room_manager = room_manager
+        self.server_repository = server_repository
         self.task_broker: Task = None
         self.task_user_count: Task = None
         self.transport = None
-        self.manager = ClientManager.get_instance()
-        self.server_repository: ServerRepository = ServerRepository()
 
-    @classmethod
-    def initialize(cls, game: GameServer, config):
-        if cls._instance is not None:
-            raise RuntimeError("GameServerManager já inicializado!")
-
-        cls._instance = cls(game, config)
-        return cls._instance
-
-    @classmethod
-    def get_instance(cls):
-        if cls._instance is None:
-            raise RuntimeError("MonitorManager não inicializado!")
-        return cls._instance
-    
     async def start(self):
         self.task_broker = asyncio.create_task(self.udp_listener())
         self.task_user_count = asyncio.create_task(self.user_count_monitor())
@@ -80,7 +78,7 @@ class MonitorManager:
                 self.config['broker']['version'],
                 int.from_bytes(socket.inet_aton(self.config['broker']['host']), 'little'),
                 self.config['broker']['port'],
-                self.manager.size()
+                self.client_manager.size()
             )
 
             elapsed_time = time.time() - start_time
@@ -101,27 +99,22 @@ class MonitorManager:
         return self.task_broker and not self.task.done()
 
     async def udp_get_state(self, transport: asyncio.DatagramTransport, addr, reader: BinaryReader):
-        from gunbound.game.managers import RoomManager
-
         index = reader.read_uint32()
-        if index != self.game.index:
+        if index != self.server.index:
             return
-
-        client_manager = ClientManager.get_instance()   
-        room_manager = RoomManager.get_instance()
 
         writer = BinaryWriter()
         writer.write_uint16(23)                         # Size
         writer.write_uint16(0xF001)                     # Command
-        writer.write_uint32(self.game.index)            # ServerIndex
-        writer.write_uint16(room_manager.size())        # Rooms
-        writer.write_uint16(client_manager.size())      # UsersOnline
+        writer.write_uint32(self.server.index)          # ServerIndex
+        writer.write_uint16(self.room_manager.size())   # Rooms
+        writer.write_uint16(self.client_manager.size()) # UsersOnline
         writer.write_uint16(self.config['users_max'])   # UsersMax
         writer.write_int16(self.config['grade_max'])    # LevelMin (pode ser q seja só 1 byte)
         writer.write_uint16(0)                          # Desconhecido
         writer.write_int16(self.config['grade_min'])    # LevelMax (pode ser q seja só 1 byte)
         writer.write_uint16(0)                          # Desconhecido
-        writer.write_uint8(1 if self.game.features & Feature.AVATAR_ENABLED else 0) # Avatar Enabled
+        writer.write_uint8(1 if self.server.features & Feature.AVATAR_ENABLED else 0) # Avatar Enabled
 
         transport.sendto(writer.getvalue(), addr)
 
@@ -133,8 +126,8 @@ class MonitorManager:
         sequence = reader.read_uint32()
 
         # Verifica se o valor bate com o atual
-        async with self.manager.lock:
-            if sequence != self.manager.rand.current_value:
+        async with self.client_manager.lock:
+            if sequence != self.client_manager.rand.current_value:
                 return
         
         # Uso o BinaryWriter apenas para padronizar o tratamento de dados

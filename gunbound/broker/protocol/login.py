@@ -1,29 +1,19 @@
-from gunbound.broker.protocol.enums import ClientPacket, ServerPacket, ServerCode
+from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
-from gunbound.base.managers import ConfigManager
+from gunbound.broker.protocol.enums import ClientPacket, ServerPacket, ServerCode
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
-from gunbound.util.class_loader import instantiate_by_fullname
 
+@inject
 @BasePackageFactory.register(ClientPacket.CLI_LOGIN.value)
 class LoginRecv(BasePackageRecv):
-    _strategy = None
-
-    def __init__(self, conn, buf: BinaryReader):
+    def __init__(self, conn, buf: BinaryReader, login_strategy = Provide['login_strategy']):
         self.conn = conn
         self.buf = buf
-        self.strategy = self.get_strategy()
-
-    @classmethod
-    def get_strategy(cls):
-        if cls._strategy is None:
-            config = ConfigManager.get_instance()
-            strategy_class = config['broker']['strategies']['login']
-            cls._strategy = instantiate_by_fullname(strategy_class)
-        return cls._strategy
+        self.login_strategy = login_strategy
 
     async def process(self):
         # Delegar para a estratégia selecionada
-        await self.strategy.process(self.conn, self.buf)
+        await self.login_strategy.process(self.conn, self.buf)
 
     def log_command(self, conn):
         cmd = ClientPacket.CLI_LOGIN.value

@@ -1,19 +1,26 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
+from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
+from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 if TYPE_CHECKING:
+    from gunbound.repository import InventoryRepository
     from gunbound.game.client import ClientConnection
 
+@inject
 @BasePackageFactory.register(ClientPacket.CLI_GOLD.value)
 class GoldRecv(BasePackageRecv):
 
-    def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
-        from gunbound.repository import InventoryRepository
+    def __init__(
+        self,
+        conn: 'ClientConnection',
+        buf: BinaryReader,
+        inventory_repository: 'InventoryRepository' = Provide['Container.inventory_repository']
+    ):
         self.buf = buf
         self.conn = conn
-        self.inventory_repository: InventoryRepository = InventoryRepository()
+        self.inventory_repository = inventory_repository
 
     async def process(self):
         money = await self.inventory_repository.get_money(self.conn.data['profile']['Id'])

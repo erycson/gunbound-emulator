@@ -1,20 +1,27 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from gunbound.game.protocol import ClientPacket, ServerPacket
+from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
-from gunbound.repository import UserRepository
+from gunbound.game.protocol import ClientPacket, ServerPacket
 if TYPE_CHECKING:
+    from gunbound.repository import UserRepository
     from gunbound.game.client import ClientConnection
 
+@inject
 @BasePackageFactory.register(ClientPacket.CLI_USER_ID.value)
 class UserIdRecv(BasePackageRecv):
     _strategy = None
 
-    def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
+    def __init__(
+        self,
+        conn: 'ClientConnection',
+        buf: BinaryReader,
+        user_repository: 'UserRepository' = Provide['Container.user_repository'],
+    ):
         self.conn = conn
         self.buf = buf
-        self.user_repository: UserRepository = UserRepository()
+        self.user_repository = user_repository
 
     async def process(self):
         # 0x0100 = ???? Quando envia presente o valor 1, eu chutaria q é a busca exata, pois a consulta se torna IN (nickname)

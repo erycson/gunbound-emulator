@@ -36,6 +36,7 @@ class GameServer:
         self.last_check = time.time()
 
         try:
+            print(f"[GameServer] Verificando status do servidor {self.name} ({self.host}:{self.port})")
             async with asyncio.timeout(timeout):
                 transport, protocol = await asyncio.get_event_loop().create_datagram_endpoint(
                     lambda: UDPFutureProtocol(),
@@ -78,7 +79,8 @@ class GameServer:
             self.is_online = True
 
             return self.users_online
-        except Exception:
+        except Exception as e:
+            print(f"[GameServer] Erro ao verificar status do servidor {self.name} ({self.host}:{self.port})")
             self.clear_status()
             return 0
         finally:

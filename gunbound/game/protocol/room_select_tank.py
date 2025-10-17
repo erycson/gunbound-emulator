@@ -1,20 +1,28 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from gunbound.game.protocol import ClientPacket, ServerPacket, ServerCode, Tank
+from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
+from gunbound.base.enums import Tank
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
-from gunbound.repository import UserRepository
+from gunbound.game.protocol import ClientPacket, ServerPacket, ServerCode
 if TYPE_CHECKING:
+    from gunbound.repository import UserRepository
     from gunbound.game.client import ClientConnection
 
+@inject
 @BasePackageFactory.register(ClientPacket.CLI_ROOM_SELECT_TANK.value)
 class RoomSelectTankRecv(BasePackageRecv):
     _strategy = None
 
-    def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
+    def __init__(
+        self,
+        conn: 'ClientConnection',
+        buf: BinaryReader,
+        user_repository: 'UserRepository' = Provide['Container.user_repository'],
+    ):
         self.conn = conn
         self.buf = buf
-        self.user_repository: UserRepository = UserRepository()
+        self.user_repository = user_repository
 
     async def process(self):
         """

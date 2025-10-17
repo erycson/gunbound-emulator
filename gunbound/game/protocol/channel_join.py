@@ -1,23 +1,26 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from gunbound.game.channel import Channel
-from gunbound.game.managers import ChannelManager
-from gunbound.game.protocol import ClientPacket, ServerPacket, ServerCode
+from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
-import traceback
+from gunbound.game.protocol import ClientPacket, ServerPacket, ServerCode
 if TYPE_CHECKING:
+    from gunbound.game.channel import Channel
+    from gunbound.game.managers import ChannelManager
     from gunbound.game.client import ClientConnection
 
-
+@inject
 @BasePackageFactory.register(ClientPacket.CLI_CHANNEL_JOIN.value)
 class ChannelJoinRecv(BasePackageRecv):
-    _strategy = None
-
-    def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
+    def __init__(
+        self,
+        conn: 'ClientConnection',
+        buf: BinaryReader,
+        channel_manager: 'ChannelManager' = Provide['Container.channels'],
+    ):
         self.conn = conn
         self.buf = buf
-        self.manager: ChannelManager = ChannelManager.get_instance()
+        self.channel_manager = channel_manager
 
     async def process(self):
         """
@@ -29,7 +32,7 @@ class ChannelJoinRecv(BasePackageRecv):
 
         old_channel = self.conn.channel
 
-        new_channel = self.manager.get(channel_id) if channel_id != -1 else self.manager.get_least_populated()
+        new_channel = self.channel_manager.get(channel_id) if channel_id != -1 else self.channel_manager.get_least_populated()
         channel_changed = await new_channel.add(self.conn)
         if channel_changed:
             # Envia o cliente para o novo canal

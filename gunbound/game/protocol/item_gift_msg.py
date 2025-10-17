@@ -1,19 +1,26 @@
 from __future__ import annotations
 import datetime
 from typing import TYPE_CHECKING
-from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
+from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
-from gunbound.repository import UserRepository
+from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 if TYPE_CHECKING:
+    from gunbound.repository import UserRepository
     from gunbound.game.client import ClientConnection
 
+@inject
 @BasePackageFactory.register(ClientPacket.CLI_ITEM_GIFT_MSG.value)
 class ItemGiftMsgRecv(BasePackageRecv):
-    def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
+    def __init__(
+        self,
+        conn: 'ClientConnection',
+        buf: BinaryReader,
+        user_repository: 'UserRepository' = Provide['Container.user_repository'],
+    ):
         self.buf = buf
         self.conn = conn
-        self.user_repository: UserRepository = UserRepository()
+        self.user_repository = user_repository
 
     async def process(self):
         gift_msgs = await self.user_repository.get_gift_msgs(self.conn.data['profile']['Id'])

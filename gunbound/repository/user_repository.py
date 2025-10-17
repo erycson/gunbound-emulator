@@ -1,20 +1,9 @@
 from typing import List, Dict, Any, Optional
-from gunbound.base.managers import DatabaseManager
+from databases import Database
 
 class UserRepository:
-    """
-    Repositório para operações de banco de dados relacionadas ao usuário.
-
-    Esta classe lida com a busca e manipulação de dados do usuário, incluindo perfil,
-    estatísticas do jogo, registros, inventário e verificações de segurança. Ela orquestra
-    múltiplos sub-repositórios para domínios específicos.
-
-    Attributes:
-        db: Instância de conexão com o banco de dados.
-    """
-
-    def __init__(self):
-        self.db = DatabaseManager.get_instance()
+    def __init__(self, db: Database):
+        self.db = db
 
     async def logout(self, user_id: str, context: int) -> bool:
         """

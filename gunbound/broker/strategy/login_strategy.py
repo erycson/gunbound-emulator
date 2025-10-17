@@ -1,20 +1,23 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
+from databases import Database
+from dependency_injector.wiring import Provide, inject
 from gunbound.broker.protocol.login import LoginResp
-from gunbound.base.managers import DatabaseManager, CryptoManager
 from gunbound.util.binary_buffer import BinaryReader
 if TYPE_CHECKING:
+    from gunbound.base.managers import CryptoManager
     from gunbound.game.client import ClientConnection
 
-class LoginStrategy:
-    def process(self, conn: 'ClientConnection', buf: BinaryReader):
-        raise NotImplementedError
+class GBWC_v440_LoginStrategy:
+    """Implementação para o cliente GBS WC v440"""
 
-"""Implementação para o cliente GBS WC v440"""
-class GBWC_v440_LoginStrategy(LoginStrategy):
-    def __init__(self):
-        self.db: DatabaseManager = DatabaseManager.get_instance()
-        self.crypto: CryptoManager = CryptoManager.get_instance()
+    def __init__(
+        self,
+        db: Database,
+        crypto: 'CryptoManager'
+    ):
+        self.db = db
+        self.crypto = crypto
 
     async def process(self, conn: 'ClientConnection', buf: BinaryReader):
         self.buf = buf

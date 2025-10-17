@@ -1,22 +1,33 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from gunbound.base.managers import ConfigManager, DatabaseManager
+from databases import Database
+from dependency_injector.wiring import Provide, inject
+from dependency_injector.providers import Configuration
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
-from gunbound.game.protocol.enums import ClientPacket, ExpireType, ServerPacket, AcquisitionType, ServerCode, ReceiptBuyType
+from gunbound.base.enums import AcquisitionType, ReceiptBuyType, ExpireType
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
-from gunbound.repository import InventoryRepository
+from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 if TYPE_CHECKING:
+    from gunbound.repository import InventoryRepository
     from gunbound.game.client import ClientConnection
 
+@inject
 @BasePackageFactory.register(ClientPacket.CLI_ITEM_BUY.value)
 class ItemBuyRecv(BasePackageRecv):
 
-    def __init__(self, conn: 'ClientConnection', buf: BinaryReader):
+    def __init__(
+        self,
+        conn: 'ClientConnection',
+        buf: BinaryReader,
+        db: Database = Provide['Container.database'],
+        config: Configuration = Provide['Container.config'],
+        inventory_repository: 'InventoryRepository' = Provide['Container.inventory_repository']
+    ):
         self.buf = buf
         self.conn = conn
-        self.db: DatabaseManager = DatabaseManager.get_instance()
-        self.config: ConfigManager = ConfigManager.get_instance()
-        self.inventory_repository: InventoryRepository = InventoryRepository()
+        self.db = db
+        self.config = config
+        self.inventory_repository = inventory_repository
 
     async def process(self):
         """

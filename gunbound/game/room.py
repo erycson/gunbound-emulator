@@ -1,43 +1,28 @@
+from __future__ import annotations
 import asyncio
-from gunbound.game.channel import Channel
-from gunbound.game.protocol import RoomStatus, RoomSize, RoomMap, RoomMode
+from typing import TYPE_CHECKING
+from gunbound.base.enums import RoomStatus, RoomOptions
 from gunbound.util import synchronized
 
-class RoomOptions:
-    def __init__(self, name: str, map: RoomMap, mode: RoomMode, size: RoomSize, password: str | None):
-        self.name = name
-        self.map = map
-        self.mode = mode
-        self.size = size
-        self.password = password
-        self.max_players: RoomSize = size
-
-    def max_players(self) -> int:
-        match self.size:
-            case RoomSize.X1: return 2
-            case RoomSize.X2: return 4
-            case RoomSize.X3: return 6
-            case RoomSize.X4: return 8
-
-    def is_protected(self) -> bool:
-        return self.password is not None
+if TYPE_CHECKING:
+    from gunbound.game.client import ClientConnection
+    from gunbound.game.managers import RoomManager
 
 class Room:
-    def __init__(self, manager, channel: Channel, id: int, owner, options: RoomOptions):
+    def __init__(self, room_manager: 'RoomManager', id: int, owner: 'ClientConnection', options: RoomOptions):
         self.id = id
-        self.manager = manager
-        self.channel = channel
+        self.room_manager = room_manager
         self.owner = owner
         self.options: RoomOptions = options
         self.status: RoomStatus = RoomStatus.WAITING
-        self.players: dict[int, any] = {0: owner} | {i: None for i in range(1, options.max_players() - 1)}
+        self.players: dict[int, 'ClientConnection'] = {0: owner} | {i: None for i in range(1, options.max_players() - 1)}
         self.lock = asyncio.Lock()
     
     def player_count(self) -> int:
         return sum(1 for player in self.players.values() if player is not None)
     
     @synchronized()
-    async def join(self, conn, position: int) -> bool:
+    async def join(self, conn: 'ClientConnection', position: int) -> bool:
         if self.status != RoomStatus.WAITING:
             return False
         if self.players[position] is not None:
@@ -54,7 +39,7 @@ class Room:
         return True
     
     @synchronized()
-    async def kick_player(self, conn):
+    async def kick_player(self, conn: 'ClientConnection'):
         position = next((pos for pos, client in self.players.items() if client == conn), None)
         if position is not None:
             await self._remove_player(position)
@@ -76,7 +61,7 @@ class Room:
         if self.owner == player:
             self.owner = next((p for p in self.players.values() if p is not None and p != player), None)
             if self.owner is None:
-                await self.channel.destroy(self)
+                await self.room_manager.destroy(self)
 
     async def _destroy(self):
         if self.status == RoomStatus.DESTROYING:

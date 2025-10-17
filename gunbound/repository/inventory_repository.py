@@ -1,10 +1,10 @@
-from gunbound.base.managers import DatabaseManager
 from typing import Dict, Any, List
-from gunbound.game.protocol.enums import ReceiptGiftResult, AcquisitionType, ReceiptBuyType, GiftMsgType, ExpireType
+from databases import Database
+from gunbound.base.enums import ReceiptGiftResult, AcquisitionType, ReceiptBuyType, GiftMsgType, ExpireType
 
 class InventoryRepository:
-    def __init__(self):
-        self.db = DatabaseManager.get_instance()
+    def __init__(self, db: Database):
+        self.db = db
 
     async def get_menu(self, menu_id: int, acquisition: AcquisitionType, expire_type: ExpireType) -> Dict[str, Any] | None:
         """

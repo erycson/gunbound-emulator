@@ -2,8 +2,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from typing_extensions import override
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
+from gunbound.util import BinaryWriter, BinaryReader
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket
-from gunbound.util import BinaryWriter, BinaryReader, dump
 if TYPE_CHECKING:
     from gunbound.game.client import ClientConnection
 

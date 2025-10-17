@@ -1,37 +1,28 @@
+from __future__ import annotations
 import asyncio
-from gunbound.game.client import ClientConnection
-from gunbound.game.protocol import RoomSortList
-from gunbound.game.protocol import RoomMode, RoomStatus
-from gunbound.game.room import Room, RoomOptions
+from typing import TYPE_CHECKING
+from dependency_injector.providers import Configuration, Factory
+from gunbound.base.enums import RoomSortList, RoomMode, RoomStatus
+from gunbound.game.room import RoomOptions
 from gunbound.util import synchronized
 
-class RoomManager:
-    _instance = None
+if TYPE_CHECKING:
+    from gunbound.game.room import Room
+    from gunbound.game.client import ClientConnection
+    from gunbound.game_server import GameServer
 
+class RoomManager:
     """
     @todo Verificar limites de usuários por canal.
     @todo Verificar limites de salas por canal.
     """
-    def __init__(self, game, config):
-        self.game = game
+    def __init__(self, server: 'GameServer', config: Configuration, room_factory: Factory['Room']):
+        self.server = server
         self.config = config
+        self.room_factory = room_factory
         self.clients: dict[int, ClientConnection] = {}
         self.rooms: dict[int, Room] = {}
         self.lock = asyncio.Lock()
-    
-    @classmethod
-    def initialize(cls, game, config):
-        if cls._instance is not None:
-            raise RuntimeError("RoomManager já inicializado!")
-
-        cls._instance = cls(game, config)
-        return cls._instance
-
-    @classmethod
-    def get_instance(cls):
-        if cls._instance is None:
-            raise RuntimeError("RoomManager não inicializado!")
-        return cls._instance
     
     def size(self) -> int:
         return len(self.rooms)
@@ -43,7 +34,7 @@ class RoomManager:
         return id
     
     @synchronized()
-    async def add(self, client: ClientConnection) -> bool:
+    async def add(self, client: 'ClientConnection') -> bool:
         if client.id in self.clients:
             # Usuário está tentando entrar no mesmo canal novamente
             return False
@@ -67,7 +58,7 @@ class RoomManager:
     @synchronized()
     async def create(self, owner: ClientConnection, options: RoomOptions) -> Room:
         id = self.generate_id()
-        self.rooms[id] = Room(self.manager, self, id, owner, options)
+        self.rooms[id] = self.room_factory(self.manager, self, id, owner, options)
         return self.rooms[id]
     
     @synchronized()
