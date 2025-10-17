@@ -3,7 +3,7 @@ import abc
 from typing import TYPE_CHECKING
 from databases import Database
 from gunbound.broker.protocol.login import LoginResp
-from gunbound.util.binary_buffer import BinaryReader
+from gunbound.util import BinaryReader
 if TYPE_CHECKING:
     from gunbound.base.managers import CryptoManager
     from gunbound.broker.client import ClientConnection
@@ -38,8 +38,6 @@ class GBWC_v440_LoginStrategy(LoginStrategy):
 
         username = self.c_str(username_bytes)
         session_id = int.from_bytes(session_bytes, "little", signed=True)
-        print('[GBWC_v440_LoginStrategy] Username:', username)
-        print('[GBWC_v440_LoginStrategy] Session ID:', session_id)
 
         user = await self.find_user(username)
         if not user:
@@ -48,12 +46,10 @@ class GBWC_v440_LoginStrategy(LoginStrategy):
             return
 
         key_derived = self.crypto.derive_key(username, user.Password, session_bytes)
-        print('[GBWC_v440_LoginStrategy] Derived Key:', key_derived)
         password = self.c_str(self.crypto.decrypt_custom(block_b, key_derived))
-        print('[GBWC_v440_LoginStrategy] Password:', password)
 
         if user.Password != password:
-            print(f"[LoginStrategy] Senha incorreta para o usuário: {username}, senha recebida: {password}, esperada: {user.Password}")
+            print(f"[LoginStrategy] Senha incorreta para o usuário: '{username}', senha recebida: '{password}', esperada: '{user.Password}'")
             await conn.on_send(LoginResp.wrong_credentials())
             return
         
