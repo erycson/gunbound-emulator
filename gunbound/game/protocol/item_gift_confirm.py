@@ -3,12 +3,12 @@ from typing import TYPE_CHECKING
 from databases import Database
 from dependency_injector.wiring import Provide, inject
 from dependency_injector.providers import Configuration
-from gunbound.base.managers import CryptoManager
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.base.enums import AcquisitionType, ExpireType, GiftMsgType, ReceiptGiftResult
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 if TYPE_CHECKING:
+    from gunbound.base.managers import CryptoManager
     from gunbound.repository import InventoryRepository
     from gunbound.game.client import ClientConnection
 
@@ -22,18 +22,18 @@ class ItemGiftConfirmRecv(BasePackageRecv):
         buf: BinaryReader,
         db: Database = Provide['database'],
         config: Configuration = Provide['config'],
-        crypto: CryptoManager = Provide['crypto'],
+        crypto_manager: 'CryptoManager' = Provide['crypto'],
         inventory_repository: 'InventoryRepository' = Provide['inventory_repository'],
     ):
         self.buf = buf
         self.conn = conn
         self.db = db
         self.config = config
-        self.crypto = crypto
+        self.crypto_manager = crypto_manager
         self.inventory_repository = inventory_repository
 
     async def process(self):
-        data = self.crypto.decrypt(self.buf.read_bytes(16))
+        data = self.crypto_manager.decrypt(self.buf.read_bytes(16))
         self.buf = BinaryReader(data)
 
         command = (self.buf.read_int32() - 0x8631607E) & 0xFFFFFFFF

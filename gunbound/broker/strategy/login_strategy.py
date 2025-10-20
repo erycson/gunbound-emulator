@@ -12,10 +12,10 @@ class LoginStrategy(abc.ABC):
     def __init__(
         self,
         db: Database,
-        crypto: 'CryptoManager'
+        crypto_manager: 'CryptoManager'
     ):
         self.db = db
-        self.crypto = crypto
+        self.crypto_manager = crypto_manager
 
     @abc.abstractmethod
     async def process(self, conn: 'ClientConnection', buf: BinaryReader):
@@ -33,8 +33,8 @@ class GBWC_v440_LoginStrategy(LoginStrategy):
             print(f"[LoginStrategy] Blocos de dados inválidos. A {len(block_a)}, B {len(block_b)}")
             return
 
-        username_bytes = self.crypto.decrypt(block_a[:16])
-        session_bytes = self.crypto.decrypt(block_a[16:])[:4]
+        username_bytes = self.crypto_manager.decrypt(block_a[:16])
+        session_bytes = self.crypto_manager.decrypt(block_a[16:])[:4]
 
         username = self.c_str(username_bytes)
         session_id = int.from_bytes(session_bytes, "little", signed=True)
@@ -45,8 +45,8 @@ class GBWC_v440_LoginStrategy(LoginStrategy):
             await conn.on_send(LoginResp.wrong_credentials())
             return
 
-        key_derived = self.crypto.derive_key(username, user.Password, session_bytes)
-        password = self.c_str(self.crypto.decrypt_custom(block_b, key_derived))
+        key_derived = self.crypto_manager.derive_key(username, user.Password, session_bytes)
+        password = self.c_str(self.crypto_manager.decrypt_custom(block_b, key_derived))
 
         if user.Password != password:
             print(f"[LoginStrategy] Senha incorreta para o usuário: '{username}', senha recebida: '{password}', esperada: '{user.Password}'")

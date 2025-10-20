@@ -18,7 +18,7 @@ class Container(containers.DeclarativeContainer):
     login_strategy = providers.Singleton(
         config.broker.strategies.login(),
         db=database,
-        crypto=crypto
+        crypto_manager=crypto
     )
 
     broker = providers.Singleton(BrokerServer, config=config.broker, server_repository=server_repository)

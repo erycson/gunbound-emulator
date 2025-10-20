@@ -4,7 +4,6 @@ import asyncio
 import time
 from typing import TYPE_CHECKING, Dict, Any, List
 from dependency_injector.wiring import Provide, inject
-from gunbound.base.managers import CryptoManager
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util import BinaryWriter, BinaryReader
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket
@@ -21,28 +20,27 @@ class LoginRecv(BasePackageRecv):
         self,
         conn: 'ClientConnection',
         buf: BinaryReader,
-        crypto: CryptoManager = Provide['crypto'],
         user_repository: 'UserRepository' = Provide['user_repository'],
         server_repository: 'ServerRepository' = Provide['server_repository'],
         records_repository: 'RecordsRepository' = Provide['records_repository'],
     ):
         self.conn = conn
         self.buf = buf
-        self.crypto = crypto
+        self.crypto_manager = conn.crypto_manager
         self.user_repository = user_repository
         self.server_repository = server_repository
         self.records_repository = records_repository
 
     async def process(self):
-        username = self.crypto.decrypt(self.buf.read_bytes(16)).decode('latin-1').rstrip('\x00')
-        signature = self.crypto.decrypt(self.buf.read_bytes(16))
+        username = self.crypto_manager.decrypt(self.buf.read_bytes(16)).decode('latin-1').rstrip('\x00')
+        signature = self.crypto_manager.decrypt(self.buf.read_bytes(16))
 
         session_bytes = signature[0:4]
         session_id = int.from_bytes(session_bytes, 'little')
         
-        async with self.conn.manager.lock:
-            if (session_id != self.conn.manager.rand.current_value):
-                print(f"[LoginRecv] Signature inválida. Recebida {session_id:08X}, esperada {self.conn.manager.rand.current_value:08X}")
+        async with self.conn.client_manager.lock:
+            if (session_id != self.conn.client_manager.rand.current_value):
+                print(f"[LoginRecv] Signature inválida. Recebida {session_id:08X}, esperada {self.conn.client_manager.rand.current_value:08X}")
                 return
 
         client_ip, client_port = self.conn.writer.get_extra_info('peername')
@@ -56,11 +54,11 @@ class LoginRecv(BasePackageRecv):
             print(f"[LoginStrategy] Login bloqueado para IP do cliente: {is_ip_blocked} ->  {client_ip}")
             return
 
-        user_key = self.crypto.derive_key(username, profile['Password'], session_bytes)
+        user_key = self.crypto_manager.derive_key(username, profile['Password'], session_bytes)
 
         # Valida a senha
         # PREFIXO(4) + Senha(12)
-        block_1 = self.crypto.decrypt(self.buf.read_bytes(16), user_key)
+        block_1 = self.crypto_manager.decrypt(self.buf.read_bytes(16), user_key)
         password = block_1[4:12].decode('latin-1').rstrip('\x00')
         if profile["Password"] != password:
             print(f"[LoginStrategy] Senha incorreta para usuário {username}")
@@ -68,7 +66,7 @@ class LoginRecv(BasePackageRecv):
 
         # Valida a versão do cliente
         # PREFIXO(4) + Desconhecido(4) + Version(4)
-        block_2 = self.crypto.decrypt(self.buf.read_bytes(16), user_key)
+        block_2 = self.crypto_manager.decrypt(self.buf.read_bytes(16), user_key)
         is_invalid, client_version = self.is_invalid_version(block_2)
         if (is_invalid == False):
             await self.conn.on_send(LoginResp.wrong_version())
@@ -77,7 +75,7 @@ class LoginRecv(BasePackageRecv):
 
         # Lê os dados de conexão IP, Port e valida o ProductVersion do cliente
         # PREFIXO(4) + IP(4) + Port(2) + ProductVersion(4) + Desconhecido(2)
-        block_3 = self.crypto.decrypt(self.buf.read_bytes(16), user_key)
+        block_3 = self.crypto_manager.decrypt(self.buf.read_bytes(16), user_key)
         conn_reader = BinaryReader(block_3)
         conn_ip = conn_reader.read_uint32(4)
         conn_port = conn_reader.read_uint16(6)
@@ -100,9 +98,9 @@ class LoginRecv(BasePackageRecv):
             'profile': profile,
         }
 
-        self.conn.set_token(self.conn.manager.rand.current_value)
+        self.conn.set_token(self.conn.client_manager.rand.current_value)
 
-        await self.conn.on_send(LoginResp.success(self.crypto, self.conn))
+        await self.conn.on_send(LoginResp.success(self.conn))
         await self.conn.on_send(LoginResp.success_record(stage, mobile))
         self.conn.is_alive()
         self.conn.last_activity = time.time()
@@ -158,7 +156,8 @@ class LoginResp(BasePackageSend):
         self.buf = buf
 
     @classmethod
-    def success(cls, crypto: 'CryptoManager', conn: 'ClientConnection'):
+    def success(cls, conn: 'ClientConnection'):
+        crypto_manager = conn.crypto_manager
         buf = BinaryWriter()
         buf.write_uint16(ServerPacket.SRV_LOGIN)
         buf.write_uint16(0)
@@ -200,9 +199,9 @@ class LoginResp(BasePackageSend):
         server_buf.write_uint32(0) # Uso desconhecido
 
         # Criptografa os dados
-        server_salt = conn.manager.rand.current_value.to_bytes(4, byteorder='little')
-        server_derived_key = crypto.derive_key(conn.data['profile']['User'], conn.data['profile']['Password'], server_salt)
-        server_crypted = crypto.encrypt(server_buf.getvalue(), server_derived_key)
+        server_salt = conn.client_manager.rand.current_value.to_bytes(4, byteorder='little')
+        server_derived_key = crypto_manager.derive_key(conn.data['profile']['User'], conn.data['profile']['Password'], server_salt)
+        server_crypted = crypto_manager.encrypt(server_buf.getvalue(), server_derived_key)
         buf.write_bytes(server_crypted)
 
         return cls(buf)

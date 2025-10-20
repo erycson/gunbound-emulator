@@ -3,12 +3,12 @@ from typing import TYPE_CHECKING
 from databases import Database
 from dependency_injector.wiring import Provide, inject
 from dependency_injector.providers import Configuration
-from gunbound.base.managers import CryptoManager
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.base.enums import ReceiptGiftResult, AcquisitionType, ReceiptBuyType, MessageType, ExpireType
 from gunbound.util import BinaryReader, BinaryWriter
 from gunbound.game.protocol import ClientPacket, ServerPacket, ServerCode
 if TYPE_CHECKING:
+    from gunbound.base.managers import CryptoManager
     from gunbound.repository import UserRepository, InventoryRepository
     from gunbound.game.client import ClientConnection
 
@@ -22,7 +22,7 @@ class ItemGiftBuyRecv(BasePackageRecv):
         buf: BinaryReader,
         db: Database = Provide['database'],
         config: Configuration = Provide['config'],
-        crypto: CryptoManager = Provide['crypto'],
+        crypto_manager: 'CryptoManager' = Provide['crypto'],
         user_repository: 'UserRepository' = Provide['user_repository'],
         inventory_repository: 'InventoryRepository' = Provide['inventory_repository'],
     ):
@@ -30,12 +30,12 @@ class ItemGiftBuyRecv(BasePackageRecv):
         self.conn = conn
         self.db: Database = db
         self.config = config
-        self.crypto = crypto
+        self.crypto_manager = crypto_manager
         self.user_repository = user_repository
         self.inventory_repository = inventory_repository
 
     async def process(self):
-        data = self.crypto.decrypt(self.buf.read_bytes())
+        data = self.crypto_manager.decrypt(self.buf.read_bytes())
         data = data[:4] + b''.join([data[i+4:i+16] for i in range(0, len(data), 16)])
         self.buf = BinaryReader(data)
 

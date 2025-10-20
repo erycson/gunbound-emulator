@@ -5,6 +5,7 @@ import gunbound.game.protocol # Garante o registro automático dos protocolos
 
 async def main():
     container = Container()
+    container.wire(packages=["gunbound.game.protocol"])
     
     database = container.database()
     await database.connect()

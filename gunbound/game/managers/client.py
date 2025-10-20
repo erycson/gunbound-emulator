@@ -32,6 +32,8 @@ class ClientManager:
         client.task = asyncio.create_task(client.handler())
         self.clients[client.id] = client
 
+        print(f"[{client.addr}] ClientConnection({client.server.id:08X}:{client.id:08X})")
+
     @synchronized()
     async def remove(self, client: ClientConnection) -> bool:
         if client.id in self.clients:

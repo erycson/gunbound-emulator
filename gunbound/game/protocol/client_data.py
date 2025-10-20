@@ -23,7 +23,7 @@ class ClientDataRecv(BasePackageRecv):
     async def process(self):
         self.buf.read_uint8(0) # Desconhecido, sem sempre 0
         client_data = self.conn.data['game']['ClientData']
-        client_data = bytearray([ord(char) for char in client_data])
+        client_data = bytearray([ord(char) if isinstance(char, str) else char for char in client_data])
         client_data[8] = 0 & 0xFF # AS vezes tem um 0x24 e outras não
 
         await self.conn.on_send(ClientDataResp.success(client_data))

@@ -15,7 +15,7 @@ class GetSessionIdRecv(BasePackageRecv):
         self.buf = buf
 
     async def process(self):
-        await self.conn.on_send(GetSessionIdResp.success(self.conn.manager.rand.next()))
+        await self.conn.on_send(GetSessionIdResp.success(self.conn.client_manager.rand.next()))
 
     def log_command(self, conn):
         cmd = ClientPacket.CLI_GET_SESSION_ID.value

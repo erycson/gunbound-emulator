@@ -51,8 +51,6 @@ class ClientConnection:
         ip, port = writer.get_extra_info('peername')
         self.addr: str = f"{ip}:{port}"
 
-        print(f"[{self.addr}] ClientConnection({self.server.id:08X}:{self.id:08X})")
-
     def set_token(self, token: int) -> None:
         self.data['token'] = token
         self.data['derived_key'] = self.crypto_manager.derive_key(
