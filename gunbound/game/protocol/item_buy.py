@@ -34,15 +34,18 @@ class ItemBuyRecv(BasePackageRecv):
         @todo Falta implementar verificação de compra de item repetido (ex: comprar 2 vezes o mesmo item Cash eterno)
         @todo Falta implementar códigos de erros
         """
-        command = (self.buf.read_int32() - 0x8631607E) & 0xFFFFFFFF
+        data = self.conn.decrypt(self.buf.read_bytes())
+        buf = BinaryReader(data)
+
+        command = (buf.read_int32() - 0x8631607E) & 0xFFFFFFFF
         if command != ClientPacket.CLI_ITEM_BUY.value:
             return
 
         user_id = self.conn.data['profile']['Id']
-        menu_no = self.buf.read_uint32()
-        acquisition = AcquisitionType.try_parse_int(self.buf.read_uint8())
-        expire_type = ExpireType.try_parse_int(self.buf.read_uint8())
-        _ = self.buf.read_bytes(6) # Desconhecido, mas parece ser sempre os mesmos valores para a mesma compra
+        menu_no = buf.read_uint32()
+        acquisition = AcquisitionType.try_parse_int(buf.read_uint8())
+        expire_type = ExpireType.try_parse_int(buf.read_uint8())
+        _ = buf.read_bytes(6) # Desconhecido, mas parece ser sempre os mesmos valores para a mesma compra
 
         if acquisition is None or expire_type is None:
             return
@@ -90,14 +93,15 @@ class ItemBuyRecv(BasePackageRecv):
             await transaction.commit()
 
             await self.conn.on_send(ItemBuyResp.success(chest, acquisition, expire_type))
-        except:
+        except Exception as e:
             await transaction.rollback()
+            raise e
 
-    def calc_period(self, expire_type: str, menu: dict) -> int | None:
+    def calc_period(self, expire_type: str, period: int) -> int | None:
         if expire_type == "W":
-            return 7 * menu['Period1']
+            return 7 * period
         elif expire_type == "M":
-            return 30 * menu['Period1']
+            return 30 * period
         else: # I
             return None
 
@@ -139,7 +143,7 @@ class ItemBuyRecv(BasePackageRecv):
     def log_command(self, conn):
         cmd = ClientPacket.CLI_ITEM_BUY.value
         seq = conn.expected_client_checksum(self.buf.size())
-        print(f"RECV<< [SS={conn.server.id:08X} SQ={seq:04X} CD={cmd:04X}]")
+        print(f"RECV<< [SS={conn.server.id:08X} SQ={seq:04X} CD={cmd:04X}] {self.buf.to_hex(4)}")
 
 class ItemBuyResp(BasePackageSend):
     def __init__(self, buf: BinaryWriter):

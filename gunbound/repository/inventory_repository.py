@@ -148,7 +148,7 @@ class InventoryRepository:
         """
 
         if expire_type == ExpireType.Infinite:
-            result = await self.db.execute(
+            return await self.db.execute(
                 "INSERT INTO Chest SET Owner=:user_id, Item=:menu_id, Acquisition=:acquisition, ExpireType='I', Volume=:volume",
                 {
                     'user_id': user_id,
@@ -158,7 +158,7 @@ class InventoryRepository:
                 }
             )
         else:
-            result = await self.db.execute(
+            return await self.db.execute(
                 "INSERT INTO Chest SET Owner=:user_id, Item=:menu_id, Acquisition=:acquisition, ExpireType=:expire_type, Expire=NOW()+INTERVAL :period SECOND, Volume=:volume",
                 {
                     'user_id': user_id,
@@ -169,8 +169,6 @@ class InventoryRepository:
                     'volume': volume,
                 }
             )
-
-        return result.lastrowid
     
     async def insert_buy_info(self, product_version: str, menu_id: int,  price: int, asset: int, buy_type: AcquisitionType) -> None:
         """
@@ -183,7 +181,6 @@ class InventoryRepository:
             asset (int): Quantidade de dinhiero que o usuário tinha antes da compra
             buy_type (str): O tipo de compra (C = Cash, G = Gold).
         """
-        
         await self.db.execute(
             "INSERT INTO BuyInfo (SerialNo, MenuNo, Price, Asset, BuyType, Time) VALUES (:product_version, :menu_id, :price, :asset, :buy_type, NOW())",
             {
@@ -208,26 +205,24 @@ class InventoryRepository:
             expire_type (str): O tipo de expiração ("W" para semana, "M" para mês, "I" para eterno).
         """
         if acquisition == AcquisitionType.Cash: # Cash
-            await self.db.execute(
+            return await self.db.execute(
                 "INSERT INTO ReceiptBuy SET Id=:user_id, MenuId=:menu_id, GoldChecked=:price, Time=NOW(), BuyType=:buy_type, ExpireType=:expire_type",
                 {
                     'user_id': user_id,
                     'menu_id': menu_id,
                     'price': price,
                     'buy_type': buy_type.value,
-                    'acquisition': acquisition.value,
                     'expire_type': expire_type.value,
                 }
             )
         else: # Gold
-            await self.db.execute(
+            return await self.db.execute(
                 "INSERT INTO ReceiptBuy SET Id=:user_id, MenuId=:menu_id, GoldChecked=:price, Time=NOW(), BuyType=:buy_type, ExpireType=:expire_type",
                 {
                     'user_id': user_id,
                     'menu_id': menu_id,
                     'price': price,
                     'buy_type': buy_type.value,
-                    'acquisition': acquisition.value,
                     'expire_type': expire_type.value,
                 }
             )
@@ -267,7 +262,7 @@ class InventoryRepository:
             menu_id (int): ID do item comprado proveniente da tabela Menu
             acquisition (AcquisitionType): O tipo de aquisição.
         """
-        result = await self.db.execute(
+        return await self.db.execute(
             "INSERT INTO GiftItem SET Sender=:sender_id, MenuId=:menu_id, Acquisition=:acquisition, Receiver=:receiver_id",
             {
                 'sender_id': sender_id,
@@ -276,7 +271,6 @@ class InventoryRepository:
                 'acquisition': acquisition.value,
             }
         )
-        return result.lastrowid
     
     async def insert_giftmsg(self, sender_id: str, receiver_id: str, menu_id: int, giftitem_id: int, message_type: str, message: str | None, expire_type: ExpireType) -> int:
         """
@@ -290,8 +284,8 @@ class InventoryRepository:
             message (str): O conteúdo da mensagem.
             expire_type (str): O tipo de expiração ("W" para semana, "M" para mês, "I" para eterno).
         """
-        result = await self.db.execute(
-            "INSERT INTO giftmsg SET Receiver=:receiver_id, MenuId=:menu_id, GiftItemNo=:giftitem_id, Sender=:sender_id, ExpireType=:expire_type, SentTime=NOW(), Msg=:message, MsgType=:message_type",
+        return await self.db.execute(
+            "INSERT INTO GiftMsg SET Receiver=:receiver_id, MenuId=:menu_id, GiftItemNo=:giftitem_id, Sender=:sender_id, ExpireType=:expire_type, SentTime=NOW(), Msg=:message, MsgType=:message_type",
             {
                 'sender_id': sender_id,
                 'receiver_id': receiver_id,
@@ -302,7 +296,6 @@ class InventoryRepository:
                 'expire_type': expire_type.value,
             }
         )
-        return result.lastrowid
     
     async def insert_receiptgift(self, sender_id: str, receiver_id: str, menu_id: int, receiver_nickname: str, result: ReceiptGiftResult, expire_type: ExpireType) -> int:
         """
@@ -315,7 +308,7 @@ class InventoryRepository:
             result: (ReceiptGiftResult): Status do recibo do presente.
             expire_type (ExpireType): O tipo de expiração ("W" para semana, "M" para mês, "I" para eterno).
         """
-        result = await self.db.execute(
+        return await self.db.execute(
             "INSERT INTO ReceiptGift (Id, MenuId, Volume, Receiver, ReceiverNick, Time, Result, ExpireType) SELECT :sender_id, :menu_id, Volume1, :receiver_id, :receiver_nickname, NOW(), :result, :expire_type FROM menu WHERE No=:menu_id",
             {
                 'sender_id': sender_id,
@@ -326,33 +319,32 @@ class InventoryRepository:
                 'expire_type': expire_type.value,
             }
         )
-        return result.lastrowid
 
-    async def update_giftitem_receiptgift_id(self, giftitem_id: int, receiptgift_id: int) -> int:
+    async def update_giftitem_receiptgift_id(self, giftitem_id: int, receiptgift_id: int) -> bool:
         """
         Atualiza o ID do recibo de presente na tabela GiftItem.
         Args:
             giftitem_id (int): ID do item presente.
             receiptgift_id (int): O ID do recibo de presente.
         """
-        result = await self.db.execute(
+        rowcount = await self.db.execute(
             "UPDATE GiftItem SET ReceiptGiftNo=:receiptgift_id WHERE No=:giftitem_id",
             {'receiptgift_id': receiptgift_id, 'giftitem_id': giftitem_id}
         )
-        return result.lastrowid
+        return rowcount == 1
     
-    async def update_receiptbuy_receiptgift_id(self, receiptbuy_id: int, receiptgift_id: int) -> int:
+    async def update_receiptbuy_receiptgift_id(self, receiptbuy_id: int, receiptgift_id: int) -> bool:
         """
         Atualiza o ID do recibo de compra na tabela ReceiptBuy.
         Args:
             receiptbuy_id (int): ID do recibo de compra.
             receiptgift_id (int): O ID do recibo de presente.
         """
-        result = await self.db.execute(
+        rowcount = await self.db.execute(
             "UPDATE ReceiptBuy SET ReceiptGiftNo=:receiptgift_id where No=:receiptbuy_id",
             {'receiptgift_id': receiptgift_id, 'receiptbuy_id': receiptbuy_id}
         )
-        return result.lastrowid
+        return rowcount == 1
 
     async def update_receiptgift_result(self, receiptgift_id: int, user_id: str, result: ReceiptGiftResult) -> bool:
         """
@@ -361,14 +353,14 @@ class InventoryRepository:
             receiptbuy_id (int): ID do recibo de compra.
             receiptgift_id (int): O ID do recibo de presente.
         """
-        result = await self.db.execute(
+        rowcount = await self.db.execute(
             "UPDATE ReceiptGift SET Result=:result, ConfirmTime=NOW() WHERE No=:receiptgift_id AND Id=:user_id",
             {'result': result.value, 'receiptgift_id': receiptgift_id, 'user_id': user_id}
         )
-        return result.rowcount == 1
+        return rowcount == 1
     
-    async def chest_consume(self, user_id: str, chest_id: str, volume: int) -> int:
-        await self.db.execute(
+    async def chest_consume(self, user_id: str, chest_id: str, volume: int) -> bool:
+        rowcount = await self.db.execute(
             "UPDATE Chest SET Volume=Volume-:volume WHERE No=:chest_id AND Owner=:user_id",
             {
                 'volume': volume,
@@ -376,6 +368,7 @@ class InventoryRepository:
                 'user_id': user_id,
             }
         )
+        return rowcount == 1
 
     async def update_money(self, user_id: str, money: int) -> bool:
         """
@@ -387,16 +380,16 @@ class InventoryRepository:
         """
         if money < 0:
             money = abs(money)
-            result = await self.db.execute(
+            rowcount = await self.db.execute(
                 "UPDATE Game SET Money=Money-:money WHERE Id=:user_id AND Money>=:money",
                 {'money': money, 'user_id': user_id}
             )
         else:
-            result = await self.db.execute(
+            rowcount = await self.db.execute(
                 "UPDATE Game SET Money=Money+:money WHERE Id=:user_id",
                 {'money': money, 'user_id': user_id}
             )
-        return result.rowcount == 1
+        return rowcount == 1
 
     async def update_cash(self, user_id: str, cash: int) -> bool:
         """
@@ -409,16 +402,16 @@ class InventoryRepository:
 
         if cash < 0:
             cash = abs(cash)
-            result = await self.db.execute(
+            rowcount = await self.db.execute(
                 "UPDATE cash SET Cash=Cash-:cash WHERE Id=:user_id AND Cash>=:cash",
                 {'cash': cash, 'user_id': user_id}
             )
         else:
-            result = await self.db.execute(
+            rowcount = await self.db.execute(
                 "UPDATE cash SET Cash=Cash+:cash WHERE Id=:user_id",
                 {'cash': cash, 'user_id': user_id}
             )
-        return result.rowcount == 1
+        return rowcount == 1
 
     async def update_giftmsg_status(self, giftmsg_id: int, sender_id: str, receiver_id: str, msg_type: GiftMsgType) -> bool:
         """
@@ -429,11 +422,11 @@ class InventoryRepository:
             cash (int): A quantidade a ser adicionada (pode ser negativa para subtrair).
         """
 
-        result = await self.db.execute(
+        rowcount = await self.db.execute(
             "UPDATE GiftMsg SET MsgType=:msg_type, Receiver=:receiver_id, Sender=:sender_id WHERE No=:giftmsg_id",
             {'msg_type': msg_type, 'receiver_id': receiver_id, 'sender_id': sender_id, 'giftmsg_id': giftmsg_id}
         )
-        return result.rowcount == 1
+        return rowcount == 1
 
     async def delete_giftitem(self, giftitem_id: int) -> bool:
         """

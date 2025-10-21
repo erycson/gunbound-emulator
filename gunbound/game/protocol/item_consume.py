@@ -1,8 +1,9 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 from dependency_injector.wiring import Provide, inject
+from gunbound.base.enums import AcquisitionType, ExpireType
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
-from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
+from gunbound.util import BinaryWriter, BinaryReader, dump
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 if TYPE_CHECKING:
     from gunbound.repository import InventoryRepository
@@ -23,40 +24,50 @@ class ItemConsumeRecv(BasePackageRecv):
         self.inventory_repository = inventory_repository
 
     async def process(self):
-        command = (self.buf.read_int32() - 0x8631607E) & 0xFFFFFFFF
+        """
+        @todo Eu não sei em que momento itens de baú são removidos quando Volume == 0
+        """
+
+        data = self.conn.decrypt(self.buf.read_bytes())
+        dump(data)
+        buf = BinaryReader(data)
+
+        command = (buf.read_int32() - 0x8631607E) & 0xFFFFFFFF
         if command != ClientPacket.CLI_ITEM_CONSUME.value:
             return
 
         user_id = self.conn.data['profile']['Id']
-        chest_id = self.buf.read_uint32()
-        volume = self.buf.read_uint16() # Volume????
+        chest_id = buf.read_uint32()
+        volume = buf.read_uint16() # Volume????
         if volume < 0:
-            print(f"Volume inválido: {chest_id}")
+            print(f"Volume inválido: {chest_id} -> volume: {volume}")
             return
-
+        
         chest_item = await self.inventory_repository.get_chest_item(user_id, chest_id)
         if volume > chest_item['Volume']:
-            print(f"Volume solicitado maior que o disponível: {chest_id}")
+            print(f"Volume solicitado maior que o disponível: {volume} de {chest_item['Volume']}")
             return
         elif chest_item['Volume'] <= 0:
             print(f"Item já consumido: {chest_id}")
             return
 
-        refund = await self.inventory_repository.get_refund_value(chest_item['chest_id'], chest_item['Acquisition'])
+        expire_type = ExpireType.try_parse(chest_item['ExpireType'])
+        acquisition = AcquisitionType.try_parse(chest_item['Acquisition'])
+        refund = await self.inventory_repository.get_refund_value(chest_item['Item'], acquisition)
         await self.inventory_repository.chest_consume(user_id, chest_id, volume)
 
-        if refund is not None and chest_item['ExpireType'] == 'I':
-            await self.inventory_repository.insert_receiptconsume(user_id, chest_item['Item'], volume, chest_item['Acquisition'], False, refund, chest_item['ExpireType'], chest_item['Expire'])
+        if refund is not None and expire_type == ExpireType.Infinite:
+            await self.inventory_repository.insert_receiptconsume(user_id, chest_item['Item'], volume, False, refund, expire_type, chest_item['Expire'])
             await self.inventory_repository.update_money(user_id, refund)
         else:
-            await self.inventory_repository.insert_receiptconsume(user_id, chest_item['Item'], volume, chest_item['Acquisition'], False, 0, chest_item['ExpireType'], chest_item['Expire'])
+            await self.inventory_repository.insert_receiptconsume(user_id, chest_item['Item'], volume, False, 0, expire_type, chest_item['Expire'])
 
         await self.conn.on_send(ItemConsumeResp.success())
 
     def log_command(self, conn):
         cmd = ClientPacket.CLI_ITEM_CONSUME.value
         seq = conn.expected_client_checksum(self.buf.size())
-        print(f"RECV<< [SS={conn.server.id:08X} SQ={seq:04X} CD={cmd:04X}]")
+        print(f"RECV<< [SS={conn.server.id:08X} SQ={seq:04X} CD={cmd:04X}] {self.buf.to_hex(4)}")
 
 class ItemConsumeResp(BasePackageSend):
     def __init__(self, buf: BinaryWriter):
