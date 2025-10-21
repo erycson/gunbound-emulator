@@ -31,7 +31,7 @@ class ClientDataRecv(BasePackageRecv):
     def log_command(self, conn):
         cmd = ClientPacket.CLI_CLIENT_DATA.value
         seq = conn.expected_client_checksum(self.buf.size())
-        print(f"RECV<< [SS={conn.server.id:08X} SQ={seq:04X} CD={cmd:04X}]")
+        print(f"RECV<< [SS={conn.server.id:08X} SQ={seq:04X} CD={cmd:04X}] {self.buf.to_hex(4)}")
 
 class ClientDataResp(BasePackageSend):
     def __init__(self, buf: BinaryWriter):

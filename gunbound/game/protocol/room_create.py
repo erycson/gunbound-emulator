@@ -25,7 +25,6 @@ class RoomCreateRecv(BasePackageRecv):
         self.buf = buf
         self.manager = room_manager
 
-    # 01 61 B2 62 00 00 61 00 00 00 02
     async def process(self):
         """
         @todo Verificar limites de usuários por canal.
