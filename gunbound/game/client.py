@@ -109,6 +109,9 @@ class ClientConnection:
             return
         self.closing = True
 
+        if self.room is not None:
+            await self.room.room_manager.leave(self)
+
         if self.channel is not None:
             await self.channel.remove(self)
 

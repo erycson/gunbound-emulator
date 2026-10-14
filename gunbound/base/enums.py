@@ -172,7 +172,6 @@ class RoomOptions:
         self.mode = mode
         self.size = size
         self.password = password
-        self.max_players: RoomSize = size
 
     def max_players(self) -> int:
         match self.size:

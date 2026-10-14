@@ -1,76 +1,76 @@
 from __future__ import annotations
 import asyncio
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from gunbound.base.enums import RoomStatus, RoomOptions
 from gunbound.util import synchronized
 
 if TYPE_CHECKING:
+    from gunbound.base.protocol import BasePackageSend
     from gunbound.game.client import ClientConnection
     from gunbound.game.managers import RoomManager
+
+
+@dataclass
+class RoomPlayer:
+    conn: 'ClientConnection'
+    slot: int
+    team: int = 0      # 0 = A, 1 = B
+    ready: bool = False
+
 
 class Room:
     def __init__(self, room_manager: 'RoomManager', id: int, owner: 'ClientConnection', options: RoomOptions):
         self.id = id
         self.room_manager = room_manager
-        self.owner = owner
         self.options: RoomOptions = options
         self.status: RoomStatus = RoomStatus.WAITING
-        self.players: dict[int, 'ClientConnection'] = {0: owner} | {i: None for i in range(1, options.max_players() - 1)}
+        self.players: dict[int, RoomPlayer] = {}   # conn.id -> jogador
+        self.owner: 'ClientConnection' = owner
         self.lock = asyncio.Lock()
-    
+        self.players[owner.id] = RoomPlayer(owner, slot=0, team=0)
+        owner.room = self
+
     def player_count(self) -> int:
-        return sum(1 for player in self.players.values() if player is not None)
-    
-    @synchronized()
-    async def join(self, conn: 'ClientConnection', position: int) -> bool:
-        if self.status != RoomStatus.WAITING:
-            return False
-        if self.players[position] is not None:
-            return False
-        self.players[position] = conn
-    
-    @synchronized()
-    async def kick_position(self, position: int) -> bool:
-        if self.status != RoomStatus.WAITING:
-            return False
-        if position not in self.players:
-            return False
-        await self._remove_player(position)
-        return True
-    
-    @synchronized()
-    async def kick_player(self, conn: 'ClientConnection'):
-        position = next((pos for pos, client in self.players.items() if client == conn), None)
-        if position is not None:
-            await self._remove_player(position)
+        return len(self.players)
+
+    def player(self, conn: 'ClientConnection') -> RoomPlayer | None:
+        return self.players.get(conn.id)
+
+    def sorted_players(self) -> list[RoomPlayer]:
+        return sorted(self.players.values(), key=lambda p: p.slot)
+
+    def is_full(self) -> bool:
+        return self.player_count() >= self.options.max_players()
 
     @synchronized()
-    async def close(self) -> bool:
-        """Fecha a sala, expulsando todos os jogadores e limpando recursos."""
-        pass
+    async def join(self, conn: 'ClientConnection') -> RoomPlayer | None:
+        """Adiciona o jogador no primeiro slot livre, no time com menos jogadores."""
+        if self.status != RoomStatus.WAITING or self.is_full() or conn.id in self.players:
+            return None
+        used = {p.slot for p in self.players.values()}
+        slot = next(i for i in range(self.options.max_players()) if i not in used)
+        team_a = sum(1 for p in self.players.values() if p.team == 0)
+        player = RoomPlayer(conn, slot=slot, team=0 if team_a <= self.player_count() - team_a else 1)
+        self.players[conn.id] = player
+        conn.room = self
+        return player
 
-    async def _remove_player(self, position: int):
-        """Expulsa um jogador da sala. Implementa o envio do pacote de remoção"""
-        if position not in self.players or self.players[position] is None:
-            return
+    @synchronized()
+    async def leave(self, conn: 'ClientConnection') -> RoomPlayer | None:
+        """Remove o jogador. Retorna o jogador removido; passa o dono para o próximo ou destrói a sala vazia."""
+        player = self.players.pop(conn.id, None)
+        if player is None:
+            return None
+        conn.room = None
+        if not self.players:
+            self.status = RoomStatus.DESTROYING
+        elif self.owner is conn:
+            self.owner = self.sorted_players()[0].conn
+        return player
 
-        player = self.players[position]
-        player.room = None
-        self.players[position] = None
-
-        if self.owner == player:
-            self.owner = next((p for p in self.players.values() if p is not None and p != player), None)
-            if self.owner is None:
-                await self.room_manager.destroy(self)
-
-    async def _destroy(self):
-        if self.status == RoomStatus.DESTROYING:
-            return
-        self.status = RoomStatus.DESTROYING
-
-        """Destrói a sala e remove todos os jogadores."""
-        for position, player in self.players.items():
-            if player is not None:
-                await self._remove_player(position)
-
-        await self.channel.destroy(self)
+    async def broadcast(self, packet: 'BasePackageSend', excepts: list[int] | None = None) -> None:
+        for player in list(self.players.values()):
+            if excepts and player.conn.id in excepts:
+                continue
+            asyncio.create_task(player.conn.on_send(packet.clone()))

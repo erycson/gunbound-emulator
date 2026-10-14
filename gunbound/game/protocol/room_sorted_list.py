@@ -58,7 +58,7 @@ class RoomSelectTankResp(BasePackageSend):
 
         for room in rooms:
             buf.write_uint16(room.id) # ID começa em 0 no servidor, mas no cliente começa em 1
-            buf.write_uint8(len(room.name))
+            buf.write_uint8(len(room.options.name))
             buf.write_string(room.options.name)
             buf.write_uint16(room.options.map.value)
             buf.write_uint16(room.options.mode.value)

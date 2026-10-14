@@ -38,3 +38,4 @@ tools/
 .venv/
 gbwc.db
 smoke.db
+logs/

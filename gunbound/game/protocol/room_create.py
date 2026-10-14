@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
-from gunbound.base.enums import RoomMap, RoomSize
+from gunbound.base.enums import RoomMap, RoomMode, RoomSize, RoomOptions
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
 from gunbound.game.protocol import ClientPacket, ServerPacket, ServerCode
 if TYPE_CHECKING:
@@ -29,8 +29,6 @@ class RoomCreateRecv(BasePackageRecv):
         """
         @todo Verificar limites de usuários por canal.
         """
-        from gunbound.game.managers import RoomOptions
-
         if self.conn.channel is None:
             return
         if self.conn.room is not None:
@@ -53,6 +51,7 @@ class RoomCreateRecv(BasePackageRecv):
 
         options = RoomOptions(name, RoomMap.RAMDOM, mode, size, password)
         room = await self.manager.create(self.conn, options)
+        self.conn.room = room
 
         await self.conn.on_send(RoomCreateResp.success(room, self.manager.config['announcement']))
 
