@@ -1,5 +1,5 @@
 from __future__ import annotations
-import datetime
+
 from typing import TYPE_CHECKING
 from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
@@ -43,7 +43,7 @@ class ItemGiftMsgResp(BasePackageSend):
         buf.write_uint16(ServerCode.SRV_OK)
 
         for msg in gift_msgs:
-            time = datetime.strptime(msg['SentTime'], "%Y-%m-%d %H:%M:%S").timestamp()
+            time = msg['SentTime'].timestamp()
             buf.write_uint32(msg['MenuId'])
             buf.write_uint32(msg['No'])
             buf.write_uint8(1) # Desconhecido, talvez diga se o presente é permanente ou temporário

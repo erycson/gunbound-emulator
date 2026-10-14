@@ -35,3 +35,6 @@ dist/
 build/
 node_modules/
 tools/
+.venv/
+gbwc.db
+smoke.db

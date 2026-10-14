@@ -1,7 +1,7 @@
 from __future__ import annotations
 import abc
 from typing import TYPE_CHECKING
-from databases import Database
+from gunbound.base.database import Database
 from gunbound.broker.protocol.login import LoginResp
 from gunbound.util import BinaryReader
 if TYPE_CHECKING:
@@ -45,11 +45,11 @@ class GBWC_v440_LoginStrategy(LoginStrategy):
             await conn.on_send(LoginResp.wrong_credentials())
             return
 
-        key_derived = self.crypto_manager.derive_key(username, user.Password, session_bytes)
+        key_derived = self.crypto_manager.derive_key(username, user['Password'], session_bytes)
         password = self.c_str(self.crypto_manager.decrypt_custom(block_b, key_derived))
 
-        if user.Password != password:
-            print(f"[LoginStrategy] Senha incorreta para o usuário: '{username}', senha recebida: '{password}', esperada: '{user.Password}'")
+        if user['Password'] != password:
+            print(f"[LoginStrategy] Senha incorreta para o usuário: '{username}', senha recebida: '{password}', esperada: '{user['Password']}'")
             await conn.on_send(LoginResp.wrong_credentials())
             return
         
@@ -57,7 +57,7 @@ class GBWC_v440_LoginStrategy(LoginStrategy):
 
     async def find_user(self, username: str):
         return await self.db.fetch_one(
-            'SELECT Authority, UNIX_TIMESTAMP(RestrictTime) AS RestrictTime, Password, Nickname FROM User WHERE User = :user',
+            'SELECT Authority, RestrictTime, Password, Nickname FROM User WHERE User = :user',
             {'user': username}
         )
     

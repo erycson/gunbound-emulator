@@ -7,7 +7,11 @@ global:
   product_version: &product_version 8452169
   
 database:
-  uri: "mysql+asyncmy://gbuser:gbpass@127.0.0.1:3306/gbwc?min_size=1&max_size=2"
+  # Exemplos:
+  #   SQLite:     "sqlite+aiosqlite:///gbwc.db"
+  #   MySQL:      "mysql+asyncmy://gbuser:gbpass@127.0.0.1:3306/gbwc"
+  #   PostgreSQL: "postgresql+asyncpg://gbuser:gbpass@127.0.0.1:5432/gbwc"
+  uri: "sqlite+aiosqlite:///gbwc.db"
 
 features:
   UNK_1: 1

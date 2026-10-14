@@ -44,7 +44,7 @@ class ItemResp(BasePackageSend):
         for item in reversed(chest):
             buf.write_uint32(item['No'])
             buf.write_uint32(item['Item'])
-            buf.write_uint8(item['Wearing'])
+            buf.write_uint8(int(item['Wearing']))
             buf.write_char(item['Acquisition'])
 
             if item['Expire'] is None:
@@ -57,8 +57,8 @@ class ItemResp(BasePackageSend):
 
             buf.write_uint32(item['Volume'])
             buf.write_uint8(1)  # Desconhecido
-            buf.write_uint32(item['PlaceOrder'])
-            buf.write_uint8(item['Recovered'])
+            buf.write_uint32(int(item['PlaceOrder'] or 0))
+            buf.write_uint8(int(item['Recovered']))
 
         return cls(buf)
     

@@ -1,6 +1,7 @@
 import socket
-from databases import Database
-from asyncmy.errors import OperationalError
+from datetime import datetime
+from sqlalchemy.exc import IntegrityError
+from gunbound.base.database import Database
 
 class ServerRepository():
     def __init__(self, db: Database):
@@ -37,13 +38,11 @@ class ServerRepository():
             server_ip = int.from_bytes(socket.inet_aton(server_ip), 'little')
         
         try:
-            await self.db.execute(
-                "INSERT INTO CurrentUser SET Id = :user_id, Context = :context, ServerIP = :server_ip, ServerPort = :server_port, LoggingTime = NOW()",
-                {'user_id': user_id, 'context': context, 'server_ip': server_ip, 'server_port': server_port}
-            )
-        except OperationalError as e:
-            if (e.args[0] == 1022):  # Duplicate key, usuário já logado
-                return False
+            await self.db.insert('CurrentUser', {
+                'Id': user_id, 'Context': context, 'ServerIp': server_ip, 'ServerPort': server_port, 'LoggingTime': datetime.now(),
+            })
+        except IntegrityError:  # Chave duplicada, usuário já logado
+            return False
         return True
     
     async def delete_all_users(self, server_ip: int | str, server_port: int) -> None:
@@ -98,8 +97,8 @@ class ServerRepository():
             client_port = min(max(client_port, 0), 65535)
 
         await self.db.execute(
-            "INSERT INTO LoginLog (Id, Ip, Ip_v, Port, Port_v, Time, ServerIp, ServerPort) VALUES (:user_id, :client_ip, :block_ip, 0, :block_port, NOW(), :server_ip, :server_port)",
-            {'user_id': user_id, 'client_ip': client_ip, 'block_ip': block_ip, 'block_port': block_port, 'server_ip': server_ip, 'server_port': server_port}
+            "INSERT INTO LoginLog (Id, Ip, Ip_v, Port, Port_v, Time, ServerIp, ServerPort) VALUES (:user_id, :client_ip, :block_ip, 0, :block_port, :now, :server_ip, :server_port)",
+            {'now': datetime.now(), 'user_id': user_id, 'client_ip': client_ip, 'block_ip': block_ip, 'block_port': block_port, 'server_ip': server_ip, 'server_port': server_port}
         )
 
     async def insert_service_status(self, product_version: int, server_ip: int | str, server_port: int, status: str) -> None:
@@ -118,8 +117,8 @@ class ServerRepository():
             server_ip = int.from_bytes(socket.inet_aton(server_ip), 'little')
 
         await self.db.execute(
-            "INSERT INTO ServiceStatus (SerialNo, Time, ServerIp, ServerPort, Status) VALUES (:product_version, NOW(), :server_ip, :server_port, :status)",
-            {'product_version': product_version, 'server_ip': server_ip, 'server_port': server_port, 'status': status}
+            "INSERT INTO ServiceStatus (SerialNo, Time, ServerIp, ServerPort, Status) VALUES (:product_version, :now, :server_ip, :server_port, :status)",
+            {'now': datetime.now(), 'product_version': product_version, 'server_ip': server_ip, 'server_port': server_port, 'status': status}
         )
 
     async def insert_user_count(self, product_version: int, server_ip: int | str, server_port: int, user_count: int) -> None:
@@ -127,6 +126,6 @@ class ServerRepository():
             server_ip = int.from_bytes(socket.inet_aton(server_ip), 'little')
         
         await self.db.execute(
-            "INSERT INTO UserCount (SerialNo, ServerIp, ServerPort, Time, UserCount) VALUES (:product_version, :server_ip, :server_port, NOW(), :user_count)",
-            {'product_version': product_version, 'server_ip': server_ip, 'server_port': server_port, 'user_count': user_count}
+            "INSERT INTO UserCount (SerialNo, ServerIp, ServerPort, Time, UserCount) VALUES (:product_version, :server_ip, :server_port, :now, :user_count)",
+            {'now': datetime.now(), 'product_version': product_version, 'server_ip': server_ip, 'server_port': server_port, 'user_count': user_count}
         )

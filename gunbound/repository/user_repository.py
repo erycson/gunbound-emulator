@@ -1,5 +1,7 @@
+from datetime import datetime
 from typing import List, Dict, Any, Optional
-from databases import Database
+from gunbound.base.database import Database
+from gunbound.base.helpers import to_datetime
 
 class UserRepository:
     def __init__(self, db: Database):
@@ -33,10 +35,10 @@ class UserRepository:
             Optional[Dict[str, Any]]: Dados do perfil do usuário ou None se não encontrado.
         """
         data = await self.db.fetch_one(
-            "SELECT Id, User, Password, Nickname, Gender, User_Level, Authority, Authority2, (CASE WHEN RestrictTime = '0000-00-00 00:00:00' THEN NULL ELSE RestrictTime END) as RestrictTime FROM User WHERE Id = :user_id",
+            "SELECT Id, User, Password, Nickname, Gender, User_Level, Authority, Authority2, RestrictTime FROM User WHERE Id = :user_id",
             {'user_id': user_id}
         )
-        return dict(data) if data else None
+        return data | {'RestrictTime': to_datetime(data['RestrictTime'])} if data else None
 
     async def get_gender(self, user_id: str) -> int | None:
         """
@@ -62,11 +64,11 @@ class UserRepository:
             Optional[Dict[str, Any]]: Dados do perfil do usuário ou None se não encontrado.
         """
         data = await self.db.fetch_all(
-            "SELECT Id, Nickname FROM user WHERE Nickname IN (:nickname) LIMIT 100",
+            "SELECT Id, Nickname FROM User WHERE Nickname IN (:nickname) LIMIT 100",
             {'nickname': nickname}
         )
         
-        return [dict(d) for d in data] if data else []
+        return data
 
     async def get_game(self, user_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -79,10 +81,15 @@ class UserRepository:
             Optional[Dict[str, Any]]: Dados das estatísticas do jogo ou None se não encontrado.
         """
         data = await self.db.fetch_one(
-            "SELECT Guild, TotalGrade, SeasonGrade, MemberCount, TotalRank, SeasonRank, GuildRank, AccumShot, AccumDamage, TotalScore, SeasonScore, Money, EventScore0, EventScore1, EventScore2, EventScore3, (CASE WHEN GiftProhibitTime = '0000-00-00 00:00:00' THEN NULL ELSE GiftProhibitTime END) AS GiftProhibitTime, ClientData, Country, CountryGrade, CountryRank FROM game WHERE Id = :user_id",
+            "SELECT Guild, TotalGrade, SeasonGrade, MemberCount, TotalRank, SeasonRank, GuildRank, AccumShot, AccumDamage, TotalScore, SeasonScore, Money, EventScore0, EventScore1, EventScore2, EventScore3, GiftProhibitTime, ClientData, Country, CountryGrade, CountryRank FROM Game WHERE Id = :user_id",
             {'user_id': user_id}
         )
-        return dict(data) if data else None
+        if not data:
+            return None
+        client_data = data['ClientData']
+        if isinstance(client_data, str):  # Bancos antigos guardam ClientData como varchar
+            client_data = client_data.encode('latin-1', errors='replace')
+        return data | {'GiftProhibitTime': to_datetime(data['GiftProhibitTime']), 'ClientData': bytes(client_data or b'')}
 
     async def get_gift_msgs(self, user_id: str) -> List[Dict[str, Any]]:
         """
@@ -98,7 +105,7 @@ class UserRepository:
             "SELECT No, MenuId, Sender, SentTime, Msg, MsgType, ExpireType, GiftItemNo FROM GiftMsg WHERE Receiver = :user_id",
             {'user_id': user_id}
         )
-        return [dict(m) for m in msgs]
+        return [m | {'SentTime': to_datetime(m['SentTime'])} for m in msgs]
     
     async def update_clientdata(self, user_id: str, client_data: bytes) -> bool:
         """
@@ -112,7 +119,7 @@ class UserRepository:
             bool: True se a atualização foi bem-sucedida, False caso contrário.
         """
         result = await self.db.execute(
-            "UPDATE Game SET ClientData = :client_data, LastUpdateTime=NOW() WHERE Id = :user_id",
-            {'client_data': client_data, 'user_id': user_id}
+            "UPDATE Game SET ClientData = :client_data, LastUpdateTime=:now WHERE Id = :user_id",
+            {'client_data': bytes(client_data), 'now': datetime.now(), 'user_id': user_id}
         )
         return result > 0

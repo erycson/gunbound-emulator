@@ -1,5 +1,5 @@
 import yaml
-from databases import Database
+from gunbound.base.database import Database
 from dependency_injector import containers, providers
 from gunbound.base.managers import CryptoManager
 from gunbound.broker.managers import MonitorManager

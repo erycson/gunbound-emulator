@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from databases import Database
+from gunbound.base.database import Database
 from dependency_injector.wiring import Provide, inject
 from dependency_injector.providers import Configuration
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend

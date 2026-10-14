@@ -1,4 +1,4 @@
-from databases import Database
+from gunbound.base.database import Database
 from typing import Dict, Any, List
 
 class RecordsRepository:
@@ -11,7 +11,7 @@ class RecordsRepository:
             "SELECT Stage, Win, Lose FROM StageRecord WHERE Id = :user_id",
             {'user_id': user_id}
         )
-        return [dict(r) for r in records]
+        return records
 
     async def get_mobile(self, user_id: str) -> List[Dict[str, Any]]:
         """Fetch mobile win/lose records."""
@@ -19,4 +19,4 @@ class RecordsRepository:
             "SELECT Mobile, Win, Lose FROM MobileRecord WHERE Id = :user_id",
             {'user_id': user_id}
         )
-        return [dict(r) for r in records]
+        return records
