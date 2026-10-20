@@ -41,6 +41,7 @@ class ItemBuyRecv(BasePackageRecv):
         if command != ClientPacket.CLI_ITEM_BUY.value:
             return
 
+        print(f"[{self.conn.addr}] ItemBuy corpo: {data.hex(' ')}")
         user_id = self.conn.data['profile']['Id']
         menu_no = buf.read_uint32()
         acquisition = AcquisitionType.try_parse_int(buf.read_uint8())
@@ -48,26 +49,30 @@ class ItemBuyRecv(BasePackageRecv):
         _ = buf.read_bytes(6) # Desconhecido, mas parece ser sempre os mesmos valores para a mesma compra
 
         if acquisition is None or expire_type is None:
-            return
+            return await self.fail(f"tipo inválido menu={menu_no}")
 
         menu = await self.inventory_repository.get_menu(menu_no, acquisition, expire_type)
         
+        if not menu:
+            return await self.fail(f"menu {menu_no} não existe")
         price = menu.get(self.get_field_name(acquisition, expire_type))
         if price is None:
-            return
+            return await self.fail(f"menu {menu_no} sem preço {acquisition}/{expire_type}")
+        # WCS2: desconto escolhido no 0x7118 (wcs2/shop.py); trunca como o cliente
+        num, den = self.conn.data.get('shop_discount', (1, 1))
+        price = price * num // den
 
         asset = None
         if acquisition == AcquisitionType.Cash:
-            asset = await self.inventory_repository.get_cash(user_id)
+            asset = await self.inventory_repository.get_cash(user_id) or 0
             if asset < price:
-                return
+                return await self.fail(f"cash insuficiente {asset} < {price} (menu {menu_no})")
         elif acquisition == AcquisitionType.Gold:
-            asset = await self.inventory_repository.get_money(user_id)
+            asset = await self.inventory_repository.get_money(user_id) or 0
             if asset < price:
-                return
+                return await self.fail(f"gold insuficiente {asset} < {price} (menu {menu_no})")
         else:
-            # Tipo de aquisição inválido
-            return
+            return await self.fail(f"aquisição inválida {acquisition}")
 
         transaction = await self.db.transaction()
         try:
@@ -81,11 +86,11 @@ class ItemBuyRecv(BasePackageRecv):
             if acquisition == "C":
                 if not await self.inventory_repository.update_cash(user_id, -price):
                     await transaction.rollback()
-                    return
+                    return await self.fail("falha ao descontar cash")
             elif acquisition == "G":
                 if not await self.inventory_repository.update_money(user_id, -price):
                     await transaction.rollback()
-                    return
+                    return await self.fail("falha ao descontar gold")
 
             if acquisition == AcquisitionType.Cash:
                 await self.inventory_repository.insert_buy_info(self.config['product_version'], menu_no, price, asset, acquisition)
@@ -96,6 +101,11 @@ class ItemBuyRecv(BasePackageRecv):
         except Exception as e:
             await transaction.rollback()
             raise e
+
+    async def fail(self, reason: str):
+        """Sem resposta o cliente fica preso na janela de compra; RTC != 0 fecha com erro."""
+        print(f"[{self.conn.addr}] Compra recusada: {reason}")
+        await self.conn.on_send(ItemBuyResp.error())
 
     def calc_period(self, expire_type: str, period: int) -> int | None:
         if expire_type == "W":
@@ -162,8 +172,7 @@ class ItemBuyResp(BasePackageSend):
             buf.write_uint8(0) # Desconhecido
             buf.write_char(acquisition.value)
             if expire_type == "I":
-                buf.write_uint8(0)
-                buf.write_uint32(0)
+                buf.write_uint8(0)  # sem validade: o cliente não lê u32 (TH 0x4d2a96, v440 0x4f45e8)
             else:
                 buf.write_uint8(1)
                 buf.write_uint32(item['period'])
@@ -172,7 +181,14 @@ class ItemBuyResp(BasePackageSend):
             buf.write_uint32(10) # Desconhecido
 
         return cls(buf)
-    
+
+    @classmethod
+    def error(cls, code: int = 1):
+        buf = BinaryWriter()
+        buf.write_uint16(ServerPacket.SRV_ITEM_BUY)
+        buf.write_uint16(code)
+        return cls(buf)
+
     def log_command(self, conn):
         reader = self.buf.to_reader()
         checksum = reader.read_uint16(pos=2)

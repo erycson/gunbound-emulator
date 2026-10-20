@@ -4,6 +4,7 @@ from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
 from gunbound.game.protocol import ClientPacket, ServerPacket, ServerCode
+from gunbound.game import phase
 if TYPE_CHECKING:
     from gunbound.game.channel import Channel
     from gunbound.game.managers import ChannelManager
@@ -30,6 +31,10 @@ class ChannelJoinRecv(BasePackageRecv):
         if channel_id < -1 or channel_id > 7:
             return
 
+        # Trocar de canal (inclusive -1) é como o cliente WC sai da sala (Protocolo-Salas.md 5.10)
+        if self.conn.room is not None:
+            await self.conn.room.room_manager.leave(self.conn)
+
         old_channel = self.conn.channel
 
         new_channel = self.channel_manager.get(channel_id) if channel_id != -1 else self.channel_manager.get_least_populated()
@@ -43,7 +48,7 @@ class ChannelJoinRecv(BasePackageRecv):
             position = new_channel.get_client_position(self.conn)
             await new_channel.broadcast(ChannelJoinResp.success_update(self.conn, position), excepts = [self.conn.id])
         else:
-            await self.conn.on_send(ChannelJoinResp.channel_full())
+            await self.conn.on_send(ChannelJoinResp.channel_full(self.conn))
 
         # Avisar o canal antigo que o usuário saiu
         if old_channel is not None and channel_changed:
@@ -76,10 +81,7 @@ class ChannelJoinResp(BasePackageSend):
             buf.write_string(conn.data['profile']['Nickname'], 12)
             buf.write_uint8(1)  # ???
             buf.write_string(conn.data['game']['Guild'], 8)
-            buf.write_int16(conn.data['game']['TotalGrade'])
-            buf.write_int16(conn.data['game']['SeasonGrade'])
-            buf.write_int16(conn.data['game']['CountryGrade'])
-            buf.write_uint16(conn.data['game']['Country'])
+            buf.write_bytes(phase.of(conn).grades(conn.data['game']))
         
         buf.write_string(conn.server.config['announcement'])
         return cls(buf)
@@ -92,10 +94,7 @@ class ChannelJoinResp(BasePackageSend):
         buf.write_string(conn.data['profile']['Nickname'], 12)
         buf.write_uint8(1)  # ???
         buf.write_string(conn.data['game']['Guild'], 8)
-        buf.write_int16(conn.data['game']['TotalGrade'])
-        buf.write_int16(conn.data['game']['SeasonGrade'])
-        buf.write_int16(conn.data['game']['CountryGrade'])
-        buf.write_uint16(conn.data['game']['Country'])
+        buf.write_bytes(phase.of(conn).grades(conn.data['game']))
         return cls(buf)
 
     @classmethod
@@ -109,7 +108,7 @@ class ChannelJoinResp(BasePackageSend):
     def channel_full(cls, conn: ClientConnection):
         buf = BinaryWriter()
         buf.write_uint16(ServerPacket.SRV_CHANNEL_JOIN)
-        buf.write_uint16(0x1001)
+        buf.write_uint16(ServerCode.SRV_CHANNEL_FULL)
         return cls(buf)
 
     def log_command(self, conn):

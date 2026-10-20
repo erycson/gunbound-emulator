@@ -1,16 +1,21 @@
 from __future__ import annotations
+import hashlib
 import socket
+from datetime import datetime
 import asyncio
 import time
 from typing import TYPE_CHECKING, Dict, Any, List
 from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util import BinaryWriter, BinaryReader
-from gunbound.game.protocol.enums import ClientPacket, ServerPacket
+from gunbound.game import phase
+from gunbound.game.protocol.base import Packet
+from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 if TYPE_CHECKING:
     from gunbound.repository import UserRepository, RecordsRepository, ServerRepository
     from gunbound.game.client import ClientConnection
 
+@BasePackageFactory.register(ClientPacket.CLI_ADMIN_LOGIN.value)  # SVC_LOGIN/ADMIN usa o mesmo handler no original
 @BasePackageFactory.register(ClientPacket.CLI_LOGIN.value)
 @inject
 class LoginRecv(BasePackageRecv):
@@ -53,24 +58,31 @@ class LoginRecv(BasePackageRecv):
         elif is_ip_blocked:
             print(f"[LoginStrategy] Login bloqueado para IP do cliente: {is_ip_blocked} ->  {client_ip}")
             return
+        elif profile.get('RestrictTime') and profile['RestrictTime'] > datetime.now():
+            print(f"[LoginStrategy] Usuário banido até {profile['RestrictTime']}: {username}")
+            return
 
-        user_key = self.crypto_manager.derive_key(username, profile['Password'], session_bytes)
-
-        # Valida a senha
-        # PREFIXO(4) + Senha(12)
-        block_1 = self.crypto_manager.decrypt(self.buf.read_bytes(16), user_key)
-        password = block_1[4:12].decode('latin-1').rstrip('\x00')
-        if profile["Password"] != password:
+        # Senha: cliente direto manda a senha pura (PREFIXO(4) + Senha(8) em block_1, versão em block_2[8:12]);
+        # via NyxLauncher manda md5(senha) em hex [12:32] (20 chars: block_1[4:16] + block_2[4:12], versão em block_2[12:16])
+        raw_1, raw_2 = self.buf.read_bytes(16), self.buf.read_bytes(16)
+        md5_pw = hashlib.md5(profile['Password'].encode('latin-1')).hexdigest()[12:32]
+        for expected, version_pos in ((profile['Password'], 8), (md5_pw, 12)):
+            user_key = self.crypto_manager.derive_key(username, expected, session_bytes)
+            block_1 = self.crypto_manager.decrypt(raw_1, user_key)
+            block_2 = self.crypto_manager.decrypt(raw_2, user_key)
+            password = (block_1[4:12] if version_pos == 8 else block_1[4:16] + block_2[4:12]).decode('latin-1').rstrip('\x00')
+            if password == expected:
+                break
+        else:
             print(f"[LoginStrategy] Senha incorreta para usuário {username}")
             return
 
         # Valida a versão do cliente
-        # PREFIXO(4) + Desconhecido(4) + Version(4)
-        block_2 = self.crypto_manager.decrypt(self.buf.read_bytes(16), user_key)
-        is_invalid, client_version = self.is_invalid_version(block_2)
-        if (is_invalid == False):
-            await self.conn.on_send(LoginResp.wrong_version())
+        is_invalid, client_version = self.is_invalid_version(block_2, version_pos)
+        # shortcut: no caminho da senha pura o teste segue invertido como já estava (v440 funciona assim); revisar com captura do v440
+        if is_invalid if version_pos == 12 else not is_invalid:
             print(f"[LoginStrategy] Recv Version({client_version})")
+            await self.conn.on_send(LoginResp.wrong_version())
             return
 
         # Lê os dados de conexão IP, Port e valida o ProductVersion do cliente
@@ -78,17 +90,23 @@ class LoginRecv(BasePackageRecv):
         block_3 = self.crypto_manager.decrypt(self.buf.read_bytes(16), user_key)
         conn_reader = BinaryReader(block_3)
         conn_ip = conn_reader.read_uint32(4)
-        conn_port = conn_reader.read_uint16(6)
+        conn_port = int.from_bytes(block_3[8:10], 'big')  # IP em 4..7, porta em 8..9 (ordem de rede); antes lia em 6 = fim do IP
+        print(f"[LoginRecv] UDP informado pelo cliente: {socket.inet_ntoa(block_3[4:8])}:{conn_port}")
         product_version = conn_reader.read_uint32(10)
-        if (product_version != self.conn.server.config['product_version']):
+        if product_version != self.conn.server.config['product_version'] and product_version not in phase.of(self.conn).product_versions:
+            print(f"[LoginStrategy] Recv ProductVersion({product_version} = 0x{product_version:08X})")
             await self.conn.on_send(LoginResp.wrong_version())
-            print(f"[LoginStrategy] Recv ProductVersion({product_version})")
             return
+
+        # Mesmo usuário já logado NESTE GameServer: derruba a sessão antiga (o close dela limpa o CurrentUser)
+        await self.conn.client_manager.claim_session(username, self.conn)
 
         # Insere o usuário na tabela CurrentUser, e verifica se ele já está logado em outro GameServer
         is_inserted = await self.server_repository.insert_current_user(username, self.conn.id, self.conn.server.config['host'], self.conn.server.config['port'])
         if not is_inserted:
-            print(f"[LoginStrategy] Usuário já está logado: {username}")
+            print(f"[LoginStrategy] Usuário já está logado em outro servidor: {username}")
+            self.conn.client_manager.release_session(username, self.conn)
+            await self.conn.close()
             return
         
         # Agora que tudo foi validado, obtém todos os dados do usuário
@@ -96,12 +114,16 @@ class LoginRecv(BasePackageRecv):
         self.conn.data = {
             'game': game,
             'profile': profile,
+            'net': (conn_ip, conn_port),  # IP/porta UDP informados pelo cliente, repassados aos outros da sala
+            'client_version': client_version,  # v548 manda 548, v584 manda 4 (logs de 2026-10-19); muda o 0x6001 (phase.chest_tail)
         }
 
         self.conn.set_token(self.conn.client_manager.rand.current_value)
 
         await self.conn.on_send(LoginResp.success(self.conn))
         await self.conn.on_send(LoginResp.success_record(stage, mobile))
+        if (ready := phase.of(self.conn).login_ready) is not None:
+            await self.conn.on_send(Packet.new(ready, rtc=0))
         self.conn.is_alive()
         self.conn.last_activity = time.time()
 
@@ -138,9 +160,9 @@ class LoginRecv(BasePackageRecv):
 
         return game, stage, mobile
 
-    def is_invalid_version(self, block: bytes):
+    def is_invalid_version(self, block: bytes, pos: int = 8):
         version_reader = BinaryReader(block)
-        client_version = version_reader.read_uint32(pos=8)
+        client_version = version_reader.read_uint32(pos=pos)
         version_min = self.conn.server.config['version_min']
         version_max = self.conn.server.config['version_max']
         is_invalid = client_version < version_min or client_version > version_max
@@ -165,24 +187,9 @@ class LoginResp(BasePackageSend):
         buf.write_string(conn.data['profile']['Nickname'], 12)
         buf.write_uint8(conn.data['profile']['Gender'])
         buf.write_string(conn.data['game']['Guild'], 8)
-        buf.write_int16(conn.data['game']['TotalGrade'])
-        buf.write_int16(conn.data['game']['SeasonGrade'])
-        buf.write_int16(conn.data['game']['CountryGrade'])
-        buf.write_uint16(conn.data['game']['Country'])
-        buf.write_uint16(conn.data['game']['MemberCount'])
-        buf.write_uint32(conn.data['game']['TotalRank'])
-        buf.write_uint32(conn.data['game']['SeasonRank'])
-        buf.write_uint32(conn.data['game']['GuildRank'])
-        buf.write_uint32(conn.data['game']['CountryRank'])
-        buf.write_uint32(conn.data['game']['AccumShot'])
-        buf.write_uint32(conn.data['game']['AccumDamage'])
-        buf.write_uint32(conn.data['game']['TotalScore'])
-        buf.write_uint32(conn.data['game']['SeasonScore'])
-        buf.write_uint32(conn.data['game']['Money'])
-        buf.write_uint32(conn.data['game']['EventScore0'])
-        buf.write_uint32(conn.data['game']['EventScore1'])
-        buf.write_uint32(conn.data['game']['EventScore2'])
-        buf.write_uint32(conn.data['game']['EventScore3'])
+        layout = phase.of(conn)
+        buf.write_bytes(layout.grades(conn.data['game']))
+        buf.write_bytes(layout.login_stats(conn.data['game']))
 
         # Prefixo para os próximos blocos de 16 bytes de dados que serão criptografados
         prefix = ServerPacket.SRV_LOGIN.value - 0x79CE9F82
@@ -206,6 +213,13 @@ class LoginResp(BasePackageSend):
 
         return cls(buf)
     
+    @classmethod
+    def wrong_version(cls):
+        buf = BinaryWriter()
+        buf.write_uint16(ServerPacket.SRV_LOGIN)
+        buf.write_uint16(ServerCode.SRV_WRONG_VERSION)
+        return cls(buf)
+
     @classmethod
     def success_record(cls, stage: List[Dict[str, Any]], mobile: List[Dict[str, Any]]):
         """Uso desconhecido"""

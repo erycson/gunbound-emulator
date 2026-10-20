@@ -26,9 +26,16 @@ class MonitorManager:
         return self.servers
 
     async def check_status(self, timeout=1.0):
+        was_online = [server.is_online for server in self.servers]
         tasks = [server.check_status(timeout) for server in self.servers]
         results = await asyncio.gather(*tasks, return_exceptions=False)
-        
+
+        # GS caiu: libera os usuários dele já, para poderem entrar em outro GS sem esperar este voltar
+        for server, before in zip(self.servers, was_online):
+            if before and not server.is_online:
+                print(f"[Monitor] GameServer {server.name} ({server.host}:{server.port}) caiu; limpando CurrentUser")
+                await self.server_repository.delete_all_users(server.host, server.port)
+
         await self.server_repository.insert_user_count(
             self.config['broker']['product_version'],
             int.from_bytes(socket.inet_aton(self.config['broker']['host']), 'little'),

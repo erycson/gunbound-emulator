@@ -31,7 +31,7 @@ async def run(db: Database):
     profile = await users.get_profile('test')
     assert profile['User'] == 'test' and profile['Password'] == 'test' and 'Nickname' in profile, profile
     assert await users.get_gender('test') == 0
-    assert [u['Id'] for u in await users.find_by_nickname('test')] == ['test']
+    assert [(u['Id'], u['Nickname']) for u in await users.find_by_nickname('test')] == [('test', 'test')]
     game = await users.get_game('test')
     assert isinstance(game['ClientData'], bytes) and game['TotalGrade'] is not None, game
     assert await users.update_clientdata('test', game['ClientData'])

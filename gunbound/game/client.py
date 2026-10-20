@@ -5,9 +5,11 @@ from typing import TYPE_CHECKING, Any, Dict
 from asyncio import CancelledError, Task, StreamReader, StreamWriter
 from gunbound.base.protocol import BasePackageFactory, BasePackageSend
 from gunbound.base.managers import CryptoManager
+from gunbound.game import phase
 from gunbound.game.channel import Channel
 from gunbound.game.room import Room
 from gunbound.util import BinaryReader, GBWCGenerator
+from gunbound.game.protocol.body_rules import body_ok
 if TYPE_CHECKING:
     from gunbound import GameServer
     from gunbound.repository import ServerRepository, UserRepository
@@ -102,7 +104,10 @@ class ClientConnection:
 
     async def disconnect(self):
         self.writer.close()
-        await self.writer.wait_closed()
+        try:
+            await self.writer.wait_closed()
+        except (ConnectionError, OSError):
+            pass  # socket já caiu (RST/WinError 64): fechar mesmo assim
 
     async def close(self):
         if self.closing:
@@ -113,9 +118,13 @@ class ClientConnection:
             await self.room.room_manager.leave(self)
 
         if self.channel is not None:
-            await self.channel.remove(self)
+            from gunbound.game.protocol.channel_join import ChannelJoinResp
+            position = self.channel.get_client_position(self)
+            if await self.channel.remove(self):
+                await self.channel.broadcast(ChannelJoinResp.success_remove(position))
 
         if 'profile' in self.data:
+            self.client_manager.release_session(self.data['profile']['Id'], self)
             await asyncio.gather(
                 self.server_repository.delete_current_user(self.data['profile']['Id']),
                 self.user_repository.update_clientdata(self.data['profile']['Id'], self.data['game']['ClientData'])
@@ -133,6 +142,14 @@ class ClientConnection:
         print(f"[{self.addr}] ClientConnection({self.server.id:08X}:{self.id:08X}) closed")
     
     async def handler(self):
+        try:
+            await self.read_loop()
+        except (ConnectionError, asyncio.IncompleteReadError) as e:
+            # Cliente morto (ex.: processo fechado) chega como RST: sem isso a sala e a sessão ficavam órfãs
+            print(f"[{self.addr}] Conexão perdida: {e!r}")
+            await self.close()
+
+    async def read_loop(self):
         while True:
             # Leia o cabeçalho inicial (2 bytes para o tamanho, little-endian)
             header = await self.reader.read(2)
@@ -164,7 +181,10 @@ class ClientConnection:
 
         # Processa o pacote
         self.advance_client_seq(packet_size)
-        await BasePackageFactory.from_data(cmd, self, buf)
+        if not body_ok(cmd, buf.remaining()):
+            print(f"[{self.addr}] Tamanho de corpo inválido para 0x{cmd:04X}: {buf.remaining()} bytes (regra do servidor original)")
+            return
+        await BasePackageFactory.from_data(cmd, self, buf, phase.of(self).handlers())
 
     async def on_send(self, packet: BasePackageSend):
         """

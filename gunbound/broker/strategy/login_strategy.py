@@ -1,5 +1,6 @@
 from __future__ import annotations
 import abc
+import hashlib
 from typing import TYPE_CHECKING
 from gunbound.base.database import Database
 from gunbound.broker.protocol.login import LoginResp
@@ -45,10 +46,14 @@ class GBWC_v440_LoginStrategy(LoginStrategy):
             await conn.on_send(LoginResp.wrong_credentials())
             return
 
-        key_derived = self.crypto_manager.derive_key(username, user['Password'], session_bytes)
-        password = self.c_str(self.crypto_manager.decrypt_custom(block_b, key_derived))
+        # cliente v440 manda a senha pura; o NyxLauncher manda md5(senha) em hex, caracteres [12:32]
+        for expected in (user['Password'], hashlib.md5(user['Password'].encode('latin-1')).hexdigest()[12:32]):
+            key_derived = self.crypto_manager.derive_key(username, expected, session_bytes)
+            password = self.c_str(self.crypto_manager.decrypt_custom(block_b, key_derived)[:20])  # senha[20] + versao u32, sem 0 no fim se a senha tiver 20
+            if password == expected:
+                break
 
-        if user['Password'] != password:
+        if password != expected:
             print(f"[LoginStrategy] Senha incorreta para o usuário: '{username}', senha recebida: '{password}', esperada: '{user['Password']}'")
             await conn.on_send(LoginResp.wrong_credentials())
             return

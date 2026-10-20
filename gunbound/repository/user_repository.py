@@ -107,6 +107,53 @@ class UserRepository:
         )
         return [m | {'SentTime': to_datetime(m['SentTime'])} for m in msgs]
     
+    async def get_nicknames(self, user_ids: list[str]) -> List[Dict[str, Any]]:
+        """0x1021 SVC_USER_NICK: Id -> Nickname de vários usuários."""
+        if not user_ids:
+            return []
+        keys = {f'u{i}': u for i, u in enumerate(user_ids)}
+        return await self.db.fetch_all(f"SELECT Id, Nickname FROM User WHERE Id IN ({', '.join(':' + k for k in keys)})", keys)
+
+    async def set_restrict_time(self, user_id: str, until: datetime) -> bool:
+        """/ban: grava RestrictTime (o login recusa enquanto não passar)."""
+        result = await self.db.execute("UPDATE User SET RestrictTime=:until WHERE Id=:user_id", {'until': until, 'user_id': user_id})
+        return result > 0
+
+    async def add_score(self, user_id: str, score: int) -> bool:
+        """Soma GP da partida em TotalScore e SeasonScore (atômico no banco)."""
+        result = await self.db.execute(
+            "UPDATE Game SET TotalScore=TotalScore+:score, SeasonScore=SeasonScore+:score, LastUpdateTime=:now WHERE Id=:user_id",
+            {'score': int(score), 'now': datetime.now(), 'user_id': user_id}
+        )
+        return result > 0
+
+    async def add_slot_tokens(self, user_id: str, delta: int) -> bool:
+        """Fichas do caça-níquel WCS2; não deixa ficar negativo."""
+        # shortcut: usa a coluna EventScore2 (sem uso) em vez de coluna própria
+        result = await self.db.execute("UPDATE Game SET EventScore2=EventScore2+:d WHERE Id=:user_id AND EventScore2+:d>=0",
+                                       {'d': int(delta), 'user_id': user_id})
+        return result > 0
+
+    POINTS = frozenset({'DiscountPoints', 'RenaPoints'})  # colunas do Game em db/linked.sql
+
+    async def add_points(self, user_id: str, column: str, delta: int) -> bool:
+        """Pontos da loja WCS2 (desconto/Rena); não deixa ficar negativo."""
+        assert column in self.POINTS
+        result = await self.db.execute(f"UPDATE Game SET {column}={column}+:d WHERE Id=:user_id AND {column}+:d>=0",
+                                       {'d': int(delta), 'user_id': user_id})
+        return result > 0
+
+    async def get_points(self, user_id: str, column: str) -> int:
+        assert column in self.POINTS
+        row = await self.db.fetch_one(f"SELECT {column} FROM Game WHERE Id=:user_id", {'user_id': user_id})
+        return int(row[column]) if row else 0
+
+    async def set_tutorial(self, user_id: str, lessons: int) -> bool:
+        """Progresso do tutorial WCS2 (lições liberadas, 0..9); só avança."""
+        # shortcut: usa a coluna EventScore3 (sem uso) em vez de coluna própria, criar Game.Tutorial se precisar do EventScore3
+        result = await self.db.execute("UPDATE Game SET EventScore3=:n WHERE Id=:user_id AND EventScore3<:n", {'n': lessons, 'user_id': user_id})
+        return result > 0
+
     async def update_clientdata(self, user_id: str, client_data: bytes) -> bool:
         """
         Atualiza os dados do cliente para o usuário.

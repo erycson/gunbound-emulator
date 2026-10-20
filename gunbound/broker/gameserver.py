@@ -5,6 +5,8 @@ import time
 from gunbound.util.binary_buffer import BinaryReader
 from gunbound.util.udp_protocol import UDPFutureProtocol
 
+GRANDPRIX_SERVER = 2
+
 class GameServer:
     def __init__(self, index, config):
         self.index = index
@@ -12,7 +14,8 @@ class GameServer:
         self.port = config['port']
         self.name = config['name']
         self.description = config['description']
-        self.event = config['event']
+        # Tipo na lista (cliente 0x4f29b6 -> 0x1e5a2): 1 = fundo wowlg, 2 = servidor de Grand Prix (0x4ce522 pede 0x1100)
+        self.event = GRANDPRIX_SERVER if (config.get('grandprix') or {}).get('enabled') else config['event']
         
         if (len(self.name.encode('latin-1')) > 32):
             raise ValueError(f"Nome do servidor muito longo (máx 32 bytes em latin-1): {self.name} ({len(self.name.encode('latin-1'))} bytes)")

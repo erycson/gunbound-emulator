@@ -3,7 +3,9 @@ from typing import TYPE_CHECKING
 from typing_extensions import override
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util import BinaryWriter, BinaryReader
+from gunbound.game import phase
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket
+from gunbound.game.protocol.admin_console import forward_to_monitors
 if TYPE_CHECKING:
     from gunbound.game.client import ClientConnection
 
@@ -38,6 +40,7 @@ class ChannelChatRecv(BasePackageRecv):
         message = message_buf.read_string(length)
 
         await self.conn.channel.broadcast(ChannelChatResp.success(self.conn, message))
+        await forward_to_monitors(self.conn, lambda: ChannelChatResp.success(self.conn, message))
 
     def log_command(self, conn):
         cmd = ClientPacket.CLI_CHANNEL_CHAT.value
@@ -55,12 +58,7 @@ class ChannelChatResp(BasePackageSend):
         command = 0x201F - 0x79CE9F82
         position = conn.channel.get_client_position(conn)
 
-        decrypted = BinaryWriter()
-        decrypted.write_uint8(position)
-        decrypted.write_string(conn.data['profile']['Nickname'], 12)
-        decrypted.write_uint8(len(message))
-        decrypted.write_string(message)
-        data = decrypted.getvalue()
+        data = phase.of(conn).chat_body(position, conn.data['profile']['Nickname'], message)
         
         for i in range(0, len(data), 12):
             buf.write_int32(command)

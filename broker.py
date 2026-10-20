@@ -1,3 +1,5 @@
+from gunbound.util import filelog
+filelog.start('broker')
 import asyncio
 import signal
 from gunbound.broker.containers import Container

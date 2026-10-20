@@ -40,13 +40,15 @@ features:
 broker:
   host: "127.0.0.1"
   port: 8372
+  # th_port: 8373 # opcional: porta só do TH (ele lê a lista 0x1102 com 13 bytes no fim; aponte Port= do GunBound.ini do TH para ela)
   product_version: *product_version
   strategies:
     login: "gunbound.broker.strategy.login_strategy.GBWC_v440_LoginStrategy"
 
 buddy_server:
   host: "127.0.0.1"
-  port: 8352
+  port: 8352 # TCP e UDP; o cliente acha pelo BuddyIP/BuddyPort do GunBound.ini (sem BuddyIP ele não conecta)
+  # notice: [["Título", "Texto"]] # opcional: aviso 0x1FFE mandado depois do login no buddy (até 10)
 
 buddy_center:
   host: "127.0.0.1"
@@ -61,15 +63,39 @@ gameservers:
     accept: # IPs ou range de IPs de quem pode entrar no servidor, usando notação CIDR
       - 127.0.0.1
       - 64.0/1
-    version_min: 440
-    version_max: 440
+    version_min: 1
+    version_max: 999
     product_version: *product_version
+    phase: "WCS1" # fase do cliente: TH, WCS1 (v440, v495), WCS2 (v548, v584) - opcodes e layouts (gunbound/game/phase.py)
     users_max: 3000 # max 65535
-    event: 0 # 1 = wowlg, é a imagem de fundo do servidor na lista de servidores
+    event: 0 # 1 = wowlg (imagem de fundo na lista); 2 = Grand Prix (o broker já usa 2 se grandprix.enabled)
     grade_min: 19
     grade_max: -4
-    gold_factor: 100
-    score_factor: 100
+    gold_factor: 230          # GoldFactor do servidor original (GunBoundServ/setting.txt)
+    score_factor: 270         # ScoreFactor do servidor original
+    jackpot: &JACKPOT # WCS2, Jack Pot Booster Card por carta (0 Normal, 1 Rare, 2 Epic, 3 Legend): gold [mín, máx], itens por carta,
+             # fail = % de cada item vir "Boost Failed", pool = [item, quantidade] sorteado por igual
+             # joias do encantamento (ex3.dat do v584, preço 0 = só vinham do Jackpot): 700038 Spirit, 700039 Nihility,
+             # 700040 Nirvana, 700041 Fortune Stone (sucesso certo), 700042 Shield Stone (não destrói)
+      0: {gold: [100, 1000], items: 1, fail: 50, pool: [[98416, 1], [98355, 1], [700038, 1], [700039, 1], [700040, 1]]}
+      1: {gold: [500, 3000], items: 1, fail: 40, pool: [[98305, 1], [98343, 1], [700038, 2], [700039, 2], [700040, 2], [700042, 1]]}
+      2: {gold: [1000, 5000], items: 2, fail: 30, pool: [[98345, 1], [98423, 1], [700038, 3], [700039, 3], [700040, 3], [700041, 1], [700042, 1]]}
+      3: {gold: [3000, 10000], items: 2, fail: 10, pool: [[98416, 1], [98423, 1], [700038, 5], [700039, 5], [700040, 5], [700041, 2], [700042, 2]]}
+    tutorial: &TUTORIAL # WCS2, prêmio na 1ª conclusão de cada lição (0x7014); o cliente só mostra o texto (Language.txt
+              # 2000552..2000576) e o ícone. items = [código, qtd] no baú (ex3.dat: 700003 Defense, 700004 Damage up,
+              # 700010 Team Offence up, 700007 Treasure Key, 700002 Special Force, 700006 Lock down);
+              # avatar = head/body/flag, chega como presente sorteado entre os avatar_pool menus mais baratos em gold
+      sender: GunBound
+      avatar_pool: 10
+      1: {gold: 100, items: [[700003, 30]]}
+      2: {gold: 150, items: [[700004, 30]]}
+      3: {gold: 250, items: [[700010, 30]]}
+      4: {gold: 350, items: [[700007, 30]]}
+      5: {gold: 500, items: [[700002, 30]]}
+      6: {gold: 600, items: [[700006, 30]]}
+      7: {gold: 800, avatar: head}
+      8: {gold: 1000, avatar: body}
+      9: {gold: 1500, avatar: flag}
     stats_interval: 300 # Intervalo em segundos que será inserido a quantidade de usuários na tabela UserCount
     features: 
       - *AVATAR_ENABLED
@@ -80,3 +106,55 @@ gameservers:
       - *EFFECT_THOR
       - *EFFECT_MOON
       - *EFFECT_ECLIPSE
+
+  - name: "Gunbound WC Grand Prix" # Servidor com Grand Prix: rode com servidor-game-grandprix.bat (game.py 1)
+    description: "Grand Prix\\nGrupo contra grupo"
+    announcement: "# Grand Prix: entre na fila pelo canal"
+    host: "127.0.0.1"
+    port: 8361
+    accept:
+      - 127.0.0.1
+      - 64.0/1
+    version_min: 1
+    version_max: 999
+    product_version: *product_version
+    phase: "WCS1" # fase do cliente: TH, WCS1 (v440, v495), WCS2 (v548, v584) - opcodes e layouts (gunbound/game/phase.py)
+    users_max: 3000
+    event: 0
+    grade_min: 19
+    grade_max: -4
+    gold_factor: 230
+    score_factor: 270
+    jackpot: *JACKPOT
+    tutorial: *TUTORIAL
+    bonus_event: 0 # WCS2: % de chance por partida de sortear o bônus "+Gold/+GP" (0x4300, tipos 0..9); 0 = desligado
+    # result_rewards: {kill: [50, 1], win: [100, 2]} # WCS2: gold e GP por evento no fim da partida (0x4412 do v584 só manda contagens); padrões em gunbound/game/protocol/wcs2/result.py
+    # slot_machine: [[4, 0, 60], [0, 20, 25], [1, 500, 12], [1, 3000, 3]] # WCS2 caça-níquel: [resultado (0 fichas, 1 gold, 4 perdeu), valor x aposta, peso]
+    # jackpot_bomb: {1: [700096, 1], 2: [700097, 1]} # WCS2: prêmio da bomba por carta (Rare 12 / Epic 15 cartas); padrão = carta seguinte
+    # rena: [[700096, 1, 10], [700097, 1, 1]] # WCS2 Rena (0x7124, custa 100 Game.RenaPoints): [item, quantidade, peso]; sem chave = recusa
+    stats_interval: 300
+    features:
+      - *AVATAR_ENABLED
+      - *EFFECT_FORCE
+      - *EFFECT_TORNADO
+      - *EFFECT_LIGHTNING
+      - *EFFECT_WIND
+      - *EFFECT_THOR
+      - *EFFECT_MOON
+      - *EFFECT_ECLIPSE
+    grandprix:
+      enabled: true
+      battle_player_count: 1      # jogadores por grupo (sala = 2x)
+      mode: SOLO                  # SOLO, SCORE, TAG ou JEWEL
+      stage: 0                    # mapa (0 = aleatório)
+      rankers: 10                 # tamanho do ranking pessoal enviado
+      rank_interval: 30           # segundos entre recálculos do ranking (30 para testar; original 300)
+      personal_win_score: 10
+      personal_lose_score: -5
+      big_rank_difference: 100    # diferença de pontos entre grupos que conta como "grande"
+      group_win_score_small: 10
+      group_lose_score_small: -10
+      group_win_score_big_higher: 5     # favorito venceu
+      group_lose_score_big_lower: -5
+      group_win_score_big_lower: 20     # zebra venceu
+      group_lose_score_big_higher: -20

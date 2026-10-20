@@ -1,82 +1,42 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
 from dependency_injector.wiring import Provide, inject
-from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
-from gunbound.base.enums import RoomMap, RoomMode, RoomSize, RoomOptions
-from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
-from gunbound.game.protocol import ClientPacket, ServerPacket, ServerCode
-if TYPE_CHECKING:
-    from gunbound.game.managers import RoomManager
-    from gunbound.game.room import Room
-    from gunbound.game.client import ClientConnection
+from gunbound.base.enums import RoomMode, RoomOptions, ROOM_SIZES
+from gunbound.game.protocol.base import GameRecv, Packet, handler
+from gunbound.game import room_packets as rp
+from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 
-@BasePackageFactory.register(ClientPacket.CLI_ROOM_CREATE.value)
-@inject
-class RoomCreateRecv(BasePackageRecv):
-    _strategy = None
 
-    def __init__(
-        self,
-        conn: 'ClientConnection',
-        buf: BinaryReader,
-        room_manager: 'RoomManager' = Provide['rooms'],
-    ):
-        self.conn = conn
-        self.buf = buf
-        self.manager = room_manager
+@handler(ClientPacket.CLI_ROOM_CREATE, channel=True)
+class RoomCreateRecv(GameRecv):
+    """
+    0x2120: title_len u8 + title + settings u32 (B2 62 | modo u16) + senha str[4] + capacidade u8.
+    Resposta 0x2121 (sem RTC): 00 00 00 | room_id u16 | MOTD.
+    """
 
-    async def process(self):
-        """
-        @todo Verificar limites de usuários por canal.
-        """
-        if self.conn.channel is None:
-            return
+    @inject
+    async def handle(self, rooms=Provide['rooms']):
         if self.conn.room is not None:
             return
-
-        len = self.buf.read_uint8()
-        # Limita o tamanho do nome da sala, pois ao renomear, da pra colocar mais de 23 caracteres
-        if len < 1 or len > 23:
+        size = self.buf.require(1).read_uint8()
+        if not 1 <= size <= RoomOptions.MAX_TITLE:
             return
+        name = self.buf.require(size + 9).read_string(size, encoding='latin-1')
+        settings = self.buf.read_uint32()
+        raw_pwd = self.buf.read_bytes(4)
+        capacity = self.buf.read_uint8()
 
-        name = self.buf.read_string(len)
-        _ = self.buf.read_uint8() # Sempre 0xB2
-        mode = RoomMap(self.buf.read_uint16())
-        _ = self.buf.read_uint8() # Sempre 0x00
-        password = self.buf.read_bytes(4)
-        size = RoomSize(self.buf.read_uint8())
+        mode = RoomMode.parse(settings >> 16)
+        if mode is None or capacity not in ROOM_SIZES:
+            print(f"[{self.conn.addr}] Criar sala: modo 0x{settings >> 16:04X} ou capacidade {capacity} inválidos")
+            await self.conn.on_send(rp.room_error(ServerPacket.SRV_ROOM_CREATE, ServerCode.SRV_ROOM_CREATE_FAIL))
+            return
+        # Às vezes vem lixo depois do primeiro byte da senha
+        password = None if raw_pwd[0] == 0 else raw_pwd.split(b'\x00', 1)[0].decode('latin-1')
 
-        # As vezes foi observado LIXO depois do primeiro byte, por isso essa proteção aqui
-        password = None if password[0] == 0 else password.rstrip(b'\x00').decode('latin-1')    
-
-        options = RoomOptions(name, RoomMap.RAMDOM, mode, size, password)
-        room = await self.manager.create(self.conn, options)
-        self.conn.room = room
-
-        await self.conn.on_send(RoomCreateResp.success(room, self.manager.config['announcement']))
-
-    def log_command(self, conn):
-        cmd = ClientPacket.CLI_ROOM_CREATE.value
-        seq = conn.expected_client_checksum(self.buf.size())
-        print(f"RECV<< [SS={conn.server.id:08X} SQ={seq:04X} CD={cmd:04X}] {self.buf.to_hex(4)}")
-
-class RoomCreateResp(BasePackageSend):
-    def __init__(self, buf: BinaryWriter):
-        self.buf = buf 
-
-    @classmethod
-    def success(cls, room: Room, announcement: str) -> 'RoomCreateResp':
-        buf = BinaryWriter()
-        buf.write_uint16(ServerPacket.SRV_ROOM_CREATE)
-        buf.write_uint16(ServerCode.SRV_OK)
-        buf.write_uint16(room.id)
-        buf.write_uint8(0) # ???
-        buf.write_string(announcement)
-        return cls(buf)
-    
-    def log_command(self, conn):
-        reader = self.buf.to_reader()
-        checksum = reader.read_uint16(pos=2)
-        cmd = reader.read_uint16(pos=4)
-        rtc = reader.read_uint16(pos=6)
-        print(f"SEND>> [SS={conn.server.id:08X} SQ={checksum:04X} CD={cmd:04X} RTC={rtc:04X}] {self.buf.to_hex(8)}")
+        options = RoomOptions(name, mode, capacity, password, settings=settings & 0xFFFF)
+        room = await rooms.create(self.conn, options)
+        if room is None:
+            await self.conn.on_send(rp.room_error(ServerPacket.SRV_ROOM_CREATE, ServerCode.SRV_ROOM_CREATE_FAIL))
+            return
+        await self.conn.on_send(Packet.new(ServerPacket.SRV_ROOM_CREATE).raw(b'\x00' * 3).u16(room.id)
+                                .text(rooms.motd()))

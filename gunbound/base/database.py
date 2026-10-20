@@ -86,7 +86,9 @@ class Database:
 
     @staticmethod
     def _row(row, query: str) -> Dict[str, Any]:
-        names = {word.lower(): word for word in re.findall(r'\w+', query)}
+        names = {}
+        for word in re.findall(r'(?<![:\w])\w+', query):  # sem os parâmetros :x; vale a 1ª grafia (a do SELECT)
+            names.setdefault(word.lower(), word)
         return {names.get(key.lower(), key): value for key, value in row.items()}
 
     async def fetch_one(self, query: str, values: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:

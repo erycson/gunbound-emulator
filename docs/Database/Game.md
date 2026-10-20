@@ -1,95 +1,41 @@
-
 # Game
 
-## Descrição
-A tabela `Game` armazena as informações principais do jogador, incluindo dados de perfil, estatísticas, rankings e configurações de jogo.
+Dados de jogo de cada conta: perfil, patentes, ranking, gold e configurações. Uma linha por `User.Id`
+([User.md](User.md)). Estrutura completa em `db/linked.sql` (a do servidor original + as colunas do S2).
 
-## Estrutura da Tabela
+## Colunas
 
-```sql
-CREATE TABLE `Game`  (
-  `Id` varchar(16) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
-  `Country` int(10) UNSIGNED NULL DEFAULT 28,
-  `Nickname` varchar(12) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
-  `Guild` varchar(8) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
-  `MemberCount` smallint(6) NOT NULL DEFAULT 0,
-  `Money` int(10) UNSIGNED NOT NULL DEFAULT 0,
-  `EventScore0` int(11) NOT NULL DEFAULT 0,
-  `EventScore1` int(11) NOT NULL DEFAULT 0,
-  `EventScore2` int(11) NOT NULL DEFAULT 0,
-  `EventScore3` int(11) NOT NULL DEFAULT 0,
-  `AvatarWear` bigint(20) NOT NULL DEFAULT 0,
-  `Prop1` varchar(201) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
-  `Prop2` varchar(201) CHARACTER SET latin1 COLLATE latin1_swedish_ci NOT NULL DEFAULT '',
-  `AdminGift` smallint(6) NOT NULL DEFAULT 0,
-  `TotalGrade` tinyint(4) NOT NULL DEFAULT 19,
-  `SeasonGrade` tinyint(4) NOT NULL DEFAULT 19,
-  `CountryGrade` tinyint(4) NOT NULL DEFAULT 19,
-  `TotalScore` int(10) UNSIGNED NOT NULL DEFAULT 1000,
-  `SeasonScore` int(10) UNSIGNED NOT NULL DEFAULT 1000,
-  `TotalRank` int(10) UNSIGNED NOT NULL DEFAULT 0,
-  `SeasonRank` int(10) UNSIGNED NOT NULL DEFAULT 0,
-  `CountryRank` int(10) UNSIGNED NOT NULL DEFAULT 0,
-  `GuildRank` int(10) UNSIGNED NOT NULL DEFAULT 0,
-  `AccumShot` int(10) UNSIGNED NOT NULL DEFAULT 0,
-  `AccumDamage` int(10) UNSIGNED NOT NULL DEFAULT 0,
-  `NoRankUpdate` tinyint(1) NOT NULL DEFAULT 0,
-  `ClientData` varbinary(100) NOT NULL DEFAULT '' COMMENT 'Se vazio, mandar -2 no primeiro byte para o cliente',
-  `StageRecords` varbinary(161) NOT NULL DEFAULT '',
-  `MobileRecords` varbinary(161) NOT NULL DEFAULT '',
-  `LastUpdateTime` datetime NULL DEFAULT '0000-00-00 00:00:00',
-  `GiftProhibitTime` datetime NULL DEFAULT '0000-00-00 00:00:00',
-  PRIMARY KEY (`Id`) USING BTREE,
-  INDEX `Guild`(`Guild`) USING BTREE
-) ENGINE = InnoDB CHARACTER SET = latin1 COLLATE = latin1_swedish_ci ROW_FORMAT = Compact;
-```
+| Coluna | Tipo | Padrão | Uso |
+|---|---|---|---|
+| `Id` | varchar(16) | | chave; igual a `User.Id` |
+| `Country` | int unsigned | 28 | país (só WC; vai depois das patentes) |
+| `NickName` | varchar(12) | | apelido; `UNIQUE` criado pelo `init_db.py` |
+| `Guild` | varchar(8) | `''` | guild |
+| `MemberCount` | smallint | 0 | membros da guild (vai no 0x1012) |
+| `Money` | int unsigned | 0 | gold |
+| `EventScore0`, `EventScore1` | int | 0 | pontuação de evento (vão no 0x1012) |
+| `EventScore2` | int | 0 | S2: fichas do caça-níquel (0x7110/0x7113) |
+| `EventScore3` | int | 0 | S2: progresso do tutorial (0x7012/0x7014) |
+| `AvatarWear` | bigint | 0 | [INCERTO] avatar vestido no original; o emulador usa `Chest.Wearing` |
+| `Prop1`, `Prop2` | varchar(201) | | [INCERTO] sem uso no emulador |
+| `AdminGift` | smallint | 0 | [INCERTO] sem uso no emulador |
+| `TotalGrade`, `SeasonGrade`, `CountryGrade` | tinyint | 19 | patentes ([Níveis.md](../Níveis.md)); 20 = GM |
+| `TotalScore`, `SeasonScore` | int unsigned | 1000 | GP total e da temporada |
+| `TotalRank`, `SeasonRank`, `CountryRank`, `GuildRank` | int unsigned | 0 | posições no ranking (job diário em `gunbound/repository/ranking.py`) |
+| `AccumShot`, `AccumDamage` | int unsigned | 0 | tiros e dano acumulados (vão no 0x1012) |
+| `NoRankUpdate` | tinyint(1) | 0 | [INCERTO] no original, tira a conta do ranking; o emulador não lê |
+| `ClientData` | varbinary(100) | | dados do cliente, devolvidos no 0x1090 → 0x1091; `[0:2]` = tanques primário e secundário (0x3200). Vazio: mandar -2 (`0xFE`) no 1º byte |
+| `StageRecords`, `MobileRecords` | varbinary(161) | | [INCERTO] vitórias/derrotas por mapa e por mobile (tanque); o emulador lê as tabelas `StageRecord`/`MobileRecord` |
+| `LastUpdateTime` | datetime | | última atualização |
+| `GiftProhibitTime` | datetime | | até quando não pode dar presente |
+| `DiscountPoints` | int | 0 | S2: pontos de desconto da loja (0x7118; 50 = −20%, 100 = −50%) |
+| `RenaPoints` | int | 0 | S2: saldo da Rena (0x7124; 100 por sorteio) |
 
-## Campos da Tabela
-
-### Identificação e Perfil
-
-| Campo              | Tipo             | Nulo | Padrão | Descrição                                          |
-|--------------------|------------------|------|--------|----------------------------------------------------|
-| `Id`               | varchar(16)      |      |        | **Chave primária.** Identificador único do jogador |
-| `Country`          | int(10) UNSIGNED |   X  |   28   | Código do país do jogador                          |
-| `Nickname`         | varchar(12)      |      |        | Nome de exibição do jogador                        |
-| `Guild`            | varchar(8)       |      | NULL   | Nome da guild do jogador                           |
-| `MemberCount`      | smallint(6)      |      | 0 | Contador de membros (possivelmente relacionado à guild) |
-| `Money`            | int(10) UNSIGNED |      | 0 | Dinheiro/moedas do jogador no jogo |
-| `EventScore0`      | int(11)          |      | 0 | Pontuação do evento 0 |
-| `EventScore1`      | int(11)          |      | 0 | Pontuação do evento 1 |
-| `EventScore2`      | int(11)          |      | 0 | Pontuação do evento 2 |
-| `EventScore3`      | int(11)          |      | 0 | Pontuação do evento 3 |
-| `AvatarWear`       | bigint(20)       |      | 0 | Configuração dos itens equipados no avatar |
-| `Prop1`            | varchar(201)     |      | '' | Configurações de propriedades 1 |
-| `Prop2`            | varchar(201)     |      | '' | Configurações de propriedades 2 |
-| `AdminGift`        | smallint(6)      |      | 0 | Presentes administrativos recebidos |
-| `TotalGrade`       | tinyint(4)       |      | 19 | Graduação total do jogador |
-| `SeasonGrade`      | tinyint(4)       |      | 19 | Graduação da temporada atual |
-| `CountryGrade`     | tinyint(4)       |      | 19 | Graduação no ranking do país |
-| `TotalScore`       | int(10) UNSIGNED |      | 1000 | Pontuação total acumulada |
-| `SeasonScore`      | int(10) UNSIGNED |      | 1000 | Pontuação da temporada atual |
-| `TotalRank`        | int(10) UNSIGNED |      | 0 | Posição no ranking geral |
-| `SeasonRank`       | int(10) UNSIGNED |      | 0 | Posição no ranking da temporada |
-| `CountryRank`      | int(10) UNSIGNED |      | 0 | Posição no ranking do país |
-| `GuildRank`        | int(10) UNSIGNED |      | 0 | Posição no ranking da guild |
-| `AccumShot`        | int(10) UNSIGNED |      | 0 | Total de tiros acumulados |
-| `AccumDamage`      | int(10) UNSIGNED |      | 0 | Total de dano acumulado |
-| `NoRankUpdate`     | tinyint(1)       |      | 0 | Flag para impedir atualizações de ranking (0=permitir, 1=bloquear) |
-| `ClientData`       | varbinary(100)   |      | '' | **Dados binários do cliente.** Se vazio, enviar -2 no primeiro byte para o cliente |
-| `StageRecords`     | varbinary(161)   |      | '' | Registros de desempenho em fases/mapas |
-| `MobileRecords`    | varbinary(161)   |      | '' | Registros específicos para versão mobile |
-| `LastUpdateTime`   | datetime         |   X  | '0000-00-00 00:00:00' | Timestamp da última atualização dos dados |
-| `GiftProhibitTime` | datetime         |   X  | '0000-00-00 00:00:00' | Timestamp até quando presentes estão proibidos |
+`DiscountPoints` e `RenaPoints` não existem no banco original. Em banco antigo, rode `python init_db.py`: ele
+acrescenta as colunas e os índices que faltam. O cliente não mostra de onde vêm esses pontos; hoje só por SQL.
 
 ## Índices
 
-- **PRIMARY KEY**: `Id` (BTREE) - Chave primária para identificação única
-- **INDEX**: `Guild` (BTREE) - Índice para consultas por guild
-
-## Configurações da Tabela
-
-- **Engine**: InnoDB (suporte a transações e integridade referencial)
-- **Character Set**: latin1
-- **Collation**: latin1_swedish_ci
-- **Row Format**: Compact
+- `PRIMARY KEY (Id)`
+- `INDEX (Guild)`
+- `UNIQUE (NickName)` (criado pelo `init_db.py`; com apelidos repetidos o script só avisa e segue sem o índice)

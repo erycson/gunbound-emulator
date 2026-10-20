@@ -119,7 +119,7 @@ class BinaryReader:
     def read_string(self, length, pos=None, encoding='utf-8'):
         p = self._pos if pos is None else pos
         raw = self._buffer[p:p+length]
-        s = raw.rstrip(b'\x00').decode(encoding)
+        s = raw.split(b'\x00', 1)[0].decode(encoding)  # string C: o TH manda lixo de memória depois do \0
         if pos is None:
             self._pos += length
         return s
@@ -134,11 +134,24 @@ class BinaryReader:
     def size(self):
         return len(self._buffer)
 
+    def remaining(self) -> int:
+        return len(self._buffer) - self._pos
+
+    def require(self, length: int) -> 'BinaryReader':
+        """Garante que ainda há `length` bytes para ler; senão lança PacketError (pacote mal formado)."""
+        if self.remaining() < length:
+            raise PacketError(f"esperado {length} bytes, restam {self.remaining()}")
+        return self
+
     def seek(self, pos):
         self._pos = pos
 
     def tell(self):
         return self._pos
+
+
+class PacketError(ValueError):
+    """Pacote mal formado (tamanho/campo inválido). Tratado no BasePackageFactory."""
 
 class BinaryWriter:
     def __init__(self):

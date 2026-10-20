@@ -17,8 +17,9 @@ class BrokerServer:
         self.servers = []
         self.server_repository = server_repository
 
-    async def handler(self, reader: StreamReader, writer: StreamWriter):
+    async def handler(self, reader: StreamReader, writer: StreamWriter, th: bool = False):
         conn = ClientConnection(self, reader, writer)
+        conn.th = th
         conn.task = asyncio.create_task(conn.handler())
         self.connections.append(conn)
     
@@ -35,7 +36,7 @@ class BrokerServer:
         self.task.cancel()
 
         try:
-            for connection in self.connections:
+            for connection in list(self.connections):  # close() remove da lista
                 await connection.close()
             await self.task
         except CancelledError:
@@ -55,6 +56,11 @@ class BrokerServer:
             self.config['port']
         )
         print(f'BrokerServer iniciado')
+        th_port = self.config.get('th_port')
+        if th_port:  # o TH manda o mesmo 0x1100 mas lê o 0x1102 com outro layout: só dá para separar pela porta
+            th = await asyncio.start_server(lambda r, w: self.handler(r, w, th=True), self.config['host'], th_port)
+            print(f'BrokerServer TH iniciado na porta {th_port}')
+            await th.start_serving()
 
         async with server:
             await server.serve_forever()

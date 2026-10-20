@@ -3,6 +3,8 @@ from enum import IntEnum, StrEnum
 class ExpireType(StrEnum):
     Week = "W"
     Month = "M"
+    Ten = "T"
+    Year = "Y"
     Infinite = "I"
     
     @classmethod
@@ -14,6 +16,8 @@ class ExpireType(StrEnum):
         
     @classmethod
     def try_parse_int(cls, value: int):
+        if chr(value) in 'WTMYI':  # o original monta o nome da coluna com o byte cru (PriceBy...For%c)
+            return cls(chr(value))
         match value:
             case 1:
                 return cls.Week
@@ -40,11 +44,9 @@ class AcquisitionType(StrEnum):
     def try_parse_int(cls, value: int):
         match value:
             case 0:
-                return cls.Cash
-            case 1:
                 return cls.Gold
-            case _:
-                return None
+            case _:  # original: byte != 0 usa PriceByCashFor
+                return cls.Cash
 
 class ReceiptBuyType(StrEnum):
     Self = "S"
@@ -132,29 +134,23 @@ class RoomStatus(IntEnum):
     FINISHED = 2
 
 class RoomMode(IntEnum):
-    SOLO = 0x6200
-    SCORE = 0x6244
-    TAG = 0x6208
-    JEWEL = 0x620C
+    """Modo de jogo: u16 nos bytes 2-3 do campo settings (0x2120/0x3101). Valores de F2/F3."""
+    SOLO = 0x00
+    SCORE = 0x44
+    TAG = 0x08
+    JEWEL = 0x0C
 
-class RoomSize(IntEnum):
-    X1 = 0x0200
-    X2 = 0x0400
-    X3 = 0x0600
-    X4 = 0x0800
+    @classmethod
+    def parse(cls, value: int) -> 'RoomMode | None':
+        return cls._value2member_map_.get(value)
 
-class RoomMap(IntEnum):
-    RAMDOM = 0x00B2
-    MIRAMO_TOWN = 0x01B2
-    NIRVANA = 0x02B2
-    METROPOLIS = 0x03B2
-    SEA_OF_HERO = 0x04B2
-    ADIUM_ROOT = 0x05B2
-    DRAGON = 0x06B2
-    COZY_TOWER = 0x07B2
-    DUMMY_SLOPE = 0x08B2
-    STGAR_DUST = 0x09B2
-    META_MINE = 0x0AB2
+
+RANDOM_MAP = 0      # mapa 0 = aleatório
+MAP_COUNT = 11      # mapas 1..10 (docs/Play/Maps.md); usado no sorteio
+ROOM_SIZES = (2, 4, 6, 8)
+TANK_RANDOM = 0xFF
+TANK_COUNT = 16     # índices 0..15 (docs/Play/Tanks e Itens.md)
+
 
 class RoomSortList(IntEnum):
     ALL = 0x01
@@ -166,19 +162,35 @@ class RoomSortList(IntEnum):
     JEWEL = 0x06
 
 class RoomOptions:
-    def __init__(self, name: str, map: RoomMap, mode: RoomMode, size: RoomSize, password: str | None):
-        self.name = name
-        self.map = map
+    MIN_PLAYERS = 2
+    MAX_PLAYERS = 8
+    MAX_TITLE = 23              # criação (0x2120: corpo de 10 a 0x4A bytes)
+    MAX_RENAME = 64             # 0x3104 aceita de 1 a 0x40 bytes no servidor original
+    ALL_ITEMS = b'\xFF' * 8     # 0x3102: 8 bytes de máscara de itens, repetidos em 0x2111/0x3400
+    DEFAULT_SETTINGS = 0x62B2   # bytes 0-1 do settings (fixos B2 62)
+
+    def __init__(self, name: str, mode: RoomMode, size: int, password: str | None, map: int = RANDOM_MAP,
+                 settings: int = DEFAULT_SETTINGS, item_bytes: bytes = b'\xFF' * 8):
+        self.name = name[:self.MAX_TITLE]
         self.mode = mode
-        self.size = size
-        self.password = password
+        self.size = size if size in ROOM_SIZES else self.MAX_PLAYERS
+        self.password = password or None
+        self.map = map
+        self.settings = settings & 0xFFFF   # opções cruas (sudden death, vento etc.), devolvidas como recebidas
+        self.item_bytes = bytes(item_bytes)  # 0x3102: máscara de itens permitidos (8 bytes crus)
+
+    @property
+    def mode_code(self) -> int:
+        return int(self.mode)
 
     def max_players(self) -> int:
-        match self.size:
-            case RoomSize.X1: return 2
-            case RoomSize.X2: return 4
-            case RoomSize.X3: return 6
-            case RoomSize.X4: return 8
+        return self.size
+
+    def use_item(self) -> bool:
+        return any(self.item_bytes)
+
+    def check_password(self, password: str | None) -> bool:
+        return self.password is None or self.password == (password or None)
 
     def is_protected(self) -> bool:
         return self.password is not None

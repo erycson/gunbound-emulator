@@ -58,6 +58,15 @@ class ServerRepository():
             {'server_ip': server_ip, 'server_port': server_port}
         )
 
+    async def insert_accuse(self, accuser: str, server_ip: int | str, server_port: int, accused: str, complaint: str) -> None:
+        """0x5000 SVC_POLICE_ACCUSE: denúncia de um jogador."""
+        if isinstance(server_ip, str):
+            server_ip = int.from_bytes(socket.inet_aton(server_ip), 'little')
+        await self.db.execute(
+            "INSERT INTO Accuse (Accuse, ServerIp, ServerPort, Accused, Complaint, Time) VALUES (:a, :ip, :port, :b, :c, :t)",
+            {'a': accuser, 'ip': server_ip, 'port': server_port, 'b': accused, 'c': complaint, 't': datetime.now()}
+        )
+
     async def delete_current_user(self, user_id: str) -> None:
         """
         Remove um usuário da tabela CurrentUser.

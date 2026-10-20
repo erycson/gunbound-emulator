@@ -2,6 +2,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 import socket
 import asyncio
+from gunbound.repository import ranking
+from gunbound.game import phase
 from asyncio import Task, CancelledError, StreamReader, StreamWriter
 from dependency_injector.providers import Configuration
 if TYPE_CHECKING:
@@ -30,7 +32,11 @@ class GameServer:
         await self.clients.add(reader, writer)
 
     async def start(self):
+        phase.PHASES[self.config.get('phase') or phase.DEFAULT].check(self.config)
+        # Fechar a janela não chama stop(); limpa sessões que sobraram da execução anterior
+        await self.server_repository.delete_all_users(self.config['host'], self.config['port'])
         self.task = asyncio.create_task(self.tcp_listener())
+        self.ranking = asyncio.create_task(ranking.daily(self.server_repository.db))
         await self.server_repository.insert_service_status(
             self.config['product_version'],
             int.from_bytes(socket.inet_aton(self.config['host']), 'little'),
@@ -40,6 +46,7 @@ class GameServer:
 
     async def stop(self):
         self.task.cancel()
+        self.ranking.cancel()
         try:
             await self.clients.close()
             await self.task

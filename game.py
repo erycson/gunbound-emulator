@@ -1,3 +1,8 @@
+import sys, os
+from gunbound.util import filelog
+_cfg = next((a for a in sys.argv[1:] if a.endswith(('.yml', '.yaml'))), 'config.yml')
+_idx = next((a for a in sys.argv[1:] if a.isdigit()), '')  # game.py [arquivo.yml] [índice]: log separado por servidor
+filelog.start(('game' if _cfg == 'config.yml' else 'game-' + os.path.splitext(os.path.basename(_cfg))[0]) + (f'-{_idx}' if _idx else ''))
 import signal
 import asyncio
 from gunbound.game.containers import Container

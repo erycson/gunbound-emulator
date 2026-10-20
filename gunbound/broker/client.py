@@ -1,4 +1,4 @@
-from asyncio import CancelledError, StreamWriter, StreamReader, Task
+from asyncio import CancelledError, IncompleteReadError, StreamWriter, StreamReader, Task
 from gunbound.base.protocol import BasePackageFactory, BasePackageSend
 from gunbound.util import BinaryReader
 
@@ -12,6 +12,7 @@ class ClientConnection:
         self.server_seq = 0
         self.closing: bool = False
         self.task: Task | None = None
+        self.th = False  # conectou pela broker.th_port (layout TH no 0x1102)
 
         ip, port = writer.get_extra_info('peername')
         self.addr = f"{ip}:{port}"
@@ -20,7 +21,10 @@ class ClientConnection:
 
     async def disconnect(self):
         self.writer.close()
-        await self.writer.wait_closed()
+        try:
+            await self.writer.wait_closed()
+        except (ConnectionError, OSError):
+            pass  # socket já caiu (RST/WinError 64): fechar mesmo assim
 
     async def close(self):
         if self.closing:
@@ -54,6 +58,15 @@ class ClientConnection:
         self.server_seq = (self.server_seq + packet_len) & 0xFFFF
 
     async def handler(self):
+        try:
+            await self.read_loop()
+        except (ConnectionError, IncompleteReadError) as e:
+            # Cliente morto (ex.: processo fechado) chega como RST/WinError 64; sem isso a task morria com
+            # a exceção e o stop() do broker a relançava no desligamento
+            print(f"[{self.addr}] Conexão perdida: {e!r}")
+            await self.close()
+
+    async def read_loop(self):
         while True:
             # Leia o cabeçalho inicial (2 bytes para o tamanho, little-endian)
             header = await self.reader.read(2)
@@ -77,7 +90,8 @@ class ClientConnection:
 
         # Valida o pacote
         expected = self.expected_client_checksum(packet_size)
-        if checksum != expected:
+        # NyxLauncher manda login (0x1310) e start game (0x4000) com checksum 0
+        if checksum != expected and not (checksum == 0 and cmd in (0x1310, 0x4000)):
             print(f"[{self.addr}] CHECKSUM FAIL< got={checksum:04X} exp={expected:04X} len={packet_size} cmd=0x{cmd:04X}")
             return
 

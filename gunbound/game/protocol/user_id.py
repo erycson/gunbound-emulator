@@ -49,7 +49,7 @@ class UserIdResp(BasePackageSend):
     @classmethod
     def success(cls, users: list[dict[str, any]]):
         buf = BinaryWriter()
-        buf.write_uint16(ServerPacket.SRV_USER_ID)
+        buf.write_uint16(ServerPacket.SRV_USER_NICK)  # o cliente só trata 0x1022 (TH 0x403488, árvore principal); 0x1020 era ignorado
         buf.write_uint16(len(users))
 
         for user in users:

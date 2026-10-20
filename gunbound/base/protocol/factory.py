@@ -1,5 +1,6 @@
 import abc
 import asyncio
+import struct
 from typing import Optional, Type
 from gunbound.base.protocol.recv import BasePackageRecv
 from gunbound.util.binary_buffer import BinaryReader, BinaryWriter
@@ -16,8 +17,9 @@ class BasePackageFactory(abc.ABC):
         return decorator
 
     @classmethod
-    async def from_data(cls, command, conn, buf: BinaryReader):
-        handler: Optional[Type[BasePackageRecv]] = cls.registry.get(command)
+    async def from_data(cls, command, conn, buf: BinaryReader, table: Optional[dict] = None):
+        # table: opcodes da fase do game server (gunbound/game/phase.py); sem ela (broker), o catálogo inteiro
+        handler: Optional[Type[BasePackageRecv]] = (cls.registry if table is None else table).get(command)
         if not handler:
             print(f"[{conn.addr}] Pacote desconhecido: 0x{command:04X} (len={buf.size()})")
             dump(buf.getvalue())
@@ -25,7 +27,15 @@ class BasePackageFactory(abc.ABC):
 
         data = handler(conn, buf)
         data.log_command(conn)
-        asyncio.create_task(data.process())
+        asyncio.create_task(cls._safe_process(command, conn, data))
+
+    @staticmethod
+    async def _safe_process(command, conn, data: BasePackageRecv):
+        # Pacote curto ou com campo inválido (struct.error / PacketError / enum ValueError) não derruba o servidor.
+        try:
+            await data.process()
+        except (struct.error, ValueError) as e:
+            print(f"[{conn.addr}] Pacote mal formado 0x{command:04X}: {type(e).__name__}: {e}")
 
     @classmethod
     @abc.abstractmethod

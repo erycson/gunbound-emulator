@@ -76,7 +76,8 @@ class InventoryRepository:
             List[Dict[str, Any]]: Lista de itens no baú do usuário.
         """
         items = await self.db.fetch_all(
-            "SELECT No, Item, Wearing, Acquisition, Expire, Volume, PlaceOrder, Recovered FROM Chest WHERE Owner = :user_id",
+            "SELECT c.No, c.Item, c.Wearing, c.Acquisition, c.Expire, c.Volume, c.PlaceOrder, c.Recovered, COALESCE(e.Level, 0) AS EnchantLevel "
+            "FROM Chest c LEFT JOIN ChestEnchant e ON e.No = c.No WHERE c.Owner = :user_id",
             {'user_id': user_id}
         )
         return [i | {'Expire': seconds_until(i['Expire'])} for i in items]
@@ -158,6 +159,13 @@ class InventoryRepository:
             'Volume': volume,
         })
     
+    async def cheapest_menus(self, lo: int, hi: int, limit: int) -> List[int]:
+        """Menus de 1 item só, com código em [lo, hi) e preço em gold eterno, do mais barato ao mais caro."""
+        rows = await self.db.fetch_all(
+            "SELECT No FROM Menu WHERE Item1>=:lo AND Item1<:hi AND Item2 IS NULL AND PriceByGoldForI>0 "
+            "ORDER BY PriceByGoldForI, No LIMIT :limit", {'lo': lo, 'hi': hi, 'limit': limit})
+        return [int(r['No']) for r in rows]
+
     async def insert_buy_info(self, product_version: str, menu_id: int,  price: int, asset: int, buy_type: AcquisitionType) -> None:
         """
         Insere um registro de compra na tabela BuyInfo.
@@ -338,6 +346,42 @@ class InventoryRepository:
             }
         )
         return rowcount == 1
+
+    async def get_enchant_rate(self, level: int) -> Dict[str, Any] | None:
+        """Chances (%) de chegar a `level` no encantamento (tabela EnchantLevel do seed)."""
+        return await self.db.fetch_one(
+            "SELECT Level, Success, Down1, Down2, Down3, Destroy, JewelBonus FROM EnchantLevel WHERE Level=:level", {'level': level})
+
+    async def set_enchant_level(self, chest_id: int, level: int) -> None:
+        await self.db.execute("DELETE FROM ChestEnchant WHERE No=:c", {'c': chest_id})
+        if level:
+            await self.db.execute("INSERT INTO ChestEnchant (No, Level) VALUES (:c, :l)", {'c': chest_id, 'l': level})
+
+    async def delete_chest(self, user_id: str, chest_id: int) -> bool:
+        """Remove o item do baú (encantamento destruído) junto com o nível."""
+        rowcount = await self.db.execute("DELETE FROM Chest WHERE No=:c AND Owner=:o", {'c': chest_id, 'o': user_id})
+        await self.db.execute("DELETE FROM ChestEnchant WHERE No=:c", {'c': chest_id})
+        return rowcount == 1
+
+    async def update_place_order(self, user_id: str, places: list[tuple[int, int]]) -> int:
+        """0x600A SVC_ITEM_LOCATION: posição de cada item no baú (só itens do próprio dono)."""
+        total = 0
+        for chest_id, place in places:
+            total += await self.db.execute("UPDATE Chest SET PlaceOrder=:p WHERE No=:c AND Owner=:o", {'p': place, 'c': chest_id, 'o': user_id})
+        return total
+
+    async def update_wearing(self, user_id: str, changes: list[tuple[int, int]]) -> None:
+        """0x600E: guarda o que está vestido para a próxima sessão (sala e baú leem Wearing)."""
+        for chest_id, wear in changes:
+            await self.db.execute("UPDATE Chest SET Wearing=:w WHERE No=:c AND Owner=:o", {'w': 1 if wear else 0, 'c': chest_id, 'o': user_id})
+
+    async def transfer_chest(self, chest_id: int, sender_id: str, receiver_id: str) -> bool:
+        """0x6028 SVC_ITEM_GIFT: passa um item do baú (não vestido) para outro jogador."""
+        result = await self.db.execute(
+            "UPDATE Chest SET Owner=:r, Wearing=0, PlaceOrder=0 WHERE No=:c AND Owner=:s AND (Wearing IS NULL OR Wearing=0)",
+            {'r': receiver_id, 'c': chest_id, 's': sender_id}
+        )
+        return result > 0
 
     async def update_money(self, user_id: str, money: int) -> bool:
         """

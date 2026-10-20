@@ -116,7 +116,7 @@ class ItemGiftConfirmRecv(BasePackageRecv):
             return f"PriceByCashFor{expire_type}"
     
     def log_command(self, conn):
-        cmd = ClientPacket.CLI_ITEM_BUY.value
+        cmd = ClientPacket.CLI_ITEM_GIFT_CONFIRM.value
         seq = conn.expected_client_checksum(self.buf.size())
         print(f"RECV<< [SS={conn.server.id:08X} SQ={seq:04X} CD={cmd:04X}] {self.buf.to_hex(4)}")
 
@@ -137,8 +137,7 @@ class ItemGiftConfirmResp(BasePackageSend):
             buf.write_uint8(0) # Desconhecido
             buf.write_char(acquisition.value)
             if expire_type == ExpireType.Infinite:
-                buf.write_uint8(0)
-                buf.write_uint32(0)
+                buf.write_uint8(0)  # sem validade: o cliente não lê u32 (TH 0x4d2a96, v440 0x4f45e8)
             else:
                 buf.write_uint8(1)
                 buf.write_uint32(item['period'])

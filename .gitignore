@@ -34,8 +34,15 @@ data.bin
 dist/
 build/
 node_modules/
-tools/
 .venv/
 gbwc.db
 smoke.db
 logs/
+
+# Testes e caches
+.pytest_cache/
+
+# Debug local (útil para análise, não vai para o repositório)
+dec.py
+db/gbwc 2.sql
+db/users.sql

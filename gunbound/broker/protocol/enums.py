@@ -26,6 +26,9 @@ class ClientPacket(IntEnum):
     # Solicita uma mensagem do sistema (provavelmente "Mensagem do Dia").
     CLI_GET_MSG = 0x3000
 
+    # NyxLauncher: pede para iniciar o jogo (manda nome do jogo e info da máquina).
+    CLI_START_GAME = 0x4000
+
 """
 Enums para pacotes enviados pelo broker ao cliente.
 """
@@ -33,6 +36,7 @@ class ServerPacket(IntEnum):
     SRV_LOGIN = 0x1312 # usado em falha imediata de enfileirar login (DB)
     SRV_SETVERSION = 0x2001 # ack do set version (sucesso/erro)
     SRV_GET_MSG = 0x3001 # ack do get msg (sucesso/erro)
+    SRV_START_GAME = 0x4001 # NyxLauncher: código 0 abre o jogo
 
     # Servidor
     SRV_SERVER_LIST = 0x1102

@@ -19,6 +19,7 @@ class ClientManager:
     def __init__(self, client_factory: Factory['ClientConnection']):
         self.client_factory = client_factory
         self.clients: dict[int, ClientConnection] = {}
+        self.sessions: dict[str, ClientConnection] = {}  # user_id -> conexão logada
         self.lock = asyncio.Lock()
         self.rand: MSVCRTRand = MSVCRTRand()
 
@@ -41,5 +42,24 @@ class ClientManager:
             return True
         return False
     
+    async def claim_session(self, user_id: str, conn: 'ClientConnection') -> None:
+        """
+        Sessão única por usuário neste GameServer: se já houver outra conexão logada com o mesmo
+        usuário, derruba a antiga (o close dela apaga o CurrentUser) antes de registrar a nova.
+        Login em OUTRO GameServer continua barrado pelo insert_current_user do LoginRecv.
+        """
+        old = self.sessions.get(user_id)
+        if old is not None and old is not conn:
+            print(f"[{conn.addr}] Login duplicado de {user_id}: derrubando sessão anterior {old.addr}")
+            await old.close()
+        self.sessions[user_id] = conn
+
+    def release_session(self, user_id: str, conn: 'ClientConnection') -> None:
+        if self.sessions.get(user_id) is conn:
+            del self.sessions[user_id]
+
+    def get_session(self, user_id: str) -> 'ClientConnection | None':
+        return self.sessions.get(user_id)
+
     async def close(self):
         await asyncio.gather(*(conn.close() for conn in self.clients.values()), return_exceptions=False)

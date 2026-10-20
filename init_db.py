@@ -3,6 +3,7 @@ Cria o banco de dados em MySQL, PostgreSQL ou SQLite.
 
 O schema vem de db/linked.sql (estrutura do servidor original) e os dados iniciais (itens, loja, contas de teste)
 vêm de db/gbwc.sql. Só cria tabelas que não existem e só importa dados em tabelas vazias, então pode rodar de novo.
+Em tabelas que já existem, acrescenta as colunas e os índices que faltam (serve de migração).
 
 Uso:
     python init_db.py                 # usa database.uri do config.yml
@@ -14,7 +15,7 @@ import asyncio
 from datetime import datetime
 import yaml
 from sqlalchemy import (MetaData, Table, Column, BigInteger, Integer, String, Text, LargeBinary, DateTime, Time,
-                        Float, Numeric, PrimaryKeyConstraint, insert, text)
+                        Float, Numeric, PrimaryKeyConstraint, Index, insert, inspect, text)
 from sqlalchemy.ext.asyncio import create_async_engine
 
 SCHEMA_FILE = 'db/linked.sql'
@@ -32,8 +33,21 @@ EXTRA_COLUMNS = {
     'ReceiptGift': [('No', Integer, True), ('ConfirmTime', DateTime, False)],  # (nome, tipo, é a chave primária)
 }
 
+# Índices além dos do schema original, para as consultas do emulador (tabela: [(colunas, único)])
+EXTRA_INDEXES = {
+    'User': [(('Nickname',), True), (('User',), False)],
+    'Game': [(('NickName',), True)],
+    'BuddyList': [(('Buddy',), False)],
+    'GiftMsg': [(('Receiver',), False)],
+    'GiftItem': [(('Receiver',), False)],
+    'GrandPrix_Personal': [(('User',), True)],
+    'LoginLog': [(('Id',), False)],
+}
+UNIQUE_INDEXES = {('BuddyList', ('Id', 'Buddy'))}  # INDEX do original que deve ser UNIQUE (amizade sem repetição)
+
 COLUMN_RE = re.compile(r"^\s*`(\w+)`\s+(\w+)(?:\(([^)]*)\))?(.*?),?\s*$")
 PK_RE = re.compile(r"PRIMARY KEY\s*\(([^)]*)\)")
+INDEX_RE = re.compile(r"^\s*(UNIQUE\s+)?(?:INDEX|KEY)\s+`\w+`\s*\(([^)]*)\)", re.I)
 
 
 def sql_type(name: str, args: str | None):
@@ -63,7 +77,7 @@ def parse_schema(sql: str, metadata: MetaData, lower: bool) -> None:
     """lower: cria nomes em minúsculo (PostgreSQL), para que as consultas sem aspas encontrem tabelas e colunas."""
     fix = str.lower if lower else str
     for name, body in re.findall(r"CREATE TABLE `(\w+)`\s*\((.*?)\n\)", sql, re.S):
-        columns, pk = [], []
+        columns, pk, indexes = [], [], []
         for line in body.splitlines():
             if m := COLUMN_RE.match(line):
                 col, typ, args, rest = m.groups()
@@ -78,10 +92,19 @@ def parse_schema(sql: str, metadata: MetaData, lower: bool) -> None:
                 columns.append(Column(fix(col), Integer if auto else type_, autoincrement=auto, server_default=server_default))
             elif m := PK_RE.search(line):
                 pk = [fix(c) for c in re.findall(r"`(\w+)`", m.group(1))]
+            elif m := INDEX_RE.match(line):
+                cols = tuple(re.findall(r"`(\w+)`", m.group(2)))
+                indexes.append((cols, bool(m.group(1)) or (name, cols) in UNIQUE_INDEXES))
         for col, type_, is_pk in EXTRA_COLUMNS.get(name, []):
             columns.append(Column(fix(col), type_, autoincrement=is_pk))
             pk += [fix(col)] if is_pk else []
-        Table(fix(name), metadata, *columns, *([PrimaryKeyConstraint(*pk)] if pk else []))
+        table = Table(fix(name), metadata, *columns, *([PrimaryKeyConstraint(*pk)] if pk else []))
+        seen = {tuple(pk)}
+        for cols, unique in indexes + EXTRA_INDEXES.get(name, []):
+            cols = tuple(fix(c) for c in cols)
+            if cols not in seen:  # pula o índice igual à chave primária (Game_Id_index)
+                seen.add(cols)
+                Index(fix(f"ix_{name}_{'_'.join(cols)}"), *(table.c[c] for c in cols), unique=unique)
 
 
 def split_values(row: str) -> list:
@@ -165,6 +188,9 @@ async def main(uri: str) -> None:
         new_tables = [t for t in metadata.sorted_tables if t.name.lower() not in existing]
         await conn.run_sync(lambda c: metadata.create_all(c, tables=new_tables))
         print(f"Tabelas criadas: {len(new_tables)} (já existiam: {len(metadata.tables) - len(new_tables)})")
+        for table in metadata.sorted_tables:
+            if table.name.lower() in existing:
+                await upgrade(conn, table)
 
         for table in metadata.sorted_tables:
             rows = data.get(table.name)
@@ -186,6 +212,28 @@ async def main(uri: str) -> None:
                             f"SELECT setval(pg_get_serial_sequence('\"{table.name}\"', '{col.name}'), "
                             f"(SELECT COALESCE(MAX(\"{col.name}\"), 0) + 1 FROM \"{table.name}\"), false)"))
     await engine.dispose()
+
+
+async def upgrade(conn, table: Table) -> None:
+    """Tabela já existente: acrescenta colunas e índices que faltam. Índice UNIQUE com dados repetidos só avisa."""
+    have_cols = {c['name'].lower() for c in await conn.run_sync(lambda c: inspect(c).get_columns(table.name))}
+    have_ix = {i['name'].lower() for i in await conn.run_sync(lambda c: inspect(c).get_indexes(table.name))}
+    quote = conn.dialect.identifier_preparer.quote
+    for col in table.columns:
+        if col.name.lower() not in have_cols:
+            default = f" DEFAULT {col.server_default.arg}" if col.server_default is not None else ''
+            await conn.execute(text(f"ALTER TABLE {quote(table.name)} ADD COLUMN {quote(col.name)} "
+                                    f"{col.type.compile(dialect=conn.dialect)}{default}"))
+            print(f"  {table.name}: coluna {col.name} criada")
+    for index in table.indexes:
+        if index.name.lower() in have_ix:
+            continue
+        try:
+            async with conn.begin_nested():
+                await conn.run_sync(lambda c: index.create(c))
+            print(f"  {table.name}: índice {index.name} criado")
+        except Exception as e:  # dados repetidos num UNIQUE: o banco segue sem o índice
+            print(f"  {table.name}: índice {index.name} NÃO criado ({type(e).__name__}); corrija as linhas repetidas e rode de novo")
 
 
 if __name__ == '__main__':

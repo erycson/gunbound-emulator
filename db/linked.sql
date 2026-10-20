@@ -190,6 +190,8 @@ CREATE TABLE `Game`  (
   `MobileRecords` varbinary(161) NOT NULL,
   `LastUpdateTime` datetime NULL DEFAULT '0000-00-00 00:00:00',
   `GiftProhibitTime` datetime NULL DEFAULT '0000-00-00 00:00:00',
+  `DiscountPoints` int(11) NOT NULL DEFAULT 0 COMMENT 'WCS2 desconto 0x7118',
+  `RenaPoints` int(11) NOT NULL DEFAULT 0 COMMENT 'WCS2 Rena 0x7124',
   PRIMARY KEY (`Id`) USING BTREE,
   UNIQUE INDEX `Game_Id_index`(`Id`) USING BTREE,
   INDEX `Game_Guild_index`(`Guild`) USING BTREE,
@@ -588,3 +590,26 @@ CREATE TABLE `packet`  (
   PRIMARY KEY (`SerialNo`) USING BTREE,
   INDEX `Receiver`(`Receiver`) USING BTREE
 ) ENGINE = federated CONNECTION = 'gbwc_linked/packet';
+
+
+-- ----------------------------
+-- Encantamento do WCS2 (XPEnchantDlg, 0x7115): nível de cada item do baú e chances por nível alvo, em %.
+-- Não existem no servidor original. Fail = 100 - Success - Down1 - Down2 - Down3 - Destroy.
+-- JewelBonus: % de sucesso a mais por joia além da 1ª (tirado das outras saídas na mesma proporção).
+-- ----------------------------
+CREATE TABLE `ChestEnchant`  (
+  `No` int(11) NOT NULL,
+  `Level` smallint(5) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`No`) USING BTREE
+) ENGINE = InnoDB;
+
+CREATE TABLE `EnchantLevel`  (
+  `Level` smallint(5) NOT NULL,
+  `Success` smallint(5) NOT NULL DEFAULT 0,
+  `Down1` smallint(5) NOT NULL DEFAULT 0,
+  `Down2` smallint(5) NOT NULL DEFAULT 0,
+  `Down3` smallint(5) NOT NULL DEFAULT 0,
+  `Destroy` smallint(5) NOT NULL DEFAULT 0,
+  `JewelBonus` smallint(5) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`Level`) USING BTREE
+) ENGINE = InnoDB;

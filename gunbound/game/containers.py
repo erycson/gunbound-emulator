@@ -5,16 +5,20 @@ from dependency_injector import containers, providers
 from gunbound.base.managers import CryptoManager
 from gunbound.game.client import ClientConnection
 from gunbound.game.room import Room
-from gunbound.game.managers import ClientManager, MonitorManager, ChannelManager, RoomManager
+from gunbound.game.managers import ClientManager, MonitorManager, ChannelManager, RoomManager, GrandPrixManager
 from gunbound.game_server import GameServer
-from gunbound.repository import ServerRepository, UserRepository, InventoryRepository, RecordsRepository
+from gunbound.repository import ServerRepository, UserRepository, InventoryRepository, RecordsRepository, GrandPrixRepository
 
-index = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+# game.py [arquivo.yml] [índice]: arquivo padrão config.yml; índice padrão = server_index do arquivo (ou 0)
+args = sys.argv[1:]
+config_file = args.pop(0) if args and args[0].endswith(('.yml', '.yaml')) else "config.yml"
+with open(config_file, "r", encoding="utf-8") as f:
+    config_data = yaml.load(f, Loader=yaml.FullLoader)
+index = int(args[0]) if args else int(config_data.get('server_index', 0))
 
 class Container(containers.DeclarativeContainer):
     config = providers.Configuration()
-    with open("config.yml", "r", encoding="utf-8") as f:
-        config.from_dict(yaml.load(f, Loader=yaml.FullLoader), required=True)
+    config.from_dict(config_data, required=True)
     config_gameserver = config.gameservers()[index]
     
     crypto = providers.Singleton(CryptoManager, key=config.crypto.game_key())
@@ -23,6 +27,7 @@ class Container(containers.DeclarativeContainer):
     user_repository = providers.Factory(UserRepository, db=database)
     inventory_repository = providers.Factory(InventoryRepository, db=database)
     records_repository = providers.Factory(RecordsRepository, db=database)
+    grandprix_repository = providers.Factory(GrandPrixRepository, db=database)
 
     client_factory = providers.Factory(ClientConnection)
     room_factory = providers.Factory(Room)
@@ -42,6 +47,12 @@ class Container(containers.DeclarativeContainer):
         server=server,
         config=config_gameserver,
         room_factory=room_factory.provider,
+    )
+    grandprix = providers.Singleton(
+        GrandPrixManager,
+        config=config_gameserver,
+        room_manager=rooms,
+        grandprix_repository=grandprix_repository,
     )
     monitor = providers.Singleton(
         MonitorManager,
