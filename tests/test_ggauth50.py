@@ -8,9 +8,11 @@ import tempfile
 import threading
 import time
 import unittest
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 from pathlib import Path
 
-from gunbound.game.ggauth50 import Helper, HelperError, Validator, validate_config
+from gunbound.game.ggauth50 import Helper, HelperError, Validator, validate_config, project_dll, initialize, from_config
 from gunbound.game.ggauth50_helper import Block, Native, Session, Version, Worker, read_frame, write_frame, serve
 
 
@@ -239,7 +241,7 @@ class BridgeTest(unittest.IsolatedAsyncioTestCase):
             await helper.request('create_session')
 
     async def test_wrong_dll_hash_never_spawns_worker(self):
-        with tempfile.TemporaryDirectory() as folder:
+        with tempfile.TemporaryDirectory() as folder, patch('gunbound.game.ggauth50.PROJECT_ROOT', Path(folder)):
             dll = Path(folder) / 'not-the-vendor.dll'
             dll.write_bytes(b'not an executable')
             helper = Helper({'dll': str(dll), 'timeout': 1})
@@ -271,6 +273,61 @@ class BridgeTest(unittest.IsolatedAsyncioTestCase):
 
 
 class IntegrationTest(unittest.IsolatedAsyncioTestCase):
+    async def test_startup_requires_local_dll_before_starting_worker(self):
+        cfg=dict(provider='gameguard', mode='observe', ggauth50=dict(python_x86='py32.exe',
+                 original_server='server.exe', minimum_version=2003010101))
+        with tempfile.TemporaryDirectory() as folder, patch('gunbound.game.ggauth50.PROJECT_ROOT', Path(folder)):
+            server=SimpleNamespace()
+            with patch('gunbound.game.ggauth50.Helper') as factory:
+                with self.assertRaisesRegex(FileNotFoundError, 'DLL missing'):
+                    await initialize(server,cfg)
+                factory.assert_not_called()
+            self.assertFalse(hasattr(server,'_ggauth50_helper'))
+            outside=Path(folder).parent/'outside-ggauth50.dll'
+            with self.assertRaisesRegex(ValueError,'inside the server project'):
+                project_dll({'dll':str(outside)})
+            local=Path(folder)/'vendor/gameguard/ggauth50.dll'
+            local.parent.mkdir(parents=True);local.write_bytes(b'fixture, never loaded')
+            self.assertEqual(project_dll({}),local)
+            worker=SimpleNamespace(request=AsyncMock(return_value={}),close=AsyncMock(),failed=False)
+            with patch('gunbound.game.ggauth50.Helper',return_value=worker):
+                await initialize(server,cfg)
+            worker.request.assert_awaited_once_with('hello')
+            self.assertIs(server._ggauth50_helper,worker)
+
+    async def test_startup_worker_error_closes_worker_and_propagates(self):
+        cfg=dict(provider='gameguard',mode='observe',ggauth50=dict(python_x86='py32.exe',
+                 original_server='server.exe',minimum_version=2003010101))
+        server=SimpleNamespace()
+        worker=SimpleNamespace(request=AsyncMock(side_effect=HelperError('native startup failed')),
+                               close=AsyncMock())
+        with patch('gunbound.game.ggauth50.project_dll',return_value=Path('fixture.dll')), \
+             patch('gunbound.game.ggauth50.Helper',return_value=worker):
+            with self.assertRaisesRegex(HelperError,'native startup failed'):
+                await initialize(server,cfg)
+        worker.close.assert_awaited_once()
+        self.assertFalse(hasattr(server,'_ggauth50_helper'))
+
+    async def test_gameserver_does_not_open_listener_when_worker_fails(self):
+        from gunbound.game_server import GameServer
+        cfg=dict(phase='TEST',name='test',anticheat=dict(provider='gameguard',mode='observe',
+                 validator='ggauth50',ggauth50=dict(python_x86='py32.exe',original_server='server.exe',
+                 minimum_version=2003010101)))
+        server=SimpleNamespace(config=cfg,check_db_version=AsyncMock(),
+                 server_repository=SimpleNamespace(delete_all_users=AsyncMock()),tcp_listener=AsyncMock())
+        with patch('gunbound.game_server.phase.PHASES',{'TEST':SimpleNamespace(check=lambda cfg:None)}), \
+             patch('gunbound.game.ggauth50.initialize',side_effect=FileNotFoundError('DLL missing')):
+            with self.assertRaisesRegex(FileNotFoundError,'DLL missing'):
+                await GameServer.start(server)
+        server.server_repository.delete_all_users.assert_not_awaited()
+        server.tcp_listener.assert_not_called()
+
+    async def test_connection_cannot_lazily_start_missing_worker(self):
+        cfg=dict(provider='gameguard',mode='observe',ggauth50=dict(python_x86='py32.exe',
+                 original_server='server.exe',minimum_version=2003010101))
+        with self.assertRaisesRegex(HelperError,'not initialized'):
+            from_config(SimpleNamespace(),cfg)
+
     async def test_async_bridge_observe_sends_success_only_after_check(self):
         from tests.test_anticheat import player, cmds
         from gunbound.game.anticheat import AntiCheat

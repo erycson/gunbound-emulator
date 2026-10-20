@@ -33,6 +33,12 @@ Required continua bloqueado; off/capture com este binding são recusados.
 2. Copie os arquivos próprios para `vendor/gameguard/`, conforme o README daquela
    pasta. DLLs, executáveis originais e CRTs não são distribuídos nem commitados.
    Dependências só podem ser resolvidas na pasta aprovada da DLL ou System32.
+   A DLL deve estar dentro do projeto: o padrão é
+   `vendor/gameguard/ggauth50.dll`. Caminhos relativos partem da raiz do projeto,
+   não do diretório atual. Caminhos externos são recusados. O carregamento e o
+   handshake ocorrem na inicialização do GameServer, antes do listener; arquivo
+   ausente, hash incorreto, runtime inválido ou falha de carregamento abortam a
+   inicialização, sem esperar o primeiro jogador.
 3. Escolha explicitamente a versão mínima no formato YYYYMMDDRR. A versão mínima
    do servidor original ainda não foi estabelecida: não há default disfarçado de
    configuração fiel ao S2. O exemplo abaixo serve apenas ao v584 observado.
@@ -47,7 +53,7 @@ anticheat:
   deadline: 600
   ggauth50:
     python_x86: 'C:\Python32\python.exe'
-    dll: 'D:\GBWCProject\server\vendor\gameguard\ggauth50.dll'
+    dll: 'vendor/gameguard/ggauth50.dll'
     original_server: 'D:\GBWCProject\server\vendor\gameguard\GunBoundServ3.exe'
     minimum_version: 2009010101
     timeout: 5
@@ -79,8 +85,8 @@ Não há reseed por pacote. Timer global de 300 s separado dos 200/600 s por ses
 
 Morte, timeout, protocolo malformado ou generation divergente encerram o helper
 e invalidam todas as sessões associadas. A mesma sessão nunca reanexa a um
-processo novo. Não há retry que conserve autenticação. Um novo conjunto de
-sessões pode criar outro helper, perdendo o estado anterior. Observe só registra
+processo novo. Não há retry que conserve autenticação. Um helper inválido exige
+novo início do GameServer; conexões não carregam a DLL de forma tardia. Observe só registra
 a falha sem derrubar o jogador; sucesso exige check real positivo. O stop do GameServer fecha seu
 helper; fechar uma sessão libera apenas seu estado, sem interromper outras.
 
@@ -150,3 +156,9 @@ confirmou `native_300_second_timer_observed=true`. A revisão final repetiu os
 34 testes de unidade/integração, todos aprovados, e os dois vetores nativos.
 Resultados resumidos em `ggauth50-native-qualification.json`. Isso confirma o
 timer real desta execução; não substitui o teste periódico conectado ao cliente.
+
+Atualização da inicialização: a DLL local em `vendor/gameguard/ggauth50.dll`
+foi carregada pelo helper real e o handshake 0x10050 foi confirmado, sem abrir
+listener nem reiniciar o servidor em uso. A suíte passou com 38 testes, incluindo
+arquivo ausente, caminho externo, falha de inicialização e ausência de início
+tardio na primeira conexão. Os binários continuam fora do Git.

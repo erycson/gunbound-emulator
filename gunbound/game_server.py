@@ -42,6 +42,9 @@ class GameServer:
         p.check(self.config)
         await self.check_db_version(self.config.get('phase') or phase.DEFAULT)
         provider, mode = anticheat.settings(self.config)  # required sem validador confirmado: não sobe
+        if (self.config.get('anticheat') or {}).get('validator') == 'ggauth50':
+            from gunbound.game.ggauth50 import initialize
+            await initialize(self, self.config['anticheat'])
         print(f"[anticheat] {self.config['name']}: provider={provider} mode={mode}")
         # Fechar a janela não chama stop(); limpa sessões que sobraram da execução anterior
         await self.server_repository.delete_all_users(self.config['host'], self.config['port'])

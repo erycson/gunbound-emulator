@@ -12,5 +12,9 @@ Hashes aceitos:
 
 O executável original não é executado pelo adaptador. A DLL é executada somente
 no helper Windows x86 isolado, com caminho absoluto, após conferência do hash.
+O caminho padrão da DLL é `vendor/gameguard/ggauth50.dll`, relativo à raiz do
+projeto, independentemente do diretório de execução. DLLs fora do projeto são
+recusadas. O GameServer inicializa o helper antes de abrir seu listener; DLL
+ausente ou falha de carregamento/intercâmbio inicial impede a inicialização.
 O `.gitignore` desta pasta bloqueia todos os binários, inclusive DLLs auxiliares.
 Não use `git add -f` para incluí-los.

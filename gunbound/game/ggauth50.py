@@ -15,6 +15,9 @@ import struct
 from gunbound.game.ggauth50_codec import Codec
 from gunbound.game.ggauth50_helper import DLL_SHA256, LIMIT
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_DLL = 'vendor/gameguard/ggauth50.dll'
+
 
 class HelperError(RuntimeError):
     pass
@@ -24,7 +27,7 @@ def validate_config(cfg):
     options = cfg.get('ggauth50') or {}
     if not isinstance(options, dict):
         raise ValueError('anticheat.ggauth50 must be a mapping')
-    for key in ('python_x86', 'dll', 'original_server', 'minimum_version'):
+    for key in ('python_x86', 'original_server', 'minimum_version'):
         if not options.get(key):
             raise ValueError(f'anticheat.ggauth50 requires {key}')
     if cfg.get('provider') != 'gameguard' or cfg.get('mode') != 'observe':
@@ -35,6 +38,17 @@ def validate_config(cfg):
     if not 0.1 <= float(options.get('timeout', 5)) <= 30:
         raise ValueError('ggauth50 timeout must be 0.1..30 seconds')
     return options
+
+
+def project_dll(options):
+    """Resolve operator-supplied DLLs relative to the project, never the cwd."""
+    configured = Path(options.get('dll') or DEFAULT_DLL)
+    path = (PROJECT_ROOT / configured).resolve()
+    if not path.is_relative_to(PROJECT_ROOT.resolve()):
+        raise ValueError('ggauth50 DLL must be inside the server project (vendor/gameguard/ggauth50.dll)')
+    if not path.is_file():
+        raise FileNotFoundError(f'ggauth50 DLL missing: {path}. Copy the original DLL into the project before startup.')
+    return path
 
 
 class Helper:
@@ -81,7 +95,7 @@ class Helper:
             raise HelperError('worker invalidated; create a new server instance to retry')
         if self.process:
             return
-        dll = Path(self.options['dll']).resolve(strict=True)
+        dll = project_dll(self.options)
         if hashlib.sha256(await asyncio.to_thread(dll.read_bytes)).hexdigest() != DLL_SHA256:
             raise HelperError('unsupported DLL SHA-256')
         self.codec = await asyncio.to_thread(Codec, self.options['original_server'])
@@ -179,8 +193,22 @@ class Validator:
 
 
 def from_config(server, cfg):
-    options = validate_config(cfg)
+    validate_config(cfg)
     helper = getattr(server, '_ggauth50_helper', None)
-    if helper is None or (helper.failed and not helper.sessions):
-        helper = server._ggauth50_helper = Helper(options)
+    if helper is None or helper.failed:
+        raise HelperError('ggauth50 worker is not initialized; restart the GameServer after fixing startup')
     return Validator(helper)
+
+
+async def initialize(server, cfg):
+    """Load/handshake before opening the listener; startup must fail on error."""
+    options = dict(validate_config(cfg))
+    # Keep the missing/outside-path error explicit, before worker error wrapping.
+    options['dll'] = str(project_dll(options))
+    helper = Helper(options)
+    try:
+        await helper.request('hello')
+    except BaseException:
+        await helper.close()
+        raise
+    server._ggauth50_helper = helper
