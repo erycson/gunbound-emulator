@@ -42,5 +42,16 @@ class BrokerListTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(conn.sent[0], struct.pack('<HH', 0x1102, 7))
 
 
+class LauncherStartTest(unittest.IsolatedAsyncioTestCase):
+    async def test_start_game_requires_login(self):
+        from gunbound.broker.protocol.launcher import StartGameRecv
+        conn = Conn(th=False)
+        conn.logged_in = False
+        await StartGameRecv(conn, BinaryReader(b'')).process()
+        conn.logged_in = True
+        await StartGameRecv(conn, BinaryReader(b'')).process()
+        self.assertEqual([struct.unpack('<HH', b) for b in conn.sent], [(0x4001, 0x13), (0x4001, 0)])
+
+
 if __name__ == '__main__':
     unittest.main()

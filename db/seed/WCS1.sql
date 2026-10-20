@@ -1,0 +1,2 @@
+-- Seed do WCS1 (S1: v440/v495), aplicado pelo init_db.py depois do TH.
+-- Por enquanto nada é só do S1: itens, loja e contas de teste estão em db/gbwc.sql (seed do TH).

@@ -76,7 +76,7 @@ class InventoryRepository:
             List[Dict[str, Any]]: Lista de itens no baú do usuário.
         """
         items = await self.db.fetch_all(
-            "SELECT c.No, c.Item, c.Wearing, c.Acquisition, c.Expire, c.Volume, c.PlaceOrder, c.Recovered, COALESCE(e.Level, 0) AS EnchantLevel "
+            "SELECT c.No, c.Item, c.Wearing, c.Acquisition, c.Expire, c.Volume, c.PlaceOrder, c.Recovered, COALESCE(e.Level, 0) AS EnchantLevel, COALESCE(e.Seal, 0) AS Seal "
             "FROM Chest c LEFT JOIN ChestEnchant e ON e.No = c.No WHERE c.Owner = :user_id",
             {'user_id': user_id}
         )
@@ -353,9 +353,15 @@ class InventoryRepository:
             "SELECT Level, Success, Down1, Down2, Down3, Destroy, JewelBonus FROM EnchantLevel WHERE Level=:level", {'level': level})
 
     async def set_enchant_level(self, chest_id: int, level: int) -> None:
-        await self.db.execute("DELETE FROM ChestEnchant WHERE No=:c", {'c': chest_id})
-        if level:
-            await self.db.execute("INSERT INTO ChestEnchant (No, Level) VALUES (:c, :l)", {'c': chest_id, 'l': level})
+        await self._set_enchant(chest_id, 'Level', level)
+
+    async def set_seal(self, chest_id: int, seal: int) -> None:
+        """Selo de avatar do WCS2 (0x7134), u32 que volta no 0x6001 e no bloco de avatar da sala."""
+        await self._set_enchant(chest_id, 'Seal', seal)
+
+    async def _set_enchant(self, chest_id: int, column: str, value: int) -> None:
+        if not await self.db.execute(f"UPDATE ChestEnchant SET {column}=:v WHERE No=:c", {'v': value, 'c': chest_id}):
+            await self.db.insert('ChestEnchant', {'No': chest_id, column: value})
 
     async def delete_chest(self, user_id: str, chest_id: int) -> bool:
         """Remove o item do baú (encantamento destruído) junto com o nível."""
@@ -375,13 +381,32 @@ class InventoryRepository:
         for chest_id, wear in changes:
             await self.db.execute("UPDATE Chest SET Wearing=:w WHERE No=:c AND Owner=:o", {'w': 1 if wear else 0, 'c': chest_id, 'o': user_id})
 
-    async def transfer_chest(self, chest_id: int, sender_id: str, receiver_id: str) -> bool:
-        """0x6028 SVC_ITEM_GIFT: passa um item do baú (não vestido) para outro jogador."""
-        result = await self.db.execute(
-            "UPDATE Chest SET Owner=:r, Wearing=0, PlaceOrder=0 WHERE No=:c AND Owner=:s AND (Wearing IS NULL OR Wearing=0)",
-            {'r': receiver_id, 'c': chest_id, 's': sender_id}
-        )
-        return result > 0
+    async def transfer_chest(self, chest_id: int, sender_id: str, receiver_id: str, receiver_nick: str, msg: str) -> int | None:
+        """
+        0x6028 SVC_ITEM_GIFT (item DB 0x19 do original): passa um item C/G não recuperado do baú (vira 'T'), grava
+        GiftMsg (sem MsgType, então o 0x6004 não o lista) e ReceiptGift com Item/Expire, como o original (colunas do TH em
+        diante, criadas pelo init_db.py). Devolve o Item doado, ou None.
+        """
+        params = {'r': receiver_id, 'c': chest_id, 's': sender_id}
+        transaction = await self.db.transaction()  # banco sem as colunas novas: o item não muda de dono
+        try:
+            if await self.db.execute(
+                "UPDATE Chest SET Owner=:r, Wearing=0, Acquisition='T', PlaceOrder=0 "
+                "WHERE No=:c AND Owner=:s AND Acquisition IN ('C','G') AND Recovered=0", params) <= 0:
+                await transaction.rollback()
+                return None
+            row = await self.db.fetch_one("SELECT Item, Volume, Expire FROM Chest WHERE No=:c", {'c': chest_id})
+            now = datetime.now()
+            await self.db.insert('GiftMsg', {'Receiver': receiver_id, 'ItemId': row['Item'], 'Sender': sender_id,
+                                             'SentTime': now, 'Msg': msg})
+            await self.db.insert('ReceiptGift', {'Id': sender_id, 'Item': row['Item'], 'Expire': row['Expire'],
+                                                 'Volume': row['Volume'], 'Receiver': receiver_id,
+                                                 'ReceiverNick': receiver_nick, 'Time': now})
+            await transaction.commit()
+        except Exception:
+            await transaction.rollback()
+            raise
+        return int(row['Item'])
 
     async def update_money(self, user_id: str, money: int) -> bool:
         """

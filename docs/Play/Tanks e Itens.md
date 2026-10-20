@@ -4,33 +4,46 @@
 
 Escolha na sala: 0x3200 = u8 primário + u8 secundário (o secundário só vale no Tag; `0xFF` = aleatório). O servidor
 grava os dois em `Game.ClientData[0:2]` e usa como escolha inicial na próxima sala (`room_select_tank.py`).
-Índices aceitos: 0..15 e `0xFF` (`TANK_COUNT = 16` em `gunbound/base/enums.py`).
+Índices aceitos: os que a fábrica de personagens do cliente da fase desenha (`Phase.tanks` em `gunbound/game/phase.py`)
+e `0xFF`. Os ocultos `0x11`/`0x12` (`HIDDEN_TANKS`) só para Authority ≥ 98, como o servidor 2007 (0x42d048).
 
-| Imagem | Tanque | Índice |
-|:---:|---|---|
-| ![Armor](img/tanks/armor.png) | Armor | 0x00 |
-| ![Mage](img/tanks/mage.png) | Mage | 0x01 |
-| ![Nak](img/tanks/nak.png) | Nak | 0x02 |
-| ![Trico](img/tanks/trico.png) | Trico | 0x03 |
-| ![BigFoot](img/tanks/bigfoot.png) | BigFoot | 0x04 |
-| ![Boomer](img/tanks/boomer.png) | Boomer | 0x05 |
-| ![Raon Launcher](img/tanks/raonlauncher.png) | Raon Launcher | 0x06 |
-| ![Lightning](img/tanks/lightening.png) | Lightning | 0x07 |
-| ![JD](img/tanks/jd.png) | J.D | 0x08 |
-| ![A.Sate](img/tanks/a.state.png) | A.Sate | 0x09 |
-| ![Ice](img/tanks/ice.png) | Ice | 0x0A |
-| ![Turtle](img/tanks/turtle.png) | Turtle | 0x0B |
-| ![Grub](img/tanks/grub.png) | Grub | 0x0C |
-| ![Aduka](img/tanks/aduka.png) | Aduka | 0x0D |
-| ![Kalsiddon](img/tanks/kalsiddon.png) | Kalsiddon | 0x0E |
-| ![J.Frog](img/tanks/j.frog.png) | J.Frog | 0x0F |
-| ![Dragon](img/tanks/dragon.png) | Dragon | [INCERTO] |
-| ![Knight](img/tanks/knight.png) | Knight | [INCERTO] |
-| | aleatório | 0xFF |
+Índices conferidos no switch da fábrica de cada cliente (leitura estática; classe = nome RTTI do cliente):
 
-- Dragon e Knight: emuladores do TH usam 17/18 (14/15 em outra versão); não conferido nos clientes WC. Hoje o
-  servidor recusa índice ≥ 16.
-- Os mobiles do S2 (Tiburon, Frank, Maya, Phoenix, Wolf, Blue Whale) também não têm índice conferido. **[INCERTO]**
+| Imagem | Tanque (nome de tela) | Índice | Classe no cliente | TH v404 | S1 v440/v495 | S2 v584 |
+|:---:|---|---|---|:---:|:---:|:---:|
+| ![Armor](img/tanks/armor.png) | Armor | 0x00 | Armortank | ✓ | ✓ | ✓ |
+| ![Mage](img/tanks/mage.png) | Mage | 0x01 | Magetank | ✓ | ✓ | ✓ |
+| ![Nak](img/tanks/nak.png) | Nak | 0x02 | NaKtank | ✓ | ✓ | ✓ |
+| ![Trico](img/tanks/trico.png) | Trico | 0x03 | Woodtank | ✓ | ✓ | ✓ |
+| ![BigFoot](img/tanks/bigfoot.png) | BigFoot | 0x04 | Multitank | ✓ | ✓ | ✓ |
+| ![Boomer](img/tanks/boomer.png) | Boomer | 0x05 | Boomertank | ✓ | ✓ | ✓ |
+| ![Raon Launcher](img/tanks/raonlauncher.png) | Raon Launcher | 0x06 | Rayontank | ✓ | ✓ | ✓ |
+| ![Lightning](img/tanks/lightening.png) | Lightning | 0x07 | Lightningtank | ✓ | ✓ | ✓ |
+| ![JD](img/tanks/jd.png) | J.D | 0x08 | Crystaltank | ✓ | ✓ | ✓ |
+| ![A.Sate](img/tanks/a.state.png) | A.Sate | 0x09 | Laser | ✓ | ✓ | ✓ |
+| ![Ice](img/tanks/ice.png) | Ice | 0x0A | Icetank | ✓ | ✓ | ✓ |
+| ![Turtle](img/tanks/turtle.png) | Turtle | 0x0B | Turtletank | ✓ | ✓ | ✓ |
+| ![Grub](img/tanks/grub.png) | Grub | 0x0C | Grubtank | ✓ | ✓ | ✓ |
+| ![Dragon](img/tanks/dragon.png) ![Aduka](img/tanks/aduka.png) | TH: Dragon · WC: Aduka [INCERTO] | 0x0D | Dragontank | ✓ | ✓ | ✓ |
+| ![Knight](img/tanks/knight.png) ![Kalsiddon](img/tanks/kalsiddon.png) | TH: Knight · WC: Kalsiddon [INCERTO] | 0x0E | Knight | ✓ | ✓ | ✓ |
+| ![J.Frog](img/tanks/j.frog.png) | WC: J.Frog [INCERTO] | 0x0F | CyberNaKtank | ✓ | ✓ | ✓ |
+| | [INCERTO] | 0x10 | BigFootMarkII | – | ✓ | ✓ |
+| | oculto (GM) | 0x11 | Frog | – | ✓ | ✓ |
+| | oculto (GM) | 0x12 | não existe: cai no Armor | – | – | – |
+| | Phoenix | 0x13 | Phoenix | – | – | ✓ |
+| | Maya | 0x14 | Maya | – | – | ✓ |
+| | Wolf | 0x15 | Wolf | – | – | ✓ |
+| | Tiburon | 0x16 | Tiburon | – | – | ✓ |
+| | Blue Whale | 0x17 | BlueWhale | – | – | ✓ |
+| | Frank | 0x18 | Frank | – | – | ✓ |
+| | aleatório | 0xFF | | ✓ | ✓ | ✓ |
+
+- Fábricas: TH 0x434d30 (0..0xF), v440 0x42e5d0 e v495 0x430b80 (0..0x11), dump do v584 0x4427c0 (0..0x11 e
+  0x13..0x18). O TH desenha o Dragon (0x0D) e o Knight (0x0E) como mobiles normais; no WC as mesmas classes ficam
+  nesses índices, mas o nome de tela do WC (Aduka/Kalsiddon/J.Frog) vem da versão antiga deste arquivo e não foi
+  conferido no texto do cliente.
+- Aleatório (`0xFF`): o original 2006/2007 sorteia `rand&0xF` (0..15) e, com `Tank.Hidden.Ratio`, um oculto
+  0x11/0x12. O S2 não tem servidor original: sorteia todos os índices não ocultos do v584 (`WCS2.random_tanks`).
 - Versões antigas deste arquivo mostravam o código como `NN 03` (o enum `Tank` ainda tem esses valores). Eram os 2
   primeiros bytes do `ClientData` lidos juntos: primário `NN` e [provável] secundário 3 na captura. O servidor trata
   como dois u8.

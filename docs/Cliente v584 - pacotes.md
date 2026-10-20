@@ -35,14 +35,14 @@ Confiança: A = janela e strings confirmam · M = provável · B = só indício.
 | 0x3450 | 0x3451 | XPReadyInviteDlg | lista para convidar à sala | A | lobby.py |
 | 0x3452 | — (0x2025 ao convidado) | sala, editbox | convite: sala, senha, msg, apelido | A | lobby.py |
 | 0x4300 | — | partida, "+%dGold, +%dGP" | bônus da partida (tipo sorteado no 0x3432) | A | bonus.py |
-| 0x4520 | — | canal Stage | fim de missão Stage (meta ou tempo) | M | bonus.py (só registra) |
+| 0x4520 | 0x4410 | canal Stage | fim de missão Stage (meta ou tempo); o servidor responde com o vencedor | M | bonus.py |
 | 0x6050 | 0x6051 | GXPReadyMode | itens da sala de espera | B | room.py (só memória) |
 | 0x6052 | — | lista de itens (ids 0xAAA7A…) | grava os itens da sala de espera | M | room.py (só memória) |
 | 0x6054 | 0x6055 | XPBugleChatDlg, "Bugle.xes" | "usar item": subtipo 2 = megafone (implementado), 6 = cards, 7 = ovo de pet | A | lobby.py |
 | 0x6056 / 0x6058 | 0x6057 / 0x6059 | CPopup_JackpotBomb | **jackpot** e bomba do jackpot | A | jackpot.py |
 | 0x6106 / 0x6108 | 0x6107 / 0x6109 | XPReadyEventDlg | evento na sala de espera | M | events.py (valor do config) |
 | 0x6117 | 0x6118 | CPopup_JewelEnchant | encantamento de joia | A | enchant.py (recusa) |
-| 0x7010 | 0x7011 / 0x7031 | ServerMode, data "(GMT+9)" | painel do canal: sai depois do 0x2001 ok, no lugar do 0x1090, porque a flag `+0x68780` vale 1 (construtor `0x41fa8d`; envio `0x515143`) | M | lobby.py (lista vazia) |
+| 0x7010 | 0x7011 / 0x7031 | ServerMode, data "(GMT+9)" | painel do canal: sai depois do 0x2001 ok, no lugar do 0x1090, porque a flag `+0x68780` vale 1 (construtor `0x41fa8d`; envio `0x515143`) | M | lobby.py (ranking + 0x7031) |
 | 0x7012 | 0x7013 | login (`0x5148cf`) | lições do tutorial liberadas | A | events.py |
 | 0x7014 | 0x7015 | fim do tutorial (`0x58517d`) | 0x7015 sem corpo fecha o tutorial (`0x413753`) | A | events.py |
 | 0x7040 | 0x7041 | CPopup_Ranking (`0x5230e0` / leitor `0x4133d0`) | **janela Ranking** (abas, sub-abas, filtro de mobile, My Rank) | A | ranking.py |
@@ -146,7 +146,11 @@ Onde cada layout foi lido (feito na fase `WCS2`; campos sem significado conhecid
 
 ## Pendentes no WCS2
 Lista completa com o motivo de cada um em [README-WCS2.md](../README-WCS2.md).
-- **0x7011:** o servidor responde lista vazia; o significado dos registros de 34 bytes não foi fechado. 0x7031 é push sem gatilho conhecido.
+- **0x7011:** ranking do XPRankingListDlg (dlg 0x25a, aba do 0x259): só o apelido (+0) e o grau (+0x1e) são desenhados
+  (0x54f310), na ordem do pacote; os outros campos nunca são lidos. Status != 0 ignora o pacote sem limpar a lista.
+- **0x7031:** quadro por país do XPReadyEventDlg (0x550170), sem pedido no cliente: u16 ignorado, 3 x u16 totais
+  (ouro/prata/bronze), u16 n1, u16 n2, n1 x (u16 posição, u16 país, u32 pontos; a última linha mostra a posição),
+  n2 x (u16, u16 país, 3 x u16 medalhas). Não aparece com PumpkinEvent=1 no INI. Detalhes em wcs2/lobby.py.
 - **0x6054:** só o subtipo 2 (megafone). Subtipo 6 (cards) e 7 (ovo de pet) recusam (ver "Loja: análise").
 - **Loja:** desafio 0x7128/0x7129/0x7131, pets 0x7300–0x7309, booster 0x7401/0x7402 (layouts abaixo).
 - **Presente com o jogador online:** o 0x6005 só vai no login (resposta ao 0x6004); não há push na hora.

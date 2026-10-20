@@ -4,6 +4,7 @@ Uso (na pasta do servidor): python -m unittest tests.test_rooms_shop -v
 """
 import asyncio
 import struct
+import time
 import unittest
 from gunbound.base.enums import RoomOptions, RoomMode, RoomStatus, AcquisitionType
 from gunbound.game.room import Room
@@ -125,6 +126,18 @@ class RoomRulesTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.room.on_dead(b), 0)
         self.assertEqual(self.room.on_dead(b), -1)  # morte repetida ignorada
 
+    async def test_spawn_from_stage_table(self):
+        # WCS1: tabela de 2007 (mapa,lado,vaga,Y,x_min,x_max). Nirvana B (mapa 2, lado 1) tem Y nas vagas 1..6
+        b = FakeConn('b')
+        await self.room.join(b)
+        self.room.players[b.id].team = 1
+        self.room.options.map = 2
+        self.room.options.settings = (self.room.options.settings & ~0x300FF) | 1 << 16 | 0x80  # lado B, EvsW
+        game = self.room.start()
+        spawns = [game.spawn_of(p.slot) for p in self.room.sorted_players()]
+        ranges = {(469, 564), (829, 916), (1101, 1206), (634, 716), (920, 1017), (569, 630), (752, 824), (1021, 1097)}
+        self.assertTrue(all(y > 0 and any(lo <= x <= hi for lo, hi in ranges) for x, y in spawns), spawns)
+
     async def test_score_lives_and_resurrect(self):
         room = await self.rooms.create(FakeConn('m2'), RoomOptions('s', RoomMode.SCORE, 2, None))
         b = FakeConn('b')
@@ -154,6 +167,7 @@ class LobbyLiveTest(unittest.IsolatedAsyncioTestCase):
         for c in (self.lobby, self.master):
             c.channel = self.channel
             await self.channel.add(c)
+        self.rooms.watch(self.lobby, [0])  # listou o id 0 vazio pelo 0x2101: recebe o 0x21F0 da sala nova
         self.room = await self.rooms.create(self.master, RoomOptions('sala', RoomMode.SOLO, 2, None))
         await settle()
 
@@ -168,6 +182,30 @@ class LobbyLiveTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entry[-4:], created[-4:])
         self.assertNotIn(ServerPacket.SRV_LOBBY_ROOM_CREATED, self.master.cmds())  # já está na sala
 
+    async def test_only_recent_list_viewers(self):
+        from gunbound.game.managers.rooms import LOBBY_WATCH_SECONDS
+        idle, old, other = FakeConn('idle'), FakeConn('old'), FakeConn('other')  # nunca listou / listou há > 30 s / outra sala
+        self.rooms.watch(old, [self.room.id])
+        self.rooms.watchers[self.room.id][old] -= LOBBY_WATCH_SECONDS + 1
+        self.rooms.watch(other, [self.room.id + 1])
+        self.rooms.watch(self.lobby, [self.room.id])
+        await self.rooms.leave(self.master)
+        await settle()
+        self.assertIn(ServerPacket.SRV_LOBBY_ROOM_DESTROYED, self.lobby.cmds())
+        self.assertEqual((idle.cmds(), old.cmds(), other.cmds()), ([], [], []))
+
+    async def test_list_by_id_and_auto_rooms(self):
+        from gunbound.game.protocol.room_sorted_list import RoomListByIdRecv, RoomSortedListRecv
+        quick = await self.rooms.create(FakeConn('q'), RoomOptions('q', RoomMode.SOLO, 2, None), auto=True)
+        await RoomListByIdRecv(self.lobby, BinaryReader(struct.pack("<3H", self.room.id, 40, quick.id))).handle(rooms=self.rooms)
+        body = self.lobby.last(ServerPacket.SRV_ROOM_SORTED_LIST)[2:]
+        self.assertEqual(struct.unpack_from('<HHH', body), (0, 3, self.room.id))
+        self.assertTrue(body.endswith(struct.pack('<HB', 40, 0) + struct.pack('<HB', quick.id, 0) + b'\x00'))
+        self.assertEqual(self.lobby.data['room_watch'], (self.room.id, 40, quick.id))
+        await RoomSortedListRecv(self.lobby, BinaryReader(struct.pack("<BHH", 1, 0, 6))).handle(rooms=self.rooms)
+        self.assertEqual(struct.unpack_from("<HH", self.lobby.last(ServerPacket.SRV_ROOM_SORTED_LIST), 2), (0, 1))  # sem a automática
+        self.assertEqual(self.lobby.data['room_watch'], (self.room.id,))
+
     async def test_join_leave_destroy(self):
         b = FakeConn('b')
         b.channel = self.channel
@@ -181,14 +219,41 @@ class LobbyLiveTest(unittest.IsolatedAsyncioTestCase):
         await self.rooms.leave(self.master)
         await settle()
         self.assertEqual(self.body(ServerPacket.SRV_LOBBY_ROOM_DESTROYED), struct.pack('<H', self.room.id))
-        self.assertIn(ServerPacket.SRV_LOBBY_ROOM_DESTROYED, self.master.cmds())  # saiu da sala: voltou ao lobby
+        self.assertNotIn(ServerPacket.SRV_LOBBY_ROOM_DESTROYED, self.master.cmds())  # não listou a sala
 
     async def test_event_command_keeps_mode(self):
-        from gunbound.game.protocol.room_settings import RoomChangeOptionRecv
+        from gunbound.game.protocol.room_settings import RoomChangeOptionRecv, RoomChangeStageRecv
         self.room.options.mode = RoomMode.SCORE
-        # /<evento> do cliente: (settings & 0xFFFFF) | evento << 24 apaga o bit 22 do Score
-        await RoomChangeOptionRecv(self.master, BinaryReader(struct.pack('<I', ((0x44 << 16) & 0xFFFFF) | 1 << 24 | 5))).process()
-        self.assertEqual((self.room.options.mode, self.room.options.settings), (RoomMode.SCORE, 5))
+        # /<evento> do cliente: (settings & 0xFFFFF) | evento << 24 apaga o bit 22 do Score; o original grava cru
+        event = ((0x44 << 16) & 0xFFFFF) | 1 << 24 | 2
+        await RoomChangeOptionRecv(self.master, BinaryReader(struct.pack('<I', event))).process()
+        self.assertEqual((self.room.options.mode, self.room.options.settings), (RoomMode.SCORE, event))
+        # WCS1: tabela de 2007, com os lados C/D
+        await RoomChangeOptionRecv(self.master, BinaryReader(struct.pack('<I', event | 3 << 16))).process()
+        self.assertEqual(self.room.options.settings, event | 3 << 16)
+        self.room.options.settings = event
+        # mapa sem vaga na tabela: recusa (0x406700) sem derrubar
+        await RoomChangeStageRecv(self.master, BinaryReader(bytes([19]))).process()
+        self.assertEqual((self.room.options.settings, self.room.options.map, self.master.closing), (event, 0, False))
+        # posições >= 3 ou mapa >= 20: o original derruba a conexão (handler devolve falso)
+        await RoomChangeOptionRecv(self.master, BinaryReader(struct.pack('<I', event | 5))).process()
+        self.assertEqual((self.room.options.settings, self.master.closing), (event, True))
+        self.master.closing = False
+        await RoomChangeStageRecv(self.master, BinaryReader(bytes([20]))).process()
+        self.assertTrue(self.master.closing)
+
+    async def test_score_lives_and_random_stage(self):
+        self.room.options.mode = RoomMode.SCORE
+        self.room.options.settings |= 0xF00000
+        previous = 0
+        for _ in range(60):
+            stage = self.room._random_stage()
+            self.assertTrue(stage == 0 or (1 <= stage <= 10 and stage != previous))
+            self.assertIn(self.room.options.side, (0, 1))
+            previous = stage or previous
+        game = self.room.start()
+        lives = len(self.room.sorted_players()) // 2 + 1
+        self.assertEqual(((self.room.options.settings >> 20) & 0xF, set(game.score.values())), (lives, {lives}))
 
     async def test_state_and_settings(self):
         from gunbound.game.protocol.room_settings import RoomChangeTitleRecv, RoomChangeStageRecv, RoomChangeMaxMenRecv
@@ -224,10 +289,12 @@ class HandlerTest(unittest.IsolatedAsyncioTestCase):
         a, b = FakeConn('a'), FakeConn('b')
         a.channel = b.channel = Channel(None, 0)
         body = bytes([4]) + b'sala' + bytes.fromhex('b2620c00') + b'1234' + bytes([8])
+        a.server.config['stage_event'] = 3
         await RoomCreateRecv(a, BinaryReader(body)).handle(rooms=rooms)
         self.assertEqual(a.cmds(), [ServerPacket.SRV_ROOM_CREATE])
         room = a.room
         self.assertEqual((room.options.mode, room.options.size, room.options.password), (RoomMode.JEWEL, 8, '1234'))
+        self.assertEqual(room.options.settings >> 24, 3)  # StageEvent << 24 na criação
 
         await RoomJoinRecv(b, BinaryReader(struct.pack('<H', room.id) + b'errada\x00')).handle(rooms=rooms)
         self.assertEqual(struct.unpack_from('<H', b.last(ServerPacket.SRV_ROOM_JOIN), 2)[0], ServerCode.SRV_WRONG_PASSWORD)
@@ -339,9 +406,99 @@ class RoomLeaveTest(unittest.IsolatedAsyncioTestCase):
             def get(self, i): return {0: channel, 1: other}[i]
             def get_least_populated(self): return other
 
+        room = master.room
+        await RoomLeaveRecv(master, BinaryReader(struct.pack('<h', 9))).handle(rooms=rooms, channels=Channels())
+        self.assertEqual((master.last(ServerPacket.SRV_CHANNEL_JOIN)[2:4], master.room), (b'\x1d\x00', room))  # fica na sala
         await RoomLeaveRecv(master, BinaryReader(b'\xff\xff')).handle(rooms=rooms, channels=Channels())
         await settle()
         self.assertIsNone(master.room)
         self.assertIs(master.channel, channel)
         self.assertEqual(struct.unpack_from('<HH', master.last(ServerPacket.SRV_CHANNEL_JOIN), 0), (ServerPacket.SRV_CHANNEL_JOIN, 0))
         self.assertIn(ServerPacket.SRV_CHANNEL_JOIN_UPDATE, lobby.cmds())
+        # fora de sala (ou sala em jogo): 0x2001 RTC 0x2009, sem mexer no canal
+        await RoomLeaveRecv(master, BinaryReader(b'\xff\xff')).handle(rooms=rooms, channels=Channels())
+        self.assertEqual(master.last(ServerPacket.SRV_CHANNEL_JOIN)[2:4], b'\x09\x20')
+        self.assertIs(master.channel, channel)
+
+
+class TurnOrderTest(unittest.IsolatedAsyncioTestCase):
+    """Original (2006 0x415b40 / 2007 0x418be0): ordem por TotalGrade e times da QuickStartRoom pela patente."""
+
+    async def test_alternate_weakest_first(self):
+        import random
+        from gunbound.game.room import RoomPlayer, turn_order
+        def p(slot, team, grade):
+            c = FakeConn(f'p{slot}')
+            c.data['game']['TotalGrade'] = grade
+            return RoomPlayer(c, slot=slot, team=team)
+        players = [p(0, 0, 5), p(1, 1, 3), p(2, 0, 10), p(3, 1, 12)]
+        orders = {tuple(turn_order(players, random.Random(s))) for s in range(20)}
+        self.assertEqual(orders, {(2, 3, 0, 1), (3, 2, 1, 0)})  # mais fraco (grade maior) primeiro, times alternados
+
+    async def test_quick_teams_and_full_room(self):
+        from gunbound.game.protocol.room_join import RoomQuickStartRecv
+        rooms = manager()
+        rooms.quick_min_players = 4
+        conns = [FakeConn(n) for n in 'abcd']
+        for c, grade in zip(conns, (9, 2, 15, 5)):
+            c.data['game']['TotalGrade'] = grade
+            await RoomQuickStartRecv(c, BinaryReader(b'')).handle(rooms=rooms)
+        room = conns[0].room
+        self.assertTrue(all(c.room is room for c in conns))
+        self.assertIsNone(room.start_check(conns[0]))   # sem "pronto" na QuickStartRoom
+        # por patente: b(2) A, d(5) B, a(9) B, c(15) A
+        self.assertEqual([room.player(c).team for c in conns], [1, 0, 0, 1])
+        await room.leave(conns[2])
+        await room.leave(conns[3])
+        self.assertEqual(room.start_check(conns[0]), "QuickStartRoom incompleta")  # 2006: total == QuickStartMan
+
+
+class IdleRoomTest(unittest.IsolatedAsyncioTestCase):
+    """L8: sala ociosa (original 2006/2007): aviso 0x5101 a partir de warn, fecha com 0x3FFF depois de close."""
+
+    async def test_warn_then_close(self):
+        rooms = manager()
+        rooms.config['idle_room'] = {'close_msg': 'fechada', 'warn_msg': 'aviso'}
+        a, b = FakeConn('a'), FakeConn('b')
+        room = await rooms.create(a, RoomOptions('sala', RoomMode.SOLO, 4, None))
+        await room.join(b)
+        t0 = room.idle_since
+        await rooms.check_idle(True, t0 + 1139)
+        self.assertNotIn(ServerPacket.SRV_COMMAND, b.cmds())
+        await rooms.check_idle(True, t0 + 1140)
+        await settle()
+        self.assertEqual(b.last(ServerPacket.SRV_COMMAND)[2:], b'aviso')
+        room.start()
+        await rooms.check_idle(True, t0 + 5000)   # 2006: só salas aguardando
+        self.assertIs(a.room, room)
+        await rooms.check_idle(False, t0 + 5000)  # sem o filtro: todas
+        await settle()
+        self.assertEqual((a.room, b.room, b.last(ServerPacket.SRV_ROOM_KICKED)[2:]), (None, None, b'fechada'))
+        self.assertIsNone(rooms.get(room.id))
+
+
+class HiddenTankTest(unittest.TestCase):
+    def test_ratio_and_authority(self):
+        import random
+        from gunbound.game.room import roll_tank, HIDDEN_TANKS
+        from gunbound.game.protocol.room_select_tank import valid_tank
+        rng = random.Random(1)
+        rolls = [roll_tank(0xFF, rng, 20) for _ in range(5000)]
+        hidden = sum(r in HIDDEN_TANKS for r in rolls) / len(rolls)
+        self.assertTrue(0.17 < hidden < 0.23 and all(r < 16 or r in HIDDEN_TANKS for r in rolls))
+        self.assertEqual(roll_tank(3, rng), 3)
+        self.assertEqual((valid_tank(0x11), valid_tank(0x11, 98), valid_tank(0x13, 100)), (False, True, False))
+
+    def test_tanks_per_phase(self):
+        import random
+        from gunbound.game import phase
+        from gunbound.game.room import roll_tank
+        from gunbound.game.protocol.room_select_tank import valid_tank
+        th, s1, s2 = (phase.load(n) for n in ('TH', 'WCS1', 'WCS2'))
+        # 0x10 BigFoot MkII só do S1 em diante; 0x13..0x18 só no S2; 0x12 não existe fora do oculto de GM
+        self.assertEqual([valid_tank(0x10, 0, p.tanks) for p in (th, s1, s2)], [False, True, True])
+        self.assertEqual([valid_tank(0x18, 0, p.tanks) for p in (th, s1, s2)], [False, False, True])
+        self.assertEqual((valid_tank(0x12, 0, s2.tanks), valid_tank(0x12, 98, s2.tanks)), (False, True))
+        rng = random.Random(2)
+        self.assertEqual({roll_tank(0xFF, rng, 0, th.random_tanks) for _ in range(500)}, set(range(16)))
+        self.assertEqual({roll_tank(0xFF, rng, 0, s2.random_tanks) for _ in range(2000)}, set(s2.tanks))

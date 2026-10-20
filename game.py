@@ -20,9 +20,11 @@ async def main():
 
     server = container.server()
     await server.start()
+    idle_rooms = asyncio.create_task(container.rooms().idle_loop())  # sala ociosa (L8)
     
     shutdown_event = asyncio.Event()
     async def shutdown():
+        idle_rooms.cancel()
         await monitor.stop()
         await server.stop()
         await database.disconnect()

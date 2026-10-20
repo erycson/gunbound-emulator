@@ -5,7 +5,15 @@ crypto:
 global:
   super_user_item: 204801 # ID do item Power User
   product_version: &product_version 8452169
-  
+
+anticheat: # global, vale para todos os game servers (um `anticheat:` dentro do game server sobrepõe); docs/gameguard-protocol.md
+  provider: none  # none | gameguard (v495, v548, v584) | hackshield (TH v404, v440)
+  mode: "off"     # off | observe (só registra) | capture (só gameguard: 0x1015 fixo, grava o 0x1016) | required (exige validador confirmado; hoje não há nenhum)
+  # requery: 200   # s até a próxima pergunta depois de uma resposta boa; só corre com mode diferente de off
+  # deadline: 600  # s para responder antes de derrubar; só no mode required
+  # capture_query: ../gg-server-emu/capture-query-protocol50.bin # capture: 16 bytes do 0x1015 já no formato do fio (perfil ggauth50)
+  # capture_out: gg-capture.jsonl                                  # capture: um par pergunta/resposta (hex) por linha, sem usuário
+
 database:
   # Exemplos:
   #   SQLite:     "sqlite+aiosqlite:///gbwc.db"
@@ -66,13 +74,22 @@ gameservers:
     version_min: 1
     version_max: 999
     product_version: *product_version
-    phase: "WCS1" # fase do cliente: TH, WCS1 (v440, v495), WCS2 (v548, v584) - opcodes e layouts (gunbound/game/phase.py)
+    phase: "WCS2" # fase do cliente: TH, WCS1 (v440, v495), WCS2 (v548, v584) - opcodes e layouts (gunbound/game/phase.py)
     users_max: 3000 # max 65535
     event: 0 # 1 = wowlg (imagem de fundo na lista); 2 = Grand Prix (o broker já usa 2 se grandprix.enabled)
-    grade_min: 19
-    grade_max: -4
+    grade_min: 1 # patentes na numeração da versão: TH/WCS1 19 (pintinho) .. -4 (dragão); WCS2 1 (pintinho) .. 41 (coroa)
+    grade_max: 41
     gold_factor: 230          # GoldFactor do servidor original (GunBoundServ/setting.txt)
     score_factor: 270         # ScoreFactor do servidor original
+    stage_event: 0            # StageEvent do original: byte alto (bits 24-31) do settings de toda sala criada
+    idle_room: &IDLE_ROOM     # sala ociosa (Idle*/RoomClose* do Setting; padrões do original; o Setting.txt do pacote "Season 2 server" usa close 2220, warn 2280)
+      close: 1200             # segundos desde a criação/fim de partida: todos saem com 0x3FFF + close_msg
+      warn: 1140              # a partir daqui manda warn_msg (0x5101) a cada checagem; vazio = sem aviso
+      close_msg: ""
+      warn_msg: ""
+    quick_start: &QUICK_START # QuickStart (0x2130) do original: QuickStartRoom com settings = option e máx = man (1..8)
+      man: 6
+      option: 0x451C2
     jackpot: &JACKPOT # WCS2, Jack Pot Booster Card por carta (0 Normal, 1 Rare, 2 Epic, 3 Legend): gold [mín, máx], itens por carta,
              # fail = % de cada item vir "Boost Failed", pool = [item, quantidade] sorteado por igual
              # joias do encantamento (ex3.dat do v584, preço 0 = só vinham do Jackpot): 700038 Spirit, 700039 Nihility,
@@ -118,20 +135,28 @@ gameservers:
     version_min: 1
     version_max: 999
     product_version: *product_version
-    phase: "WCS1" # fase do cliente: TH, WCS1 (v440, v495), WCS2 (v548, v584) - opcodes e layouts (gunbound/game/phase.py)
+    phase: "WCS2" # fase do cliente: TH, WCS1 (v440, v495), WCS2 (v548, v584) - opcodes e layouts (gunbound/game/phase.py)
     users_max: 3000
     event: 0
-    grade_min: 19
-    grade_max: -4
+    grade_min: 1
+    grade_max: 41
     gold_factor: 230
     score_factor: 270
+    stage_event: 0
+    idle_room: *IDLE_ROOM
+    quick_start: *QUICK_START
     jackpot: *JACKPOT
     tutorial: *TUTORIAL
     bonus_event: 0 # WCS2: % de chance por partida de sortear o bônus "+Gold/+GP" (0x4300, tipos 0..9); 0 = desligado
     # result_rewards: {kill: [50, 1], win: [100, 2]} # WCS2: gold e GP por evento no fim da partida (0x4412 do v584 só manda contagens); padrões em gunbound/game/protocol/wcs2/result.py
-    # slot_machine: [[4, 0, 60], [0, 20, 25], [1, 500, 12], [1, 3000, 3]] # WCS2 caça-níquel: [resultado (0 fichas, 1 gold, 4 perdeu), valor x aposta, peso]
+    # stage_channel: true # WCS2: canal Stage (missões do v584: 0x1111 tipo 2, salas de 1/2); use event: 4 para o ícone
+    # country_board: false # WCS2: não manda o quadro por país (0x7031) junto do ranking 0x7011 da lista de canais
+    # mvp: false # WCS2: sem MVP na tela de resultado (0x4415); padrão = quem fez mais gold base
+    # game_points: {RenaPoints: 10, DiscountPoints: 5} # WCS2: pontos de Rena/desconto por partida (sem fonte no jogo); {} = nenhum
+    # slot_machine: [[4, 0, 58], [0, 20, 25], [1, 500, 12], [1, 3000, 3], [2, 700014, 2]] # WCS2 caça-níquel: [resultado (0 fichas, 1 gold, 2/3 item, 4 perdeu), valor x aposta (item: código, 1 unidade), peso]
+    # jewel_enchant: [[1, 700038, 1, N, 1, 0, 0, 0, 0, 0, 0]] # WCS2 0x6117: receitas na ordem do JewelEnchantList.dat do cliente (índice = linha); padrão em wcs2/enchant.py
     # jackpot_bomb: {1: [700096, 1], 2: [700097, 1]} # WCS2: prêmio da bomba por carta (Rare 12 / Epic 15 cartas); padrão = carta seguinte
-    # rena: [[700096, 1, 10], [700097, 1, 1]] # WCS2 Rena (0x7124, custa 100 Game.RenaPoints): [item, quantidade, peso]; sem chave = recusa
+    # rena: [[700096, 1, 10], [700097, 1, 1]] # WCS2 Rena (0x7124, custa 100 Game.RenaPoints): [item, quantidade, peso]; sem chave = megafone e joias (shop.DEFAULT_RENA)
     stats_interval: 300
     features:
       - *AVATAR_ENABLED

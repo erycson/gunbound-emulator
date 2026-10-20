@@ -27,7 +27,7 @@ class SilentRecv(GameRecv):
         self.conn.last_activity = time.time()
 
 
-for _cmd in (ClientPacket.CLI_UNKNOWN_1004, ClientPacket.CLI_UNKNOWN_1019, ClientPacket.CLI_UNKNOWN_101C,
+for _cmd in (ClientPacket.CLI_UNKNOWN_1004,
              ClientPacket.CLI_ROOM_GRANDPRIX_BEGIN, ClientPacket.CLI_ROOM_GRANDPRIX_CANCEL):
     handler(_cmd, auth=False)(type(f"Silent{int(_cmd):04X}Recv", (SilentRecv,), {"__module__": __name__}))
 
@@ -37,7 +37,8 @@ class AvatarSaveRecv(GameRecv):
     """
     0x600E: count u16 + count x (chest_id u32, vestir u8 1/0). Visto no cliente: 02 00 03000000 01 04000000 01.
     Itens que não são do jogador (ou expirados) recusam o pedido (0x600F rtc 1).
-    Guarda os ItemNo vestidos em conn.data['avatar'] (usado no bloco de avatar da sala).
+    Guarda os ItemNo vestidos em conn.data['avatar'] e (nível de encantamento, selo) em conn.data['avatar_enchant']
+    (usados no bloco de avatar da sala).
     """
 
     @inject
@@ -50,8 +51,11 @@ class AvatarSaveRecv(GameRecv):
             await self.conn.on_send(Packet.new(ServerPacket.SRV_ITEM_WEAR, rtc=1))
             return
         avatar = list(self.conn.data.get('avatar', []))
+        enchant = self.conn.data.setdefault('avatar_enchant', {})
         for i, wear in changes:
             item = int(chest[i]['Item'])
+            if wear:
+                enchant[item] = (int(chest[i].get('EnchantLevel') or 0), int(chest[i].get('Seal') or 0))
             if wear and item not in avatar:
                 avatar.append(item)
             elif not wear and item in avatar:

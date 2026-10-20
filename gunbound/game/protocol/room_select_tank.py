@@ -1,12 +1,16 @@
 from __future__ import annotations
-from gunbound.base.enums import TANK_RANDOM, TANK_COUNT
+from gunbound.base.enums import TANK_RANDOM, TANK_COUNT, HIDDEN_TANKS
 from gunbound.game import room_packets as rp
+from gunbound.game.protocol.admin_console import authority
 from gunbound.game.protocol.base import GameRecv, handler
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket
 
+HIDDEN_TANK_AUTHORITY = 98  # original: 0x3200 com 0x11/0x12 só para Authority >= 98
 
-def valid_tank(t: int) -> bool:
-    return t == TANK_RANDOM or 0 <= t < TANK_COUNT
+
+def valid_tank(t: int, level: int = 0, tanks=frozenset(range(TANK_COUNT))) -> bool:
+    """tanks = os que o cliente da fase desenha (Phase.tanks); o original (2007 0x42d048) só barra 0x11/0x12 de quem é < 98."""
+    return t == TANK_RANDOM or t in tanks or (t in HIDDEN_TANKS and level >= HIDDEN_TANK_AUTHORITY)
 
 
 @handler(ClientPacket.CLI_ROOM_SELECT_TANK)
@@ -17,8 +21,10 @@ class RoomSelectTankRecv(GameRecv):
     """
 
     async def handle(self):
+        from gunbound.game import phase  # import tardio: phase importa os handlers
         tank1, tank2 = self.buf.require(2).read_uint8(), self.buf.read_uint8()
-        if not valid_tank(tank1) or not valid_tank(tank2):
+        level, tanks = authority(self.conn), phase.of(self.conn).tanks
+        if not valid_tank(tank1, level, tanks) or not valid_tank(tank2, level, tanks):
             return
         room = self.room
         if room is not None and not room.set_tanks(self.conn, tank1, tank2):

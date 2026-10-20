@@ -7,6 +7,8 @@ Comandos de GM, como no servidor original (GunBoundServ3.exe FUN_00425a10, via R
 """
 from __future__ import annotations
 import os
+import random
+import struct
 import time
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Awaitable, Callable
@@ -172,7 +174,7 @@ class GmCommands:
 
     async def cmd_qsman(self, arg):
         old = self.rooms.quick_min_players
-        if arg.isdigit() and 1 <= int(arg) <= 8:
+        if arg.isdigit() and int(arg) < 8:  # original: só aceita < 8
             self.rooms.quick_min_players = int(arg)
         return f"- Current Quick Start Man : {old}\n- New Quick Start Man  : {self.rooms.quick_min_players}"
 
@@ -194,10 +196,23 @@ class GmCommands:
         room = self.conn.room
         if room is None or not room.is_master(self.conn) or not room.is_waiting():
             return "ADMIN>> Você precisa ser o mestre de uma sala aguardando."
-        # o 0x3430 real traz seed u32 (GetTickCount, cliente 0x433770); sem ele o S2 lê a 0x3432 curta e fecha.
-        # shortcut: sem os blocos dos modos internos 3/4 do cliente (nunca vistos nos logs), gerar se aparecerem
-        await start_game(room, self.conn, os.urandom(4))
+        await start_game(room, self.conn, start_echo(room.options.settings))
         return None
+
+
+def start_echo(settings: int, rng=random) -> bytes:
+    """Corpo do 0x3430 como o cliente v584 monta (0x433770): seed u32 (GetTickCount); sem ele o S2 lê a 0x3432 curta
+    e fecha. Modo interno = bits 18-20 do settings (0x50f167). Modo 3 (Jewel): 6 x (u16 rand, u8 rand % 3);
+    modo 4: 3 x (u16 rand, u8 de 1/2/4/8/16)."""
+    out = bytearray(os.urandom(4))
+    mode = settings >> 18 & 7
+    if mode == 3:
+        for _ in range(6):
+            out += struct.pack('<HB', rng.randrange(0x8000), rng.randrange(3))
+    elif mode == 4:
+        for _ in range(3):
+            out += struct.pack('<HB', rng.randrange(0x8000), rng.choice((1, 2, 4, 8, 16)))
+    return bytes(out)
 
 
 async def start_game(room, master: 'ClientConnection', echo: bytes) -> None:

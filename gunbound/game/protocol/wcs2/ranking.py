@@ -20,13 +20,13 @@ from gunbound.game.protocol.base import GameRecv, Packet, handler
 
 CLI_RANKING, SRV_RANKING = 0x7040, 0x7041
 PAGE = 100  # u8 no pacote
-GM_GRADE = 20
+GM_GRADE = 0  # admin na escala do S2
 TAB_GUILD, TAB_LADDER = 2, 4
 
 PLAYERS = ("SELECT Id, Nickname, Guild, {grade} AS Grade, {score} AS Score FROM Game "
-           "WHERE {grade} <> 20 ORDER BY {score} DESC, Nickname")
+           f"WHERE {{grade}} <> {GM_GRADE} ORDER BY {{score}} DESC, Nickname")
 GUILDS = ("SELECT Guild AS Id, Guild AS Nickname, '' AS Guild, 0 AS Grade, SUM(TotalScore) AS Score FROM Game "
-          "WHERE Guild <> '' AND TotalGrade <> 20 GROUP BY Guild ORDER BY Score DESC, Guild")
+          f"WHERE Guild <> '' AND TotalGrade <> {GM_GRADE} GROUP BY Guild ORDER BY Score DESC, Guild")
 LADDER = ("SELECT u.Id, u.Nickname, u.Guild, u.TotalGrade AS Grade, g.Score FROM GrandPrix_Personal AS g "
           "INNER JOIN Game AS u ON g.User=u.Id ORDER BY g.Score DESC, u.Nickname")
 

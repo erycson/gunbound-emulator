@@ -4,8 +4,10 @@ Endereços = GunBound.gme v584 (VA). Os outros pacotes do bloco ficam em events.
 lobby.py (0x2025) e no room_join.py comum (0x2131/0x2132); o que falta está em docs/Cliente v584 - pacotes.md.
 """
 from __future__ import annotations
-from gunbound.base.enums import RoomMode, ROOM_SIZES, MAP_COUNT
-from gunbound.game import room_packets as rp
+from dependency_injector.wiring import Provide, inject
+from gunbound.base.enums import RoomMode, MAP_COUNT
+from gunbound.game.stage_pos import valid_settings
+from gunbound.game import room_packets as rp, phase
 from gunbound.game.protocol.base import GameRecv, Packet, handler
 from gunbound.game.protocol.enums import ServerPacket
 
@@ -16,9 +18,6 @@ SRV_READY_ITEMS = 0x6051         # leitura global 0x40f740 (case 0x6051)
 CLI_READY_ITEMS_SET = 0x6052     # envio 0x435e69 / 0x436796 (FUN_00435e50)
 
 ITEM_ENTRY = 8  # u32 + u32 por posição
-
-# shortcut: lista em memória do processo (some ao reiniciar); persistir exige tabela nova no banco (pendente).
-_ready_items: dict[str, bytes] = {}
 
 
 @handler(CLI_ROOM_CHANGE_ALL, master=True, waiting=True, register=False)
@@ -36,13 +35,12 @@ class RoomChangeAllRecv(GameRecv):
         buf.read_uint16(); buf.read_uint8()
         stage, settings, capacity = buf.read_uint8(), buf.read_uint32(), buf.read_uint8()
         room = self.room
-        mode = RoomMode.parse(settings >> 16)
-        ok = (stage < MAP_COUNT and mode is not None and capacity in ROOM_SIZES
+        ok = (stage < MAP_COUNT and valid_settings(settings, stage, phase.of(self.conn).stage_pos) and capacity in room.options.sizes()
               and all(p.slot < capacity for p in room.players.values()))
         if not ok:
             await self.conn.on_send(Packet.new(SRV_ROOM_CHANGE_ALL, rtc=1))
             return
-        room.options.map, room.options.mode, room.options.settings = stage, mode, settings & 0xFFFF
+        room.options.map, room.options.settings = stage, settings
         room.options.size = capacity
         for cmd, value in ((ServerPacket.SRV_LOBBY_ROOM_MAP, lambda p: p.u8(room.options.map)),
                            (ServerPacket.SRV_LOBBY_ROOM_SETTINGS, lambda p: p.u32(rp.settings_of(room))),
@@ -56,11 +54,13 @@ class RoomChangeAllRecv(GameRecv):
 class ReadyItemsGetRecv(GameRecv):
     """
     0x6050 sem corpo. Resposta 0x6051 (0x40f740): u16 rtc (só lê com 0), u16 n, n x [u32 nº do baú, u32 código do item]
-    (0 = vazio; o cliente subtrai 0xAAA7A do código). Devolve o que o próprio cliente gravou pelo 0x6052.
+    (0 = vazio; o cliente subtrai 0xAAA7A do código). Devolve o que o próprio cliente gravou pelo 0x6052 (Game.ReadyItems,
+    coluna do WCS2 criada pelo init_db.py).
     """
 
-    async def handle(self):
-        data = _ready_items.get(self.user_id(), b'\x00\x00')
+    @inject
+    async def handle(self, user_repository=Provide['user_repository']):
+        data = await user_repository.get_ready_items(self.user_id()) or b'\x00\x00'
         await self.conn.on_send(Packet.new(SRV_READY_ITEMS, rtc=0).raw(data))
 
 
@@ -68,7 +68,9 @@ class ReadyItemsGetRecv(GameRecv):
 class ReadyItemsSetRecv(GameRecv):
     """0x6052 (FUN_00435e50): u16 n (+0x1b97c), n x [u32, u32] — o mesmo formato do 0x6051. Sem resposta no cliente."""
 
-    async def handle(self):
+    @inject
+    async def handle(self, user_repository=Provide['user_repository']):
         count = self.buf.require(2).read_uint16()
         count = min(count, self.buf.remaining() // ITEM_ENTRY)
-        _ready_items[self.user_id()] = count.to_bytes(2, 'little') + self.buf.read_bytes(count * ITEM_ENTRY)
+        data = count.to_bytes(2, 'little') + self.buf.read_bytes(count * ITEM_ENTRY)
+        await user_repository.set_ready_items(self.user_id(), data)

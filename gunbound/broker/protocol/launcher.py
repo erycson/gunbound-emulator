@@ -10,11 +10,11 @@ class LauncherResp(BasePackageSend):
         self.buf = buf
 
     @classmethod
-    def ok(cls, cmd: int):
+    def ok(cls, cmd: int, code: int = ServerCode.SRV_OK):
         # só cmd + código: com 8 bytes o launcher não abre popup no 0x3001 e não mostra horário no 0x4001
         buf = BinaryWriter()
         buf.write_uint16(cmd)
-        buf.write_uint16(ServerCode.SRV_OK)
+        buf.write_uint16(code)
         return cls(buf)
 
     def log_command(self, conn):
@@ -42,8 +42,9 @@ class StartGameRecv(BasePackageRecv):
         self.buf = buf
 
     async def process(self):
-        # shortcut: não confere se a conexão fez login antes; guardar estado no conn se precisar
-        await self.conn.on_send(LauncherResp.ok(ServerPacket.SRV_START_GAME))
+        # só abre o jogo para a conexão que passou pelo login 0x1310 (código != 0 o launcher não abre)
+        code = ServerCode.SRV_OK if self.conn.logged_in else ServerCode.SRV_ERR_NOT_AUTHORIZED
+        await self.conn.on_send(LauncherResp.ok(ServerPacket.SRV_START_GAME, code))
 
     def log_command(self, conn):
         print(f"RECV<< [SS={conn.broker.id:08X} CD={ClientPacket.CLI_START_GAME.value:04X}] {self.buf.to_hex(4)}")

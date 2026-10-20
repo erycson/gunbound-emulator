@@ -1,4 +1,4 @@
-"""WCS2 loja: presentes 0x6005, desconto 0x7118, Rena 0x7124, 0x7136. Uso: python -m unittest tests.test_wcs2_shop -v"""
+"""Loja: presentes 0x6005 (todas as fases), desconto 0x7118, Rena 0x7124, 0x7136. Uso: python -m unittest tests.test_wcs2_shop -v"""
 import datetime
 import struct
 import unittest
@@ -25,9 +25,14 @@ class Users:
     async def get_gift_msgs(self, uid):
         return self.gifts
 
+    async def delete_gift_msgs(self, nos):
+        self.deleted = list(nos)
+        return len(nos)
 
-def gift(no, msg):
-    return {'MenuId': 0x1234, 'No': no, 'Sender': 'amigo', 'SentTime': datetime.datetime(2026, 1, 1), 'Msg': msg}
+
+def gift(no, msg, expire='M', kind='G'):
+    return {'MenuId': 0x1234, 'No': 99, 'GiftItemNo': no, 'Sender': 'amigo', 'SentTime': datetime.datetime(2026, 1, 1),
+            'Msg': msg, 'ExpireType': expire, 'MsgType': kind}
 
 
 def player():
@@ -38,11 +43,18 @@ def player():
 
 class ShopTest(unittest.IsolatedAsyncioTestCase):
     async def test_one_6005_per_gift_and_text_capped(self):
+        from gunbound.game.protocol.item_gift_msg import ItemGiftMsgRecv
         c = player()
-        await shop.GiftMsgRecv(c, BinaryReader(b'')).handle(user_repository=Users(gifts=[gift(1, 'oi'), gift(2, 'x' * 300)]))
+        gifts = [gift(1, 'oi'), gift(2, 'x' * 300, 'Y'), gift(3, 'aceito', kind='A')]
+        users = Users(gifts=gifts)
+        await ItemGiftMsgRecv(c, BinaryReader(b'')).handle(user_repository=users)
+        # A vira 0x6032: Id12 de quem aceitou, MenuId, período (M = 1), 1 = aceito; e a linha some
+        self.assertEqual(c.last(0x6032)[2:], b'amigo'.ljust(12, b'\x00') + struct.pack('<IBB', 0x1234, 1, 1))
+        self.assertEqual(users.deleted, [99])
         pkts = [p for p in c.sent if p[:2] == b'\x05\x60']
-        self.assertEqual(len(pkts), 2)
-        self.assertEqual(struct.unpack_from('<II', pkts[0], 2), (0x1234, 1))
+        self.assertEqual(len(pkts), 2)  # aviso de aceite (A) não vira presente
+        # +4 = GiftItemNo (o 0x6008 devolve essa chave); +8 = período do original (M 3, Y 6)
+        self.assertEqual([struct.unpack_from('<IIB', p, 2) for p in pkts], [(0x1234, 1, 3), (0x1234, 2, 6)])
         self.assertEqual((pkts[1][0x1B], len(pkts[1])), (0x82, 2 + 0x1A + 0x82))
 
     async def test_discount(self):

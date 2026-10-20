@@ -54,28 +54,28 @@ TUTORIAL = {'sender': 'GB', 'avatar_pool': 3, 1: {'gold': 100, 'items': [[700003
 
 class Points:
     async def get_points(self, uid, column):
-        return 0
+        return 0x01020304 if column == 'TotalScore' else 0
 
 
 class EventsTest(unittest.IsolatedAsyncioTestCase):
     async def run_cmd(self, cls, c):
-        kw = {'user_repository': Points()} if cls is ev.Event7012Recv else {}
+        kw = {'user_repository': Points()} if cls in (ev.Event7012Recv, ev.Event6108Recv) else {}
         await cls(c, BinaryReader(b'')).handle(**kw)
 
     async def test_no_config_no_reply(self):
         c = conn('a')
         c.server.config = {}
-        for cls in (ev.Event6108Recv, ev.ReadyEventRecv, ev.LoadingDoneRecv):
+        for cls in (ev.ReadyEventRecv, ev.LoadingDoneRecv):
             await self.run_cmd(cls, c)
         self.assertEqual(c.sent, [])
 
     async def test_config_replies(self):
         c = conn('a')
-        c.server.config = {'event_7013_value': 7, 'event_6109_value': 0x01020304, 'event_6107_id': 3}
+        c.server.config = {'event_7013_value': 7, 'event_6107_id': 3}
         for cls in (ev.Event7012Recv, ev.Event6108Recv, ev.ReadyEventRecv):
             await self.run_cmd(cls, c)
         self.assertEqual(c.last(0x7013), struct.pack('<HHI', 0x7013, 0, 7))
-        self.assertEqual(c.last(0x6109), struct.pack('<HHI', 0x6109, 0, 0x01020304))
+        self.assertEqual(c.last(0x6109), struct.pack('<HHI', 0x6109, 0, 0x01020304))  # TotalScore do banco
         self.assertEqual(c.last(0x6107), struct.pack('<HHH', 0x6107, 0, 3))
 
     async def end(self, c, lesson, users, inv=None):

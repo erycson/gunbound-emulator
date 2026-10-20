@@ -144,12 +144,21 @@ class RoomMode(IntEnum):
     def parse(cls, value: int) -> 'RoomMode | None':
         return cls._value2member_map_.get(value)
 
+    @classmethod
+    def of_settings(cls, settings: int) -> 'RoomMode':
+        """Modo pelos bits 18-19 do settings (TH 0x4c4e89: Solo 0, Score 0x40000 (+bit 22), Tag 0x80000, Jewel 0xC0000)."""
+        return MODE_BITS[settings & 0xC0000]
+
+
+MODE_BITS = {0: RoomMode.SOLO, 0x40000: RoomMode.SCORE, 0x80000: RoomMode.TAG, 0xC0000: RoomMode.JEWEL}
 
 RANDOM_MAP = 0      # mapa 0 = aleatório
 MAP_COUNT = 11      # mapas 1..10 (docs/Play/Maps.md); usado no sorteio
 ROOM_SIZES = (2, 4, 6, 8)
+STAGE_SIZES = (1, 2)  # canal Stage do v584: capacidade = MaxMan da missão
 TANK_RANDOM = 0xFF
 TANK_COUNT = 16     # índices 0..15 (docs/Play/Tanks e Itens.md)
+HIDDEN_TANKS = (0x11, 0x12)  # ocultos do original: só no aleatório (Tank.Hidden.Ratio) ou escolhidos por Authority >= 98
 
 
 class RoomSortList(IntEnum):
@@ -168,23 +177,46 @@ class RoomOptions:
     MAX_RENAME = 64             # 0x3104 aceita de 1 a 0x40 bytes no servidor original
     ALL_ITEMS = b'\xFF' * 8     # 0x3102: 8 bytes de máscara de itens, repetidos em 0x2111/0x3400
     DEFAULT_SETTINGS = 0x62B2   # bytes 0-1 do settings (fixos B2 62)
+    # settings u32, guardado cru como o original (+0x54 da sala): bits 0-3 posições (0 EvsW, 1 Mix, 2+ Rand), 16-17 lado
+    # do mapa, 18-19 modo, 20-23 vidas do Score (o servidor grava no início), 24-31 evento (/evento do cliente)
 
     def __init__(self, name: str, mode: RoomMode, size: int, password: str | None, map: int = RANDOM_MAP,
-                 settings: int = DEFAULT_SETTINGS, item_bytes: bytes = b'\xFF' * 8):
+                 settings: int = DEFAULT_SETTINGS, item_bytes: bytes = b'\xFF' * 8, stage: tuple | None = None):
         self.name = name[:self.MAX_TITLE]
+        self.settings = settings & 0xFFFFFFFF
         self.mode = mode
-        self.size = size if size in ROOM_SIZES else self.MAX_PLAYERS
+        self.stage = stage  # canal Stage: (StageNum-1, GameMode) do 0x2120; None fora dele
+        self.size = size if size in ROOM_SIZES or (stage is not None and size in STAGE_SIZES) else self.MAX_PLAYERS
         self.password = password or None
         self.map = map
-        self.settings = settings & 0xFFFF   # opções cruas (sudden death, vento etc.), devolvidas como recebidas
         self.item_bytes = bytes(item_bytes)  # 0x3102: máscara de itens permitidos (8 bytes crus)
 
     @property
-    def mode_code(self) -> int:
-        return int(self.mode)
+    def mode(self) -> RoomMode:
+        return RoomMode.of_settings(self.settings)
+
+    @mode.setter
+    def mode(self, mode: RoomMode) -> None:
+        """Troca só os bits 18-19 (como o /qsopt do original); Score sem vidas ganha o bit 22 que o cliente põe."""
+        self.settings = (self.settings & ~0xC0000) | ((int(mode) << 16) & 0xC0000)
+        if mode == RoomMode.SCORE and not self.settings & 0xF00000:
+            self.settings |= 0x400000
+
+    @property
+    def side(self) -> int:
+        return (self.settings >> 16) & 3
+
+    @property
+    def layout(self) -> int:
+        """0 EvsW, 1 Mix, 2 Rand (original: settings & 0xF, acima de 2 vale 2)."""
+        return min(self.settings & 0xF, 2)
 
     def max_players(self) -> int:
         return self.size
+
+    def sizes(self) -> tuple:
+        """Capacidades aceitas na troca (0x3103/0x6220): 1/2 nas salas do canal Stage."""
+        return STAGE_SIZES if self.stage is not None else ROOM_SIZES
 
     def use_item(self) -> bool:
         return any(self.item_bytes)

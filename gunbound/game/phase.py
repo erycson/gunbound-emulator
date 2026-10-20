@@ -33,6 +33,16 @@ class Phase:
     quick_create_extra: bytes = b''  # 0x2132: byte a mais depois do room_id no v584 (0x4d660b) [INCERTO: nibble alto por slot]
     result_v584 = False  # 0x4412 com contagens de eventos e resposta 0x4415 (wcs2/result.py)
     login_ready: int | None = None  # opcode S->C (RTC 0) que o cliente espera depois do 0x1012 para pedir o canal (0x2000)
+    # sala ociosa (L8): os servidores 2006 (0x42f9f0) e 2007 (0x436b30) conferem a cada 10 s (waitable timer de 10000 ms)
+    # e expulsam todos da sala, sem exceção para GM. Só salas aguardando e não cheias: leitura do 2006. O S2 não tem
+    # servidor original e herda esta regra do S1.
+    idle_tick, idle_waiting_only = 10, True
+    # posições de spawn (data/, gunbound/game/stage_pos.py): 2006 no TH; o 2007 (4 lados, com Y) do WCS1 em diante
+    stage_pos = 'stage_pos.txt'
+    # tanques: índices que a fábrica do cliente desenha (TH 0x434d30: 0..0xF, 0xD Dragon, 0xE Knight, 0xF CyberNaK).
+    # Os ocultos 0x11/0x12 (HIDDEN_TANKS) valem à parte, só para GM. Aleatório do original (2006/2007): rand&0xF.
+    tanks = frozenset(range(0x10))
+    random_tanks = tuple(range(0x10))
 
     @classmethod
     def check(cls, config) -> None:
@@ -55,7 +65,7 @@ class Phase:
             del table[op]
         return table
 
-    def write_avatar(self, pkt: 'Packet', items: list) -> 'Packet':
+    def write_avatar(self, pkt: 'Packet', items: list, enchant: dict = None) -> 'Packet':
         """Itens do jogador no 0x2111/0x3010: u16 + u32 por item (cliente 0x4cbc29)."""
         pkt.u16(len(items))
         for item in items:
@@ -67,7 +77,7 @@ class Phase:
         TH: TotalGrade, SeasonGrade (cliente 0x410e20/0x410e36). O país chegou no WC."""
         return struct.pack('<hh', game.get('TotalGrade') or 0, game.get('SeasonGrade') or 0)
 
-    def login_stats(self, game: dict) -> bytes:
+    def login_stats(self, game: dict, client_version: int = 0) -> bytes:
         """0x1012 depois das patentes: MemberCount u16 + 8 u32 (o último é o gold) + 4 eventos.
         TH (leitor 0x44bf1b): sem CountryRank; o bloco cifrado começa em +0x51."""
         ranks = ('TotalRank', 'SeasonRank', 'GuildRank', 'AccumShot', 'AccumDamage', 'TotalScore', 'SeasonScore', 'Money')
@@ -88,13 +98,17 @@ class Phase:
         """0x2103: bytes entre o power user e a contagem de jogadores. TH: nenhum (cliente 0x4306ef)."""
         return b''
 
+    def player_tail(self, power_user: bool) -> bytes:
+        """Fim do jogador no 0x2111/0x2133/0x3010: u8 power user (v440 0x4cbd9c)."""
+        return bytes([1 if power_user else 0])
+
     def chest_tail(self, item: dict, client_version: int = 0) -> bytes:
         """0x6001: o que vem depois do 3º flag de cada item. TH: nada (cliente 0x4119e0)."""
         return b''
 
     kick_ack = 0x3151  # resposta ao mestre no 0x3150 (TH 0x4c2c23: RTC 0 + u8 slot)
 
-    def chat_body(self, position: int, nickname: str, message: str) -> bytes:
+    def chat_body(self, position: int, nickname: str, message: str, color: int = 0) -> bytes:
         """0x201F decifrado: tamanho em +13, texto em +14 (cliente 0x42a5f0)."""
         return bytes([position]) + nickname.encode('latin-1')[:12].ljust(12, b'\x00') + bytes([len(message)]) + message.encode('latin-1')
 
@@ -126,6 +140,10 @@ def catalog() -> dict:
 
 class TH(Phase):
     """Cliente TH v404 (2005): a base. Sem Grand Prix e sem país; os layouts são os métodos de Phase."""
+    # tarefas de fundo que o GameServer inicia para esta versão (gunbound/game_server.py TASKS)
+    tasks = ('ranking',)
+    # patentes (repository/ranking.py RULES): escala -4..19, menor = melhor, admin 20
+    rank_rule, gm_grade, higher_grade_better = 'th', 20, False
 
     @classmethod
     def adds(cls) -> dict:
@@ -147,6 +165,8 @@ class WCS1(TH):
     # 0x1010: o v440 manda config['product_version']; o v495 manda o mesmo u32 do v584 com chave Brasil
     product_versions = frozenset({0x04FCCB1C})
     kick_ack = 0x315F  # v440 0x4ec9c3
+    tanks = frozenset(range(0x11))  # v440 0x42e5d0 / v495 0x430b80: + 0x10 BigFoot Mark II (0x11 Frog é oculto do original)
+    stage_pos = 'stage_pos_2007.txt'  # Rand_Stage_Pos.txt do servidor 2007 (WC S1); o S2 não tem servidor original
 
     def gp_group(self, rec: bytes, category: int) -> bytes:
         """0x1101 v495 (tela 0x50a700): grupo de 24 bytes [Rank, Rank-RankOld, Category, Pontos, Win, Lose].
@@ -158,10 +178,12 @@ class WCS1(TH):
         """+ CountryGrade, Country (v440 0x40faff–0x40fb39)."""
         return super().grades(game) + struct.pack('<hH', game.get('CountryGrade') or 0, game.get('Country') or 0)
 
-    def login_stats(self, game: dict) -> bytes:
-        """0x1012 v440: MemberCount + 9 u32 (com CountryRank) + 4 eventos; bloco cifrado em +0x59."""
+    def login_stats(self, game: dict, client_version: int = 0) -> bytes:
+        """0x1012 v440: MemberCount + 9 u32 (com CountryRank) + 4 eventos; bloco cifrado em +0x59.
+        v584 (0x514717): 5 eventos e o bloco em +0x5d; com 4 o bloco decifrado sai desalinhado."""
         ranks = ('TotalRank', 'SeasonRank', 'GuildRank', 'CountryRank', 'AccumShot', 'AccumDamage', 'TotalScore', 'SeasonScore', 'Money')
-        return struct.pack('<H9I', game['MemberCount'], *(game[k] for k in ranks)) + self._events(game)
+        stats = struct.pack('<H9I', game['MemberCount'], *(game[k] for k in ranks)) + self._events(game)
+        return stats + struct.pack('<I', game.get('EventScore4') or 0) if is_v584(client_version) else stats
 
     def write_detail_player(self, pkt: 'Packet', p) -> 'Packet':
         """Jogador no 0x2105, 0x1E bytes (servidor original 0x42f2b0, cliente lê guild em +0xE e grade em +0x16):
@@ -181,7 +203,14 @@ class WCS1(TH):
 
 class WCS2(WCS1):
     """Cliente v584 (BR, 2010): mobiles Tiburon/Frank/Maya/Phoenix/Wolf/Blue Whale; layouts em docs/Cliente v584 - pacotes.md."""
+    # patentes do S2 (v548 e v584): escada de 47 ícones, 1..41, maior = melhor, admin 0 (docs/Níveis.md)
+    rank_rule, gm_grade, higher_grade_better = 'v584', 0, True
     parent = WCS1
+    stage_pos = 'stage_pos_s2.txt'  # 2007 + mapas 11..16 (v584: mapa % 17) com posições inventadas
+    # v584 0x4427c0: + 0x13 Phoenix, 0x14 Maya, 0x15 Wolf, 0x16 Tiburon, 0x17 Blue Whale, 0x18 Frank (0x12 cai no Armor)
+    tanks = WCS1.tanks | frozenset(range(0x13, 0x19))
+    # shortcut: o S2 não tem servidor original; o aleatório sorteia todos os tanques não ocultos. Rever se aparecer fonte
+    random_tanks = tuple(sorted(tanks))
     # opcodes novos do v584; o que ficou de fora (megafone, convite, Pumpkin...) está em docs/Cliente v584 - pacotes.md
     add = {h.command: h for h in (
         chat_combo.ChatComboListRecv,
@@ -194,7 +223,7 @@ class WCS2(WCS1):
         lobby.ChannelInfoRecv, lobby.ItemUseRecv, lobby.InviteListRecv, lobby.InviteSendRecv,
         ranking.RankingRecv,  # depois de events: substitui o stub events.List7040Recv
     )}
-    replace = {lobby.BcmV584Recv.command: lobby.BcmV584Recv, shop.GiftMsgRecv.command: shop.GiftMsgRecv}  # 0x5010 do v584 tem tipo/cor antes do tamanho
+    replace = {lobby.BcmV584Recv.command: lobby.BcmV584Recv}  # 0x5010 do v584 tem tipo/cor antes do tamanho
     # 0x1010 v584 (0x5141c0): o u32 do product_version depende da chave de região do cliente (0x409cb0):
     # Turkey 20090713, Arab 20090618, Brazil 0x04FCCB1C, nenhuma 0x03E524F5
     product_versions = frozenset({20090713, 20090618, 0x04FCCB1C, 0x03E524F5})
@@ -209,18 +238,17 @@ class WCS2(WCS1):
 
     def chest_tail(self, item: dict, client_version: int = 0) -> bytes:
         """0x6001 v584 (0x411921): Recovered u8 + u16 nível de encantamento (vai para o 0x5f0 do XPEnchantDlg) + u32.
-        O v548 (0x411464) lê só o Recovered; ele manda versão 548 no login e o v584 manda 4.
+        O v548 (0x411464) e os S1/TH leem só o Recovered; a versão do login é 404/440/495/531/548, e o v584 manda 4.
         Sem o rabo novo o v584 desalinha do 2º item em diante (só o 1º caía na lista certa, memória em 2026-10-19).
-        shortcut: o u32 vai em 0 (uso não identificado); versão 0 (login por senha pura, a versão não vem) fica com o
-        layout antigo para não quebrar o v548; se o v584 entrar por esse caminho, achar a versão real dele."""
-        if not client_version or 500 <= client_version < 584:
+        O u32 é o selo do avatar (item +0x2c, gravado pelo 0x7135 em 0x532fd9; ChestEnchant.Seal)."""
+        if not is_v584(client_version):
             return super().chest_tail(item)
-        return super().chest_tail(item) + struct.pack('<HI', int(item.get('EnchantLevel') or 0), 0)
+        return super().chest_tail(item) + struct.pack('<HI', int(item.get('EnchantLevel') or 0), int(item.get('Seal') or 0))
 
-    def chat_body(self, position: int, nickname: str, message: str) -> bytes:
-        """v584: 2 bytes novos depois do apelido; tamanho em +15, texto em +16 (byte +13 < 100 vira 0). shortcut: os 2 bytes em 0."""
+    def chat_body(self, position: int, nickname: str, message: str, color: int = 0) -> bytes:
+        """v584 (0x4d5c7d): +0xD cor do texto (0x65..0x74, o resto vira 0), +0xE não lido; tamanho em +15, texto em +16."""
         body = super().chat_body(position, nickname, message)
-        return body[:13] + b'\x00\x00' + body[13:]
+        return body[:13] + bytes([color if 0x65 <= color <= 0x74 else 0, 0]) + body[13:]
 
     def game_start_tail(self, echo: bytes, bonus: int = 0xFF) -> bytes:
         """v584 (leitor 0x508820): u16 evento, 1 byte não lido, seed u32 em +3, blocos (modo 3: 6x3; modo 4: 3x3) e 1 byte final.
@@ -243,15 +271,32 @@ class WCS2(WCS1):
     def gp_me(self, person: bytes) -> bytes:
         return self.gp_person(person)[:44]
 
-    def write_avatar(self, pkt: 'Packet', items: list) -> 'Packet':
-        """v584: 10 bytes por item (u32 + u16 + u32). shortcut: u16/u32 extras em 0 até descobrir o que são."""
+    def player_tail(self, power_user: bool) -> bytes:
+        """v584 (0x4d71c6): 6 bytes; só o nibble alto do 1º é lido (ícone tipo 1 na tela de resultado, G+0x68496).
+        Com 1 byte o 2º jogador em diante desalinhava. O power user não é mais lido aqui."""
+        return bytes(6)
+
+    def write_avatar(self, pkt: 'Packet', items: list, enchant: dict = None) -> 'Packet':
+        """v584: 10 bytes por item (u32 + u16 nível de encantamento + u32 selo), do ChestEnchant do item vestido."""
         pkt.u16(len(items))
         for item in items:
-            pkt.u32(int(item)).u16(0).u32(0)
+            level, seal = (enchant or {}).get(int(item), (0, 0))
+            pkt.u32(int(item)).u16(level).u32(seal)
         return pkt
 
 
 PHASES = {c.__name__: c for c in (TH, WCS1, WCS2)}
+
+
+def is_v584(conn_or_version) -> bool:
+    """Layout do v584 nos pacotes da própria conexão (0x1012, 0x1013, 0x2010, 0x6001); o v548 também é WCS2."""
+    v = conn_or_version if isinstance(conn_or_version, int) else conn_or_version.data.get('client_version', 0)
+    return v == 4 or v >= 584
+
+
+def is_stage(conn) -> bool:
+    """Servidor com `stage_channel` para o v584: o 0x1111 manda tipo 2 e as salas são de missão (wcs2/bonus.py)."""
+    return is_v584(conn) and bool(conn.server.config.get('stage_channel'))
 
 
 @cache

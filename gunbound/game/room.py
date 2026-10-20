@@ -1,12 +1,13 @@
 from __future__ import annotations
 import asyncio
 import random
+import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Iterable
-from gunbound.base.enums import RoomStatus, RoomOptions, RoomMode, RANDOM_MAP, MAP_COUNT, TANK_RANDOM, TANK_COUNT
+from gunbound.base.enums import RoomStatus, RoomOptions, RoomMode, RANDOM_MAP, MAP_COUNT, TANK_RANDOM, TANK_COUNT, HIDDEN_TANKS
 from gunbound.game.protocol.enums import ServerCode, ServerPacket
 from gunbound.util import synchronized
-from gunbound.game.stage_pos import spawn_xs
+from gunbound.game import stage_pos
 
 if TYPE_CHECKING:
     from gunbound.base.protocol import BasePackageSend
@@ -16,9 +17,9 @@ if TYPE_CHECKING:
 TEAM_A = 0
 TEAM_B = 1
 NO_WINNER = -1
-# shortcut: vidas por jogador no modo Score não têm fonte WC; ajustar quando houver captura do servidor oficial.
-SCORE_LIVES_PER_PLAYER = 2
-SPAWN_Y = 0
+QUICK_TEAMS = (TEAM_A, TEAM_B, TEAM_B, TEAM_A, TEAM_A, TEAM_B, TEAM_B, TEAM_A)  # QuickStartRoom: times pela patente (2006 0x415b40)
+ALTERNATE_TURNS = 0x80   # bit 7 do settings: ordem de turno alternando os times
+RANDOM_STAGE_ZERO = 0.15     # chance do stage 0 no mapa aleatório (servidor original)
 
 
 @dataclass
@@ -36,7 +37,9 @@ class RoomPlayer:
         """Começa com o último tanque escolhido (0x3200 grava em ClientData[0:2])."""
         data = bytes((getattr(self.conn, 'data', None) or {}).get('game', {}).get('ClientData') or b'')
         if len(data) >= 2:
-            self.tank1, self.tank2 = (t if t == TANK_RANDOM or t < TANK_COUNT else TANK_RANDOM for t in data[:2])
+            from gunbound.game import phase  # import tardio: phase importa os handlers, que importam room
+            tanks = phase.of(self.conn).tanks
+            self.tank1, self.tank2 = (t if t in tanks else TANK_RANDOM for t in data[:2])
 
 
 @dataclass
@@ -62,8 +65,47 @@ class GameState:
         return self.tanks[p.slot][1]
 
 
-def roll_tank(tank: int, rng: random.Random) -> int:
-    return rng.randrange(TANK_COUNT) if tank == TANK_RANDOM else tank
+HIDDEN_RATIO = 2    # Tank.Hidden.Ratio do original (padrão 2 = 2%)
+
+
+def by_grade(players: list) -> list:
+    """Jogadores em ordem de slot reordenados do mais forte ao mais fraco, com a mesma seleção com troca do original
+    (2006 0x415b40 / 2007 0x418be0, TotalGrade crescente): empates não ficam necessariamente na ordem de slot.
+    No S2 a patente cresce para cima (Phase.higher_grade_better), então a ordem usa o valor negado."""
+    from gunbound.game import phase  # import tardio: phase carrega os protocolos, que importam este módulo
+    out = list(players)
+    sign = -1 if out and phase.of(out[0].conn).higher_grade_better else 1
+    grade = lambda p: sign * int((p.conn.data.get('game') or {}).get('TotalGrade') or 0)
+    for i in range(len(out)):
+        for j in range(i + 1, len(out)):
+            if grade(out[j]) < grade(out[i]):
+                out[i], out[j] = out[j], out[i]
+    return out
+
+
+def turn_order(players: list, rng: random.Random) -> list[int]:
+    """Ordem de turno (slots). Com o bit 7: cada time do mais fraco ao mais forte, alternando os times a
+    partir de um sorteado (2007 0x418be0). Sem o bit 7 o original enche a ordem com lixo (bug; o cliente sempre manda o
+    bit 7): aqui fica aleatória."""
+    ranked = by_grade(players)
+    teams = [[p.slot for p in ranked if p.team == t][::-1] for t in (TEAM_A, TEAM_B)]
+    if not teams[0] or not teams[1]:
+        return teams[0] or teams[1]
+    first = rng.getrandbits(1)
+    order = []
+    for pair in zip(teams[first], teams[1 - first]):
+        order.extend(pair)
+    longer = teams[first] if len(teams[first]) > len(teams[1 - first]) else teams[1 - first]
+    return order + longer[len(order) // 2:]
+
+
+def roll_tank(tank: int, rng: random.Random, ratio: float = HIDDEN_RATIO, pool: tuple = tuple(range(TANK_COUNT))) -> int:
+    """Aleatório do original (2006/2007): rand%10000 < ratio% -> 0x11/0x12 (ocultos), senão rand&0xF (pool = Phase.random_tanks)."""
+    if tank != TANK_RANDOM:
+        return tank
+    if rng.randrange(10000) < ratio * 100:
+        return HIDDEN_TANKS[rng.getrandbits(1)]
+    return rng.choice(pool)
 
 
 class Room:
@@ -82,7 +124,7 @@ class Room:
 
     Regras GunBound: times A/B em todos os modos; para iniciar, todos (menos o mestre) prontos,
     pelo menos 2 jogadores e times com o mesmo número de jogadores. Tag usa o tanque secundário.
-    Score: cada time tem vidas (SCORE_LIVES_PER_PLAYER por jogador) e o morto pode ressuscitar (0x4104).
+    Score: cada time tem N/2+1 vidas (N = jogadores) e o morto pode ressuscitar (0x4104).
     """
 
     def __init__(self, room_manager: 'RoomManager', id: int, owner: 'ClientConnection', options: RoomOptions):
@@ -95,6 +137,8 @@ class Room:
         self.game: GameState | None = None
         self.lock = asyncio.Lock()
         self.rng = random.Random()
+        self.last_stage = 0      # último mapa sorteado (o aleatório não repete)
+        self.idle_since = time.time()  # sala+0xb0 do original: criação e fim de partida (sala ociosa, L8)
         self.result_hooks: list = []   # async (room, winner) chamados no 0x4412; quem cria a sala (ex.: Grand Prix) registra
         self.players[owner.id] = RoomPlayer(owner, slot=0, team=TEAM_A)
         owner.room = self
@@ -133,7 +177,8 @@ class Room:
 
     # ---------- validações ----------
     def can_join(self, conn: 'ClientConnection', password: str | None) -> ServerCode:
-        if self.status == RoomStatus.DESTROYING:
+        """0x2110 (original 2006 0x414266): sala automática (QuickStart/GP) não entra pelo id; Authority >= 98 pula a senha."""
+        if self.status == RoomStatus.DESTROYING or getattr(self, 'auto', False):
             return ServerCode.SRV_ROOM_NOT_FOUND
         if conn.id in self.players:
             return ServerCode.SRV_ROOM_NOT_FOUND
@@ -141,7 +186,7 @@ class Room:
             return ServerCode.SRV_ROOM_IN_GAME
         if self.is_full():
             return ServerCode.SRV_ROOM_FULL
-        if not self.options.check_password(password):
+        if int(conn.data['profile'].get('Authority') or 0) < 98 and not self.options.check_password(password):
             return ServerCode.SRV_WRONG_PASSWORD
         return ServerCode.SRV_OK
 
@@ -152,13 +197,20 @@ class Room:
         if not self.is_waiting():
             return "sala já está em jogo"
         gm = int(conn.data['profile'].get('Authority') or 0) >= 99
-        if self.player_count() < RoomOptions.MIN_PLAYERS and not gm:
-            return "jogadores insuficientes"
-        if any(not p.ready for p in self.players.values() if p.conn is not self.owner):
+        quick = getattr(self, 'quick', False)
+        if quick:  # QuickStartRoom (original +0xbd): sem "pronto"; os times saem da patente
+            for p, team in zip(by_grade(self.sorted_players()), QUICK_TEAMS):
+                p.team = team
+        elif any(not p.ready for p in self.players.values() if p.conn is not self.owner):
             return "nem todos estão prontos"
+        stage = self.options.stage is not None  # missão do canal Stage: 1 ou 2 jogadores contra os dummies do cliente
+        if self.player_count() < RoomOptions.MIN_PLAYERS and not gm and not stage:
+            return "jogadores insuficientes"
         a, b = self.team_counts()
-        if a != b and not gm:
+        if a != b and not gm and not stage:
             return f"times desbalanceados ({a}x{b})"
+        if quick and not gm and self.player_count() != self.room_manager.quick_min_players:
+            return "QuickStartRoom incompleta"  # 2006: total == QuickStartMan
         return None
 
     def can_start(self, conn: 'ClientConnection') -> bool:
@@ -230,22 +282,43 @@ class Room:
 
     def start(self) -> GameState:
         players = self.sorted_players()
-        order = [p.slot for p in players]
-        self.rng.shuffle(order)
-        game_map = self.options.map if self.options.map != RANDOM_MAP else self.rng.randrange(1, MAP_COUNT)
-        tanks = {p.slot: (roll_tank(p.tank1, self.rng), roll_tank(p.tank2, self.rng) if self.options.mode == RoomMode.TAG else TANK_RANDOM)
+        if self.options.settings & ALTERNATE_TURNS:
+            order = turn_order(players, self.rng)
+        else:
+            order = [p.slot for p in players]
+            self.rng.shuffle(order)
+        from gunbound.game import phase  # import tardio: phase importa os handlers, que importam room
+        positions = phase.of(players[0].conn).stage_pos
+        game_map = self.options.map if self.options.map != RANDOM_MAP else self._random_stage(positions)
+        pool = phase.of(players[0].conn).random_tanks
+        tanks = {p.slot: (roll_tank(p.tank1, self.rng, pool=pool), roll_tank(p.tank2, self.rng, pool=pool) if self.options.mode == RoomMode.TAG else TANK_RANDOM)
                  for p in players}
-        xs = spawn_xs(game_map, len(players), self.rng)  # vagas do servidor original (data/stage_pos.txt)
-        spawns = {p.slot: (x, SPAWN_Y) for p, x in zip(players, xs)}
+        slots = stage_pos.initial_slots([(p.slot, p.team) for p in players], self.options.settings, self.rng)
+        spawns = {s: stage_pos.spawn(game_map, self.options.side, m, self.rng, positions) for s, m in slots.items()}
         self.game = GameState(game_map, order, tanks, spawns)
         if self.options.mode == RoomMode.SCORE:
-            a, b = self.team_counts()
-            self.game.score = {TEAM_A: a * SCORE_LIVES_PER_PLAYER, TEAM_B: b * SCORE_LIVES_PER_PLAYER}
+            # original (0x415b40): vidas = N/2+1 por time, gravadas nos bits 20-23 do settings que vai no 0x3432
+            lives = len(players) // 2 + 1
+            self.options.settings = (self.options.settings & ~0xF00000) | (lives & 0xF) << 20
+            self.game.score = {TEAM_A: lives, TEAM_B: lives}
         self.status = RoomStatus.IN_GAME
         self._notify_state()
         for p in players:
             p.alive, p.ready, p.returned = True, False, False
         return self.game
+
+    def _random_stage(self, positions: str = stage_pos.DEFAULT) -> int:
+        """Mapa aleatório do original (0x415b40): 15% o stage 0, senão 1..10 sem repetir o anterior; lado sorteado."""
+        if self.rng.random() < RANDOM_STAGE_ZERO:
+            stage = 0
+        else:
+            r = self.rng.randrange(10)
+            stage = r + 1 if r + 1 != self.last_stage else (r + 2) % 10 + 1
+            self.last_stage = stage
+        # o original sorteia rand&3; só os lados que existem na tabela (a de 2006 só tem A/B)
+        sides = [s for s in range(4) if stage_pos.valid_settings((self.options.settings & ~0x30000) | s << 16, stage, positions)] or [0]
+        self.options.settings = (self.options.settings & ~0x30000) | self.rng.choice(sides) << 16
+        return stage
 
     def on_dead(self, conn: 'ClientConnection') -> int:
         """Marca a morte e devolve o time vencedor (ou NO_WINNER). Morte repetida é ignorada."""
@@ -275,6 +348,9 @@ class Room:
         if self.game is None:
             return NO_WINNER
         alive = {p.team for p in self.players.values() if p.alive}
+        if self.options.stage is not None:  # os dummies só existem no cliente: perde quando todos morrem; vence pelo 0x4520
+            owner = self.player(self.owner)
+            return self._set_winner(1 - (owner.team if owner else 0)) if not alive else NO_WINNER
         if len(alive) == 1:
             return self._set_winner(alive.pop())
         if not alive:
@@ -290,6 +366,7 @@ class Room:
         """Fim da partida (0x4412 processado): sala volta a aguardar; todos deixam de estar prontos."""
         self.status = RoomStatus.WAITING
         self.game = None
+        self.idle_since = time.time()
         self._notify_state()
         for p in self.players.values():
             p.ready = False

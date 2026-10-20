@@ -15,6 +15,8 @@ config_file = args.pop(0) if args and args[0].endswith(('.yml', '.yaml')) else "
 with open(config_file, "r", encoding="utf-8") as f:
     config_data = yaml.load(f, Loader=yaml.FullLoader)
 index = int(args[0]) if args else int(config_data.get('server_index', 0))
+# anti-hack é decisão global (anticheat: no topo do config.yml); um `anticheat` dentro do game server ainda prevalece
+config_data['gameservers'][index].setdefault('anticheat', config_data.get('anticheat') or {})
 
 class Container(containers.DeclarativeContainer):
     config = providers.Configuration()

@@ -57,7 +57,8 @@ class GBWC_v440_LoginStrategy(LoginStrategy):
             print(f"[LoginStrategy] Senha incorreta para o usuário: '{username}', senha recebida: '{password}', esperada: '{user['Password']}'")
             await conn.on_send(LoginResp.wrong_credentials())
             return
-        
+
+        conn.logged_in = True
         await conn.on_send(LoginResp.success())
 
     async def find_user(self, username: str):

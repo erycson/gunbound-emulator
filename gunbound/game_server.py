@@ -3,12 +3,18 @@ from typing import TYPE_CHECKING
 import socket
 import asyncio
 from gunbound.repository import ranking
-from gunbound.game import phase
+from gunbound.game import anticheat, phase
 from asyncio import Task, CancelledError, StreamReader, StreamWriter
 from dependency_injector.providers import Configuration
 if TYPE_CHECKING:
     from gunbound.repository import ServerRepository
     from gunbound.game.managers import ClientManager, ChannelManager
+
+# Tarefas de fundo que cada fase pode pedir em Phase.tasks
+TASKS = {
+    'ranking': lambda server, p: ranking.daily(server.server_repository.db, p.rank_rule),
+}
+
 
 class GameServer:
     def __init__(
@@ -32,11 +38,15 @@ class GameServer:
         await self.clients.add(reader, writer)
 
     async def start(self):
-        phase.PHASES[self.config.get('phase') or phase.DEFAULT].check(self.config)
+        p = phase.PHASES[self.config.get('phase') or phase.DEFAULT]
+        p.check(self.config)
+        await self.check_db_version(self.config.get('phase') or phase.DEFAULT)
+        provider, mode = anticheat.settings(self.config)  # required sem validador confirmado: não sobe
+        print(f"[anticheat] {self.config['name']}: provider={provider} mode={mode}")
         # Fechar a janela não chama stop(); limpa sessões que sobraram da execução anterior
         await self.server_repository.delete_all_users(self.config['host'], self.config['port'])
         self.task = asyncio.create_task(self.tcp_listener())
-        self.ranking = asyncio.create_task(ranking.daily(self.server_repository.db))
+        self.tasks = [asyncio.create_task(TASKS[name](self, p)) for name in p.tasks]
         await self.server_repository.insert_service_status(
             self.config['product_version'],
             int.from_bytes(socket.inet_aton(self.config['host']), 'little'),
@@ -44,9 +54,21 @@ class GameServer:
             'S'
         )
 
+    async def check_db_version(self, name: str):
+        """Avisa se o banco foi criado para outra versão (init_db.py grava a versão em DbVersion)."""
+        try:
+            row = await self.server_repository.db.fetch_one("SELECT Phase FROM DbVersion")
+        except Exception:
+            row = None  # banco antigo, sem DbVersion
+        if row is None:
+            print(f"[db] banco sem versão; rode `python init_db.py {name}`")
+        elif row['Phase'] != name:
+            print(f"[db] AVISO: o banco é {row['Phase']} e este servidor é {name} (patentes e seeds de outra versão)")
+
     async def stop(self):
         self.task.cancel()
-        self.ranking.cancel()
+        for t in self.tasks:
+            t.cancel()
         try:
             await self.clients.close()
             await self.task

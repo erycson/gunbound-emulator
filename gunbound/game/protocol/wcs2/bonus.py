@@ -9,6 +9,7 @@ O cliente não credita nada: o 0x4412 leva só a flag. Aqui o crédito é pelo 0
 Sorteio: chave de config `bonus_event` = % de chance por partida de sortear um tipo 0..9 (0 ou ausente = desligado).
 """
 from __future__ import annotations
+import asyncio
 import random
 from dependency_injector.wiring import Provide, inject
 from gunbound.game.protocol.base import GameRecv, handler
@@ -42,8 +43,17 @@ class PlayBonusRecv(GameRecv):
 
 @handler(0x4520, in_game=True, register=False)
 class StageMissionEndRecv(GameRecv):
-    """0x4520 (só o dono, canal Stage tipo 2): u8 0 = meta atingida, 1 = tempo esgotado. Sem resposta (não há 0x4521).
-    shortcut: não há canal Stage no emulador; só registra. Com Stage, encerrar como o 0x4200 (0x4410)."""
+    """0x4520 (só o dono, canal Stage, uma vez por partida): u8 0 = meta atingida, 1 = tempo esgotado. Sem 0x4521.
+    O cliente não encerra sozinho: o 0x4412 só sai depois do 0x4410 (0x4eb042), então o servidor manda o vencedor.
+    Meta atingida = time do dono; tempo esgotado = o outro (inferido; o 0xFF "sem vencedor" também seria aceito)."""
 
     async def handle(self):
-        print(f"[{self.conn.addr}] 0x4520 fim de missão Stage: {self.buf.read_bytes().hex()}")
+        from gunbound.game.protocol.game_play import announce_winner
+        from gunbound.game.room import NO_WINNER
+        room, reached = self.room, self.buf.require(1).read_uint8() == 0
+        player = room.player(self.conn)
+        if room.options.stage is None or player is None or not room.is_master(self.conn) or room.game.winner != NO_WINNER:
+            return
+        winner = room._set_winner(player.team if reached else 1 - player.team)
+        print(f"[{self.conn.addr}] Stage {room.options.stage[0] + 1}: {'meta' if reached else 'tempo'} -> vencedor {winner}")
+        asyncio.create_task(announce_winner(room, winner))

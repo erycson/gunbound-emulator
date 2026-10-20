@@ -9,7 +9,8 @@ então ficar quieto é o mesmo que recusar (nenhum desses pedidos trava tela esp
   global+0x688a4 (0x41393e) = lições do tutorial liberadas (0..9, XPTutorialSelectDlg 0x585647). Responde sempre com o
   progresso salvo (Game.EventScore3); `event_7013_value` no config sobrescreve.
 - 0x6108 (0x433116, seguido de 0x6104) -> 0x6109: u16 RTC; RTC 0 -> u32 no valor protegido global+0x1b838
-  (0x4131a0), o mesmo do 1º u32 do 0x1013 (0x40f8dd). Config `event_6109_value`.
+  (0x4131a0), o mesmo do 1º u32 do 0x1013 (0x40f8dd). Servidor 2007 (SVC_GP -> GDBIN_GP 0x41eafd):
+  `SELECT totalscore FROM game WHERE id` e responde sempre u16 0 + u32 TotalScore.
 - 0x6106 (0x432fd4, XPReadyEventDlg) -> 0x6107: u16 RTC; RTC 0 -> u16 gravado em global+0x68118[idx] e passado
   ao XPReadyEventDlg (FUN_00550000). Config `event_6107_id`.
 
@@ -64,8 +65,11 @@ class Event7012Recv(GameRecv):
 
 
 @handler(CLI_EVENT_6108, register=False)
-class Event6108Recv(_ConfigReply):
-    reply, key = SRV_EVENT_6109, 'event_6109_value'
+class Event6108Recv(GameRecv):
+    @inject
+    async def handle(self, user_repository=Provide['user_repository']):
+        score = await user_repository.get_points(self.user_id(), 'TotalScore')
+        await self.conn.on_send(Packet.new(SRV_EVENT_6109, rtc=0).u32(score & 0xFFFFFFFF))
 
 
 @handler(CLI_READY_EVENT, register=False)

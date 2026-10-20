@@ -12,9 +12,9 @@ class ClientPacket(IntEnum):
     CLI_UNKNOWN_1004 = 0x1004           # ? não existe no despachante do original (investigar)
     CLI_LOGIN = 0x1010                  # SVC_LOGIN
     CLI_ADMIN_LOGIN = 0x1011            # SVC_LOGIN/ADMIN: mesmo handler do 0x1010 + marca a sessão como console admin
-    CLI_REP_AUTHDWORD = 0x1016          # SVC_REP_AUTHDWORD: resposta do anti-hack (12 bytes cifrados) -> 0x1017
-    CLI_UNKNOWN_1019 = 0x1019           # ? não existe no despachante do original (investigar)
-    CLI_UNKNOWN_101C = 0x101C           # ? não existe no despachante do original (investigar)
+    CLI_REP_AUTHDWORD = 0x1016          # SVC_REP_AUTHDWORD: GameGuard (16 bytes CSAuth2, sem a cifra da sessão no v495+) -> 0x1017
+    CLI_HS_ACK = 0x1019                 # HackShield: ack do 0x1018 (v440 56 bytes, TH 24); não existe nos servidores 2006/2007
+    CLI_HS_GUID_ACK = 0x101C            # HackShield v440: ack do 0x101B (20 bytes)
     CLI_USER_ID = 0x1020                # SVC_USER_ID
     CLI_USER_NICK = 0x1021              # SVC_USER_NICK: lista de Ids (16 bytes) -> Id + Nickname em 0x1022
     CLI_CLIENT_DATA = 0x1090
@@ -99,7 +99,7 @@ class ServerPacket(IntEnum):
     SRV_SESSION_ID = 0x1001
     SRV_LOGIN = 0x1012
     SRV_LOGIN_RECORD = 0x1013
-    SRV_LOGIN_TOKEN = 0x1015
+    SRV_GG_QUERY = 0x1015                # GameGuard: pergunta CSAuth2 (16 bytes, sem a cifra da sessão), ver gunbound/game/anticheat.py
     SRV_CHAT_MUTE = 0x1040             # u32 segundos de mordaça no chat (0 tira); só pelo /mute de GM
     SRV_UDP_ADDRESS = 0x101F           # IP/porta UDP observados (NAT) quando diferem do 0x1010 (original 0x42b670)
     SRV_REP_AUTHDWORD = 0x1017
@@ -197,7 +197,7 @@ class ServerPacket(IntEnum):
     SRV_SHOP_UNKNOWN_6003 = 0x6003
     SRV_SHOP_UNKNOWN_6007 = 0x6007
     SRV_ITEM_WEAR = 0x600F              # sem corpo; RTC 0 ok, 4 erro (FUN_0042e140)
-    SRV_SHOP_UNKNOWN_6032 = 0x6032
+    SRV_GIFT_ANSWER = 0x6032  # aviso de presente aceito/recusado (item_gift_msg.py)
     SRV_ITEM_BUY = 0x6021
     SRV_ITEM_CONSUME = 0x6025
     SRV_ITEM_GIFT = 0x6029
@@ -219,6 +219,12 @@ class ServerCode(IntEnum):
     SRV_WRONG_GENDER = 0x2101
     SRV_DENIED = 0x1D                   # recusa genérica do original (monitor, motd, room detail)
     SRV_INVALID_ARG = 0x1B              # argumento inválido (SET_ALLOWEDGUILD)
+    SRV_NOT_WAITING_ROOM = 0x2009       # 0x2001 do 0x3001: fora de sala ou sala não está em espera (original 0x41a380)
+    # 0x1012 só com RTC (original 2006 0x42d790 / 2007 0x433cc2), Authority < 98
+    SRV_GRADE_LIMIT = 0x5001            # TotalGrade fora de GradeLimitFirst..Last
+    SRV_GUILD_REQUIRED = 0x5011         # GuildMarkLimit 1 e sem guild
+    SRV_GUILD_FORBIDDEN = 0x5012        # GuildMarkLimit 2 e com guild
+    SRV_GUILD_NOT_ALLOWED = 0x5013      # guild fora do AllowedGuild
 
     # Sala / loja (F3, [INCERTO] para WC; ver Protocolo-Salas.md 5.3)
     SRV_ROOM_NOT_FOUND = 0x0011         # sala inexistente ou senha errada

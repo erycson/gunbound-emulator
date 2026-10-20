@@ -13,6 +13,7 @@ class ClientConnection:
         self.closing: bool = False
         self.task: Task | None = None
         self.th = False  # conectou pela broker.th_port (layout TH no 0x1102)
+        self.logged_in = False  # 0x1310 aceito (o 0x4000 do launcher exige)
 
         ip, port = writer.get_extra_info('peername')
         self.addr = f"{ip}:{port}"

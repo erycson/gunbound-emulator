@@ -1,7 +1,10 @@
-# Revisão: servidor S2 original x emulador (fase WCS2)
+# Revisão: servidor 2007 do pacote "Season 2 server" x emulador (fase WCS2)
 
 Referências comparadas:
-- **S2 original**: `Season 2 server\GunboundServer01\GunBoundServ3.exe` (build 2007-02-05, fora deste repositório). `HiddenServer.exe` é o mesmo binário (mesmo sha256), muda só o Setting.txt.
+- **Servidor 2007**: `Season 2 server\GunboundServer01\GunBoundServ3.exe` (build 2007-02-05, fora deste repositório).
+  É um **WC S1**: só tem os 67 `SVC_*` do S1, nenhum handler do S2. Não é fonte do comportamento do S2; o que ele faz
+  vale para o S1, e no WCS2 só como herança do S1 (🟡 sem fonte para o S2). O `Setting.txt` da pasta é de 2021,
+  configurado por quem montou o pacote (a faixa de patente 1–40 já é a numeração do S2). `HiddenServer.exe` é o mesmo binário (mesmo sha256), muda só o Setting.txt.
 - **server-original**: `server-original\GunBoundServ3` (build 2006, fora deste repositório).
 - **Emulador**: `gunbound/game` (fase `WCS2` em `phase.py`, `config.yml`).
 
@@ -18,12 +21,12 @@ Os 0x1004/0x1019/0x101C do cliente não existem no original; aqui são ignorados
 
 ## 2. Regras do Setting.txt
 
-Valores: **S2** (GunboundServer01) / **Hidden** / **2006** (server-original) / **nosso**.
+Valores: **Pacote** (Setting.txt de GunboundServer01, 2021) / **Hidden** / **2006** (server-original) / **nosso**.
 
-| Chave | S2 / Hidden / 2006 | Nosso | Lacuna |
+| Chave | Pacote / Hidden / 2006 | Nosso | Lacuna |
 |---|---|---|---|
 | `FuncRestrict` | 1040399 / 126976 / 2088962 | `function_restrict` no item de `gameservers` (padrão 0; o `config.yml` do repositório não define) e via 0x5124/0x5128 | **alta**: ninguém consulta a máscara fora do STATUS 0x5111. O original usa a máscara para bloquear funções (o efeito de cada bit ainda precisa ser mapeado no binário) |
-| `EventActProp0..3`, `EventWriteToLog*`, `EventTreatAsIndex*`, `[EventTrigger:N]` | S2: 0/0/100/100; Hidden: 50/100; triggers 10/50/100/300/500 → gold ou avatar | `events` (lista de `(prob, a, b)`) no item de `gameservers` ou via 0x5128; **sem sorteio e sem prêmio por evento** ([Eventos.md](Eventos.md)) | **alta** se quiser os eventos do S2: falta o sorteio por probabilidade e a entrega dos prêmios do `[EventTrigger]` (G = gold, A = avatar), além do log em `eventlog` |
+| `EventActProp0..3`, `EventWriteToLog*`, `EventTreatAsIndex*`, `[EventTrigger:N]` | Pacote: 0/0/100/100; Hidden: 50/100; triggers 10/50/100/300/500 → gold ou avatar | `events` (lista de `(prob, a, b)`) no item de `gameservers` ou via 0x5128; **sem sorteio e sem prêmio por evento** ([Eventos.md](Eventos.md)) | **alta** se quiser os eventos do servidor 2007: falta o sorteio por probabilidade e a entrega dos prêmios do `[EventTrigger]` (G = gold, A = avatar), além do log em `eventlog` |
 | `Tank.Hidden.Ratio` | 20 / 100 / 10 | ausente: `roll_tank` (`gunbound/game/room.py`) sorteia uniformemente de 0..TANK_COUNT-1 | **média**: o original dá uma chance (%) de o sorteio "Random" cair nos tanques ocultos. Confirmar no binário quais tanques |
 | `GradeLimitFirst/Last` | 1–40 / 1–41 / 20–20 | `grade_min/grade_max` vão ao broker e ao 0x5111, mas **o login não recusa** quem está fora da faixa | **média**: no original é a trava de entrada por patente (servidor de iniciantes etc.) |
 | `QuickStartOption` | 283074 (todos) | `quick_mode` só via `/qsopt`, sem valor inicial | baixa: ler do config como valor inicial |
@@ -45,9 +48,9 @@ Valores: **S2** (GunboundServer01) / **Hidden** / **2006** (server-original) / *
 
 ## 3. Banco (DB\gunbound.sql, batch.sql)
 
-O dump do S2 só tem tabelas (nenhuma procedure/function). Comparado com `db/gbwc.sql`:
+O dump do pacote só tem tabelas (nenhuma procedure/function). Comparado com `db/gbwc.sql`:
 
-| Tabela S2 | Nosso | Observação |
+| Tabela do pacote | Nosso | Observação |
 |---|---|---|
 | `totalrank` (Id, Nickname, Score, Rank, Grade, Guild, MemberCount, GuildRank) | ausente como tabela; ranks e patentes ficam em `Game`, recalculados por `gunbound/repository/ranking.py` | **média**: é a saída do batch de ranking (inclui `GuildRank`/`MemberCount`). Ligado ao ranking WCS2/guild |
 | `batch.gradelimit` (Rank, Grade, Score) e `batch.gamesnapshot` | ausentes | **média**: o batch calcula a patente pela posição no ranking (`gradelimit`). O nosso usa faixa fixa de GP abaixo de 6900 e percentis aproximados acima ([Níveis.md](Níveis.md)), não a tabela do original |
@@ -60,7 +63,7 @@ O dump do S2 só tem tabelas (nenhuma procedure/function). Comparado com `db/gbw
 ## 4. Lacunas priorizadas
 
 1. **Usar `function_restrict`** (já aceito no item de `gameservers`, padrão 0): mapear no binário o que cada bit do FuncRestrict bloqueia.
-2. **Eventos do S2**: sorteio por `EventActProp`, prêmios do `[EventTrigger]`, log em `eventlog`.
+2. **Eventos do servidor 2007**: sorteio por `EventActProp`, prêmios do `[EventTrigger]`, log em `eventlog`.
 3. **Trava de patente no login** (`GradeLimitFirst/Last`).
 4. **Sala ociosa**: aviso e fechamento (`IdleRoom*` + mensagens).
 5. **Tank.Hidden.Ratio** no sorteio do tanque aleatório.

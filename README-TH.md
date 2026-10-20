@@ -63,4 +63,4 @@ Para calar alguém use `/silence nick segundos`: no TH, `/mute` é tratado pelo 
 | `/mute`, `/mutelist`, `/loudall`, `/loud` | lista de ignorados (local); `/loud` tira da lista (só o TH tem) |
 | `/key`, `/ipconfig`, `/quit`, `/exit` | locais |
 | `/clear`, `/logging` | P2P entre os jogadores da sala |
-| `/<evento>` (`ChooseEvent.txt`) | mestre liga um evento na sala (0x3101); o modo é mantido e o evento ignorado |
+| `/<evento>` (`ChooseEvent.txt`) | mestre liga um evento na sala (0x3101): o servidor grava o settings cru e repassa, como o original; quem interpreta o evento é o cliente |

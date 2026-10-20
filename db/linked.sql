@@ -600,6 +600,7 @@ CREATE TABLE `packet`  (
 CREATE TABLE `ChestEnchant`  (
   `No` int(11) NOT NULL,
   `Level` smallint(5) NOT NULL DEFAULT 0,
+  `Seal` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`No`) USING BTREE
 ) ENGINE = InnoDB;
 

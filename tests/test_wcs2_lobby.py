@@ -32,9 +32,21 @@ def use(serial, kind=2):
 
 class LobbyTest(unittest.IsolatedAsyncioTestCase):
     async def test_7010(self):
+        rows = [{'Nickname': n, 'Guild': '', 'Grade': g, 'Score': s, 'Country': c}
+                for n, g, s, c in (('a', 30, 900, 1), ('b', 20, 500, 2), ('c', 10, 100, 1))]
+
+        class Db:
+            async def fetch_all(self, query):
+                return rows
         a = FakeConn('a')
-        await lobby.ChannelInfoRecv(a, BinaryReader(b'')).handle()
-        self.assertEqual(a.sent[-1], b'\x11\x70\x00\x00\x00\x00')
+        a.data['game']['Country'] = 2
+        await lobby.ChannelInfoRecv(a, BinaryReader(b'')).handle(db=Db())
+        rank = a.last(0x7011)
+        self.assertEqual(struct.unpack_from('<HH', rank, 2), (0, 3))
+        self.assertEqual((rank[6:7], struct.unpack_from('<HH', rank, 6 + 28)), (b'a', (1, 30)))  # posição, grau
+        board = a.last(0x7031)
+        self.assertEqual(struct.unpack_from('<6H', board, 2), (0, 3, 0, 0, 2, 2))  # 3 ouros, 2 países, 2 no quadro
+        self.assertEqual(struct.unpack_from('<HHI', board, 14 + 8), (2, 2, 500))   # última linha = país do jogador
 
     async def test_megaphone(self):
         a, b = FakeConn('a'), FakeConn('b')

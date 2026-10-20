@@ -31,8 +31,8 @@ Dados de jogo de cada conta: perfil, patentes, ranking, gold e configurações. 
 | `DiscountPoints` | int | 0 | S2: pontos de desconto da loja (0x7118; 50 = −20%, 100 = −50%) |
 | `RenaPoints` | int | 0 | S2: saldo da Rena (0x7124; 100 por sorteio) |
 
-`DiscountPoints` e `RenaPoints` não existem no banco original. Em banco antigo, rode `python init_db.py`: ele
-acrescenta as colunas e os índices que faltam. O cliente não mostra de onde vêm esses pontos; hoje só por SQL.
+`DiscountPoints` e `RenaPoints` não existem no banco original. Em banco antigo, rode `python init_db.py WCS2`:
+ele acrescenta as colunas e os índices que faltam ([Criação do banco.md](Cria%C3%A7%C3%A3o%20do%20banco.md)). O cliente não mostra de onde vêm esses pontos; hoje só por SQL.
 
 ## Índices
 

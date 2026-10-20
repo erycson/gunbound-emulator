@@ -92,7 +92,10 @@ class StrategyTest(unittest.TestCase):
         self.assertEqual((th.list_entry_extra(), V440.list_entry_extra()), (b'', b'\x00'))
         self.assertEqual((th.chest_tail({'Recovered': 1}), V440.chest_tail({'Recovered': 1})), (b'', b'\x01'))
         item = {'Recovered': 1, 'EnchantLevel': 7}
-        self.assertEqual([V584.chest_tail(item, v) for v in (4, 548, 0)], [b'\x01\x07\x00\x00\x00\x00\x00', b'\x01', b'\x01'])
+        self.assertEqual([V584.chest_tail(item, v) for v in (4, 548, 0, 440)], [b'\x01\x07\x00\x00\x00\x00\x00', b'\x01', b'\x01', b'\x01'])
+        self.assertEqual(V584.chest_tail({**item, 'Seal': 0x01020304}, 4)[3:], b'\x04\x03\x02\x01')
+        avatar = V584.write_avatar(Packet.new(1), [0x10, 0x20], {0x20: (3, 1234)})
+        self.assertEqual(size(avatar) - size(Packet.new(1)), 2 + 2 * 10)  # u32 item + u16 nível + u32 selo
         self.assertEqual((th.kick_ack, V440.kick_ack), (0x3151, 0x315F))
         self.assertFalse(phase.WC_ONLY & set(phase.TH.handlers()))
         self.assertTrue(phase.WC_ONLY <= set(phase.WCS1.handlers()))
@@ -111,3 +114,13 @@ class StrategyTest(unittest.TestCase):
             phase.TH.check(gp)
         phase.WCS1.check(gp)
         phase.TH.check({})
+
+    def test_v584_layouts(self):  # RE do v584 (0x514717, 0x4d71c6, 0x4d5c7d); o v548 também é WCS2 e manda 548
+        game = {'MemberCount': 0, **{k: 0 for k in ('TotalRank', 'SeasonRank', 'GuildRank', 'CountryRank', 'AccumShot',
+                                                     'AccumDamage', 'TotalScore', 'SeasonScore', 'Money')},
+                **{f'EventScore{i}': i for i in range(4)}}
+        self.assertEqual([len(V584.login_stats(game, v)) for v in (4, 548, 440)], [2 + 36 + 20, 2 + 36 + 16, 2 + 36 + 16])
+        self.assertEqual((V440.player_tail(True), V584.player_tail(True)), (b'\x01', bytes(6)))
+        self.assertEqual(V584.chat_body(1, 'a', 'oi', 0x66)[13:16], bytes([0x66, 0, 2]))
+        self.assertEqual(V584.chat_body(1, 'a', 'oi', 0x20)[13], 0)  # fora de 0x65..0x74 vai 0
+        self.assertEqual([phase.is_v584(v) for v in (4, 584, 548, 440, 0)], [True, True, False, False, False])

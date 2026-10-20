@@ -35,15 +35,28 @@ class RoomChangeAllTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(SRV_ROOM_CHANGE_ALL, self.b.cmds())
 
 
+class ReadyItemsRepo:
+    """Game.ReadyItems em memória."""
+    def __init__(self):
+        self.rows = {}
+
+    async def get_ready_items(self, user_id):
+        return self.rows.get(user_id)
+
+    async def set_ready_items(self, user_id, data):
+        self.rows[user_id] = data
+        return True
+
+
 class ReadyItemsTest(unittest.IsolatedAsyncioTestCase):
     async def test_roundtrip(self):
-        a = FakeConn('items')
+        a, repo = FakeConn('items'), ReadyItemsRepo()
         a.room = await manager().create(a, RoomOptions('s', RoomMode.SOLO, 2, ''))
-        await ReadyItemsGetRecv(a, BinaryReader(b'')).process()
+        await ReadyItemsGetRecv(a, BinaryReader(b'')).handle(user_repository=repo)
         self.assertEqual(a.last(SRV_READY_ITEMS)[2:], b'\x00\x00\x00\x00')
         body = struct.pack('<H4I', 2, 10, 0xAAA7B, 0, 0) + b'lixo'
-        await ReadyItemsSetRecv(a, BinaryReader(body)).process()
-        await ReadyItemsGetRecv(a, BinaryReader(b'')).process()
+        await ReadyItemsSetRecv(a, BinaryReader(body)).handle(user_repository=repo)
+        await ReadyItemsGetRecv(a, BinaryReader(b'')).handle(user_repository=repo)
         self.assertEqual(a.last(SRV_READY_ITEMS)[2:], b'\x00\x00' + body[:18])
 
 

@@ -7,17 +7,32 @@ from gunbound.util import BinaryReader
 from tests.test_gm import conn
 from tests.test_wcs2_jackpot import FakeDb
 
-CASES = [(enchant.EnchantConfirmRecv, 0x7135), (enchant.JewelEnchantRecv, 0x6118)]  # 0x7410, 0x6058, 0x7110: testes próprios
 RATE = {'Level': 3, 'Success': 50, 'Down1': 10, 'Down2': 10, 'Down3': 10, 'Destroy': 10, 'JewelBonus': 10}
 CARD, J0, J1, NV = 204900, enchant.SPIRIT, enchant.NIHILITY, enchant.NIRVANA
 
 
-class RefuseTest(unittest.IsolatedAsyncioTestCase):
-    async def test_all_refuse(self):
-        for cls, reply in CASES:
-            c = conn('u')
-            await cls(c, BinaryReader(b'\x00' * 8)).handle()
-            self.assertEqual(c.last(reply)[2:], b'\x01\x00', cls.__name__)  # RTC 1, sem corpo
+class SealTest(unittest.IsolatedAsyncioTestCase):
+    async def seal(self, seal_item, old=0, avatar_item=0x10005):
+        inv = FakeInv([{'No': 1, 'Item': avatar_item, 'Volume': 1, 'Seal': old},
+                       {'No': 2, 'Item': seal_item, 'Volume': 30}])
+        inv.seals = {}
+
+        async def set_seal(no, value):
+            inv.seals[no] = value
+        inv.set_seal = set_seal
+        c = conn('u')
+        await enchant.EnchantConfirmRecv(c, BinaryReader(struct.pack('<H4I', 1, 1, avatar_item, 2, seal_item))).handle(inventory_repository=inv)
+        return c.last(0x7135), inv
+
+    async def test_appends_pair(self):  # 700129 = Pit (A 2), bônus 9 -> par "28" (D = bônus - 1)
+        reply, inv = await self.seal(700129, old=12)
+        self.assertEqual(reply[2:], struct.pack('<HBI', 0, 0, 1228))
+        self.assertEqual((inv.seals, inv.consumed), ({1: 1228}, [2]))
+
+    async def test_refusals(self):
+        for item, old, avatar in ((700125, 12, 0x10005), (700124, 0, 0x40005), (enchant.SEAL_RESET, 0, 0x10005)):
+            reply, inv = await self.seal(item, old, avatar)  # atributo repetido, avatar sem selo, reset sem selo
+            self.assertEqual((reply[2:], inv.seals, inv.consumed), (b'\x01\x00', {}, []))
 
 
 class OutcomeTest(unittest.TestCase):
@@ -124,3 +139,31 @@ class EnchantTest(unittest.IsolatedAsyncioTestCase):
             reply, _ = await self.run_it(10, inv, rd)
             self.assertEqual(reply[2:], b'\x01\x00')
             self.assertEqual((inv.consumed, inv.levels, inv.deleted), ([], {}, []))
+
+
+class JewelCraftTest(unittest.IsolatedAsyncioTestCase):
+    async def craft(self, index, gems, money=0):
+        inv = FakeInv([{'No': 30 + i, 'Item': g, 'Volume': v} for i, (g, v) in enumerate(gems)])
+        inv.inserted = []
+
+        async def get_money(uid):
+            return money
+
+        async def insert_chest(uid, item, acq, expire, period, volume):
+            inv.inserted.append(item)
+            return 55
+        inv.get_money, inv.insert_chest = get_money, insert_chest
+        c = conn('u')
+        c.server = type('S', (), {'id': 1, 'config': {}})()
+        await enchant.JewelEnchantRecv(c, BinaryReader(bytes([index]))).handle(db=FakeDb(), inventory_repository=inv)
+        return c.last(0x6118), inv
+
+    async def test_recipe_consumes_and_gives(self):  # receita 0: 1 Emerald -> Spirit
+        reply, inv = await self.craft(0, [(enchant.GEMS[0], 2)])
+        self.assertEqual((inv.consumed, inv.inserted), ([30], [enchant.SPIRIT]))
+        self.assertEqual(struct.unpack_from('<HHII', reply, 2), (0, 1, 55, enchant.SPIRIT))
+
+    async def test_refusals(self):  # receita inexistente, sem joia, gold abaixo do requisito
+        for index, gems, money in ((9, [], 0), (0, [], 0), (3, [(g, 1) for g in enchant.GEMS], 100)):
+            reply, inv = await self.craft(index, gems, money)
+            self.assertEqual((reply[2:], inv.consumed, inv.inserted), (b'\x01\x00', [], []))

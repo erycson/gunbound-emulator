@@ -45,8 +45,8 @@ class ClientConnection:
         self.closing: bool = False
         self.prng: GBWCGenerator = GBWCGenerator(prng_seed)
         self.data: Dict[str, Any] = {}
-        self.last_activity: float = time.time() - 301 # o 301 é pra forçar o envio do token
-        self.is_authenticated: bool = False
+        self.last_activity: float = time.time()
+        self.anticheat: 'AntiCheat | None' = None   # criado no login (gunbound/game/anticheat.py)
         self.channel: Channel | None = None
         self.room: Room | None = None
 
@@ -91,16 +91,9 @@ class ClientConnection:
         """
         Verifica se a conexão está ativa com base na última atividade.
         """
-        from gunbound.game.protocol.login import LoginResp
-
-        now = time.time()
-        if now - self.last_activity <= 600:
-            if now - self.last_activity > 300 and not self.is_authenticated:
-                asyncio.create_task(self.on_send(LoginResp.success_token(self)))
-                self.is_authenticated = True
-            return True
-        
-        return False
+        # o 0x1015 de 4 bytes (u32 aleatório) que saía aqui foi removido: o v495/v548/v584 copiam 16 bytes do
+        # 0x1015 para o GameGuard; desafio só pelo anticheat.py, com validador
+        return time.time() - self.last_activity <= 600
 
     async def disconnect(self):
         self.writer.close()
@@ -113,6 +106,8 @@ class ClientConnection:
         if self.closing:
             return
         self.closing = True
+        if self.anticheat is not None:
+            self.anticheat.close()
 
         if self.room is not None:
             await self.room.room_manager.leave(self)

@@ -15,6 +15,39 @@ if TYPE_CHECKING:
     from gunbound.repository import UserRepository, RecordsRepository, ServerRepository
     from gunbound.game.client import ClientConnection
 
+def check_password(crypto, username: str, password: str, session_bytes: bytes, raw_1: bytes, raw_2: bytes):
+    """Senha nos 20 bytes block_1[4:16] + block_2[4:12]; tenta a pura e o md5[12:32]. Devolve (chave, block_2) ou None."""
+    md5_pw = hashlib.md5(password.encode('latin-1')).hexdigest()[12:32]
+    for expected in (password, md5_pw):
+        user_key = crypto.derive_key(username, expected, session_bytes)
+        block_1, block_2 = crypto.decrypt(raw_1, user_key), crypto.decrypt(raw_2, user_key)
+        if (block_1[4:16] + block_2[4:12]).decode('latin-1').rstrip('\x00') == expected:
+            return user_key, block_2
+    return None
+
+
+LIMIT_FREE_AUTHORITY = 98  # Authority >= 98 passa direto pelos limites de patente/guild
+
+
+def login_limit(game: dict, authority: int, config) -> int | None:
+    """RTC de recusa do 0x1012 (S3) ou None. Original 2006 0x42d790 / 2007 0x433cc2, na mesma ordem."""
+    if authority >= LIMIT_FREE_AUTHORITY:
+        return None
+    lo, hi = sorted((int(config.get('grade_min', -4)), int(config.get('grade_max', 19))))  # o config.yml guarda 19/-4
+    if not lo <= int(game.get('TotalGrade') or 0) <= hi:
+        return ServerCode.SRV_GRADE_LIMIT
+    guild = (game.get('Guild') or '')[:8]
+    mark = int(config.get('guild_limit') or 0)  # GuildMarkLimit
+    if mark == 1 and not guild:
+        return ServerCode.SRV_GUILD_REQUIRED
+    if mark == 2 and guild:
+        return ServerCode.SRV_GUILD_FORBIDDEN
+    allowed = config.get('allowed_guild') or []  # AllowedGuild.txt: lista vazia = todas (0x407250)
+    if allowed and guild not in allowed:
+        return ServerCode.SRV_GUILD_NOT_ALLOWED
+    return None
+
+
 @BasePackageFactory.register(ClientPacket.CLI_ADMIN_LOGIN.value)  # SVC_LOGIN/ADMIN usa o mesmo handler no original
 @BasePackageFactory.register(ClientPacket.CLI_LOGIN.value)
 @inject
@@ -62,25 +95,18 @@ class LoginRecv(BasePackageRecv):
             print(f"[LoginStrategy] Usuário banido até {profile['RestrictTime']}: {username}")
             return
 
-        # Senha: cliente direto manda a senha pura (PREFIXO(4) + Senha(8) em block_1, versão em block_2[8:12]);
-        # via NyxLauncher manda md5(senha) em hex [12:32] (20 chars: block_1[4:16] + block_2[4:12], versão em block_2[12:16])
+        # Senha em campo fixo de 20 bytes (block_1[4:16] + block_2[4:12]): pura no cliente direto, md5(senha) em hex [12:32]
+        # via NyxLauncher. Versão sempre em block_2[12:16]: TH 404, S1 440/495, S2 531/548, v584 manda 4 (RE dos clientes + logs)
         raw_1, raw_2 = self.buf.read_bytes(16), self.buf.read_bytes(16)
-        md5_pw = hashlib.md5(profile['Password'].encode('latin-1')).hexdigest()[12:32]
-        for expected, version_pos in ((profile['Password'], 8), (md5_pw, 12)):
-            user_key = self.crypto_manager.derive_key(username, expected, session_bytes)
-            block_1 = self.crypto_manager.decrypt(raw_1, user_key)
-            block_2 = self.crypto_manager.decrypt(raw_2, user_key)
-            password = (block_1[4:12] if version_pos == 8 else block_1[4:16] + block_2[4:12]).decode('latin-1').rstrip('\x00')
-            if password == expected:
-                break
-        else:
+        checked = check_password(self.crypto_manager, username, profile['Password'], session_bytes, raw_1, raw_2)
+        if checked is None:
             print(f"[LoginStrategy] Senha incorreta para usuário {username}")
             return
+        user_key, block_2 = checked
 
         # Valida a versão do cliente
-        is_invalid, client_version = self.is_invalid_version(block_2, version_pos)
-        # shortcut: no caminho da senha pura o teste segue invertido como já estava (v440 funciona assim); revisar com captura do v440
-        if is_invalid if version_pos == 12 else not is_invalid:
+        is_invalid, client_version = self.is_invalid_version(block_2, 12)
+        if is_invalid:
             print(f"[LoginStrategy] Recv Version({client_version})")
             await self.conn.on_send(LoginResp.wrong_version())
             return
@@ -98,6 +124,14 @@ class LoginRecv(BasePackageRecv):
             await self.conn.on_send(LoginResp.wrong_version())
             return
 
+        # Limites de patente/guild antes do claim_session: um re-login recusado não derruba a sessão que já está aberta
+        game = await self.user_repository.get_game(username)
+        refused = login_limit(game, int(profile.get('Authority') or 0), self.conn.server.config)
+        if refused is not None:
+            print(f"[LoginStrategy] {username} recusado pelos limites de patente/guild (RTC 0x{refused:04X})")
+            await self.conn.on_send(LoginResp.refused(refused))
+            return
+
         # Mesmo usuário já logado NESTE GameServer: derruba a sessão antiga (o close dela limpa o CurrentUser)
         await self.conn.client_manager.claim_session(username, self.conn)
 
@@ -110,7 +144,7 @@ class LoginRecv(BasePackageRecv):
             return
         
         # Agora que tudo foi validado, obtém todos os dados do usuário
-        game, stage, mobile = await self.get_login(username, client_ip, client_port, conn_ip, conn_port)
+        stage, mobile = await self.get_login(username, client_ip, client_port, conn_ip, conn_port)
         self.conn.data = {
             'game': game,
             'profile': profile,
@@ -121,7 +155,15 @@ class LoginRecv(BasePackageRecv):
         self.conn.set_token(self.conn.client_manager.rand.current_value)
 
         await self.conn.on_send(LoginResp.success(self.conn))
-        await self.conn.on_send(LoginResp.success_record(stage, mobile))
+        if phase.is_v584(self.conn):
+            # tipo do canal (v584 0x514faf, antes do 0x2001): 2 = Stage. O cliente nunca zera: os outros servidores mandam 0
+            await self.conn.on_send(Packet.new(0x1111).u8(2 if phase.is_stage(self.conn) else 0))
+        from gunbound.game.anticheat import AntiCheat
+        self.conn.anticheat = AntiCheat.from_config(self.conn)
+        self.conn.anticheat.start()  # o original manda o 0x1015 logo depois do 0x1012 (servidor 2007)
+        if not phase.is_v584(self.conn):
+            # v584 (0x40f8d8) lê o 0x1013 como bloco de 0x40 bytes (+0 = TotalScore): os records do v440 viram lixo no GP
+            await self.conn.on_send(LoginResp.success_record(stage, mobile))
         if (ready := phase.of(self.conn).login_ready) is not None:
             await self.conn.on_send(Packet.new(ready, rtc=0))
         self.conn.is_alive()
@@ -151,16 +193,15 @@ class LoginRecv(BasePackageRecv):
             Optional[Dict[str, Any]]: Dicionário com dados do usuário se bem-sucedido,
             None se usuário não encontrado ou bloqueado.
         """
-        game, stage, mobile, _ = await asyncio.gather(
-            self.user_repository.get_game(username),
+        stage, mobile, _ = await asyncio.gather(
             self.records_repository.get_stage(username),
             self.records_repository.get_mobile(username),
             self.server_repository.insert_login_log(username, self.conn.server.config['host'], self.conn.server.config['port'], client_ip, client_port, conn_ip, conn_port),
         )
 
-        return game, stage, mobile
+        return stage, mobile
 
-    def is_invalid_version(self, block: bytes, pos: int = 8):
+    def is_invalid_version(self, block: bytes, pos: int = 12):
         version_reader = BinaryReader(block)
         client_version = version_reader.read_uint32(pos=pos)
         version_min = self.conn.server.config['version_min']
@@ -189,7 +230,7 @@ class LoginResp(BasePackageSend):
         buf.write_string(conn.data['game']['Guild'], 8)
         layout = phase.of(conn)
         buf.write_bytes(layout.grades(conn.data['game']))
-        buf.write_bytes(layout.login_stats(conn.data['game']))
+        buf.write_bytes(layout.login_stats(conn.data['game'], conn.data.get('client_version', 0)))
 
         # Prefixo para os próximos blocos de 16 bytes de dados que serão criptografados
         prefix = ServerPacket.SRV_LOGIN.value - 0x79CE9F82
@@ -213,6 +254,13 @@ class LoginResp(BasePackageSend):
 
         return cls(buf)
     
+    @classmethod
+    def refused(cls, code: int):
+        buf = BinaryWriter()
+        buf.write_uint16(ServerPacket.SRV_LOGIN)
+        buf.write_uint16(code)
+        return cls(buf)
+
     @classmethod
     def wrong_version(cls):
         buf = BinaryWriter()
@@ -238,16 +286,6 @@ class LoginResp(BasePackageSend):
             buf.write_uint32(record['Win'])
             buf.write_uint32(record['Lose'])
 
-        return cls(buf)
-    
-    @classmethod
-    def success_token(cls, conn: 'ClientConnection'):
-        """
-        Uso ainda não está certo, mas parece ser um token de autenticação adicional
-        """
-        buf = BinaryWriter()
-        buf.write_uint16(ServerPacket.SRV_LOGIN_TOKEN)
-        buf.write_uint32(conn.prng.generate_value())
         return cls(buf)
     
     def log_command(self, conn):

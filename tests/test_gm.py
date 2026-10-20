@@ -5,8 +5,8 @@ Uso: python -m unittest tests.test_gm -v
 import unittest
 from gunbound.base.enums import RoomOptions, RoomMode, RoomStatus
 from gunbound.game.protocol.enums import ServerPacket
-from gunbound.game.protocol.game_play import reward_caps
-from gunbound.game.protocol.gm_commands import GmCommands, SYNTAX_ERROR
+from gunbound.game.protocol.game_play import anu_verdict
+from gunbound.game.protocol.gm_commands import GmCommands, SYNTAX_ERROR, start_echo
 from tests.test_rooms_shop import FakeConn, manager
 
 
@@ -79,14 +79,24 @@ class GmTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(room.status, RoomStatus.IN_GAME)
         self.assertNotIn(ServerPacket.SRV_START_GAME_ACK, self.gm.cmds())
 
+    def test_start_echo_modes(self):  # cliente 0x433770: seed + 6x3 no Jewel (modo 3), 3x3 no modo 4
+        self.assertEqual(len(start_echo(0)), 4)
+        jewel = start_echo(0xC0000)
+        self.assertEqual(len(jewel), 4 + 18)
+        self.assertTrue(all(b < 3 for b in jewel[6::3]))
+        mode4 = start_echo(0x100000)
+        self.assertEqual(len(mode4), 4 + 9)
+        self.assertTrue(all(b in (1, 2, 4, 8, 16) for b in mode4[6::3]))
+
     async def test_startgame_needs_room(self):
         self.assertIn('mestre', await self.cmd.run('/startgame'))
 
 
-class RewardCapTest(unittest.TestCase):
-    def test_caps_scale_with_factor(self):
-        self.assertEqual(reward_caps({'gold_factor': 230, 'score_factor': 270}), (6900, 540))
-        self.assertEqual(reward_caps({'gold_factor': 100, 'score_factor': 100}), (3000, 200))
+class AnuTest(unittest.TestCase):
+    def test_original_limits(self):  # padrões do original: log > 3000/30, derruba > 6000/50 ou < -2500/-100
+        cases = [(100, 5), (3001, 0), (0, 31), (6001, 0), (0, 51), (-2501, 0), (0, -101), (-100, -10)]
+        self.assertEqual([anu_verdict(g, s, {}) for g, s in cases], ['ok', 'log', 'log', 'drop', 'drop', 'drop', 'drop', 'ok'])
+        self.assertEqual(anu_verdict(4000, 0, {'anu': {'drop_gold': 3500}}), 'drop')
 
 
 if __name__ == '__main__':

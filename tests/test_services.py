@@ -86,9 +86,20 @@ class AdminConsoleTest(unittest.IsolatedAsyncioTestCase):
         await self.run_cmd(ClientPacket.CLI_CMD_BCM, self.admin, b'\x00aviso\x00')
         self.assertEqual(self.user.last(ServerPacket.SRV_COMMAND)[2:], b'aviso')
 
+    async def test_set_version(self):  # original: estreitar a faixa derruba todos (inclusive o admin) sem resposta
+        await self.run_cmd(ClientPacket.CLI_CMD_SETVERSION, self.admin, struct.pack('<II', 400, 500))
+        self.assertEqual(self.admin.last(ServerPacket.SRV_CMD_SETVERSION)[2:], b'\x00\x00')
+        self.assertFalse(self.user.closing)
+        await self.run_cmd(ClientPacket.CLI_CMD_SETVERSION, self.admin, struct.pack('<II', 440, 500))
+        self.assertTrue(self.admin.closing and self.user.closing)
+        self.assertEqual(self.admin.server.config['version_min'], 440)
+
     async def test_allowed_guild_too_long(self):
         await self.run_cmd(ClientPacket.CLI_CMD_SET_ALLOWEDGUILD, self.admin, struct.pack('<H', 0x50) + b'x' * 0x50)
         self.assertEqual(self.admin.last(ServerPacket.SRV_CMD_SET_ALLOWEDGUILD)[2:], b'\x1b\x00')
+        body = struct.pack('<H', 2) + b'abc'.ljust(8, b'\x00') + b'guilda12'
+        await self.run_cmd(ClientPacket.CLI_CMD_SET_ALLOWEDGUILD, self.admin, body)
+        self.assertEqual(self.admin.server.config['allowed_guild'], ['abc', 'guilda12'])  # u16 n + n x char[8]
 
     async def test_monitor(self):
         await ac.ChannelMonitorRecv(self.user, BinaryReader(b'')).handle()
@@ -120,14 +131,28 @@ class ServicesTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_gift_needs_own_item(self):
         c = crypt_conn('a')
-        body = b'b'.ljust(16, b'\x00') + struct.pack('<I', 9) + b'\x00' * 8 + b'\x02oi'
-        inv = repo(transfer_chest=False)
+        body = struct.pack('<I', 9) + b'b'.ljust(16, b'\x00') + b'Bee'.ljust(12, b'\x00') + b'\x02oi'  # chest, Id16, Nick12
+        inv = repo(transfer_chest=None)
         await sv.ItemGiftRecv(c, BinaryReader(blocks(0x6028, body))).handle(inventory_repository=inv, user_repository=repo(get_profile={'Id': 'b'}))
-        self.assertEqual(c.last(ServerPacket.SRV_ITEM_GIFT)[2:], b'\x01\x00')
-        inv = repo(transfer_chest=True)
+        self.assertEqual(c.last(ServerPacket.SRV_ITEM_GIFT)[2:], b'\x04\x00')
+        c.server.config['super_user_item'] = 204801
+        c.data['power_user'] = True
+        inv = repo(transfer_chest=204801)
         await sv.ItemGiftRecv(c, BinaryReader(blocks(0x6028, body))).handle(inventory_repository=inv, user_repository=repo(get_profile={'Id': 'b'}))
-        self.assertEqual(inv.calls[0][1], (9, 'a', 'b'))
+        self.assertEqual(inv.calls[0][1], (9, 'a', 'b', 'Bee', 'oi'))
         self.assertEqual(c.last(ServerPacket.SRV_ITEM_GIFT)[2:], b'\x00\x00')
+        self.assertFalse(c.data['power_user'])
+
+    async def test_gift_prohibit_time_drops(self):
+        from datetime import datetime, timedelta
+        c = crypt_conn('a')
+        c.data['game'] = {'GiftProhibitTime': datetime.now() + timedelta(hours=1)}
+        body = struct.pack('<I', 9) + b'b'.ljust(16, b'\x00') + b'Bee'.ljust(12, b'\x00') + b'\x02oi'
+        inv = repo(transfer_chest=1)
+        await sv.ItemGiftRecv(c, BinaryReader(blocks(0x6028, body))).handle(inventory_repository=inv, user_repository=repo(get_profile={'Id': 'b'}))
+        self.assertEqual(inv.calls, [])
+        self.assertNotIn(ServerPacket.SRV_ITEM_GIFT, c.cmds())
+        self.assertTrue(c.closing)
 
     async def test_user_nick(self):
         c = crypt_conn('a')

@@ -1,13 +1,19 @@
 """
-Cria o banco de dados em MySQL, PostgreSQL ou SQLite.
+Cria o banco de dados de uma versão (TH, WCS1 ou WCS2) em MySQL, PostgreSQL ou SQLite.
 
-O schema vem de db/linked.sql (estrutura do servidor original) e os dados iniciais (itens, loja, contas de teste)
-vêm de db/gbwc.sql. Só cria tabelas que não existem e só importa dados em tabelas vazias, então pode rodar de novo.
-Em tabelas que já existem, acrescenta as colunas e os índices que faltam (serve de migração).
+O schema vem de db/linked.sql (estrutura do servidor original). Os dados vêm em passos encadeados, um por versão:
+    TH   -> db/gbwc.sql        (itens, loja, contas de teste)
+    WCS1 -> db/seed/WCS1.sql
+    WCS2 -> db/seed/WCS2.sql   (encantamento) + patentes convertidas para a escada do S2
+Pedir WCS2 roda TH, WCS1 e WCS2, nessa ordem. O banco guarda a versão em que está (tabela DbVersion), então rodar de
+novo só aplica os passos que faltam: um banco WCS1 levado a WCS2 recebe só o passo do WCS2. Só para a frente.
+Em tabelas que já existem, acrescenta as colunas e os índices que faltam; o seed de um passo só entra em tabela vazia.
+Banco antigo, sem DbVersion: tratado como WCS1 (patentes -4..19), que era o padrão.
 
 Uso:
-    python init_db.py                 # usa database.uri do config.yml
-    python init_db.py <uri>           # ex.: sqlite+aiosqlite:///gbwc.db
+    python init_db.py <TH|WCS1|WCS2>          # usa database.uri do config.yml
+    python init_db.py <TH|WCS1|WCS2> <uri>    # ex.: sqlite+aiosqlite:///gbwc.db
+Depois ponha o mesmo `phase` nos game servers do config.yml.
 """
 import re
 import sys
@@ -17,9 +23,11 @@ import yaml
 from sqlalchemy import (MetaData, Table, Column, BigInteger, Integer, String, Text, LargeBinary, DateTime, Time,
                         Float, Numeric, PrimaryKeyConstraint, Index, insert, inspect, text)
 from sqlalchemy.ext.asyncio import create_async_engine
+from gunbound.repository import ranking
 
 SCHEMA_FILE = 'db/linked.sql'
-DATA_FILE = 'db/gbwc.sql'
+VERSIONS = ['TH', 'WCS1', 'WCS2']
+LEGACY_VERSION = 'WCS1'  # banco criado antes do DbVersion
 SKIP_DATA = {'currentuser', 'servicestatus', 'usercount'}  # Dados de sessão/log, não devem ser importados
 
 # Colunas que o código grava com outro tipo ou que faltam no schema original
@@ -31,6 +39,11 @@ TYPE_OVERRIDES = {
 }
 EXTRA_COLUMNS = {
     'ReceiptGift': [('No', Integer, True), ('ConfirmTime', DateTime, False)],  # (nome, tipo, é a chave primária)
+}
+# Colunas que só existem a partir de uma versão (a cadeia leva as anteriores junto): {versão: {tabela: [(nome, tipo)]}}
+VERSION_COLUMNS = {
+    'TH': {'ReceiptGift': [('Item', BigInteger), ('Expire', DateTime)]},  # 0x6028 do original (servidor 2006)
+    'WCS2': {'Game': [('ReadyItems', LargeBinary)]},                      # 0x6050/0x6052: itens da sala de espera
 }
 
 # Índices além dos do schema original, para as consultas do emulador (tabela: [(colunas, único)])
@@ -175,13 +188,67 @@ def parse_data(sql: str, metadata: MetaData) -> dict[str, list[dict]]:
     return data
 
 
-async def main(uri: str) -> None:
-    metadata = MetaData()
+class ConnDb:
+    """fetch_all/execute do gunbound.base.database sobre a conexão do init_db (para as conversões de cada passo)."""
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    async def fetch_all(self, query: str, values=None):
+        return [dict(r._mapping) for r in await self.conn.execute(text(query), values or {})]
+
+    async def execute(self, query: str, values=None) -> int:
+        return (await self.conn.execute(text(query), values or {})).rowcount
+
+
+async def wcs2_grades(conn) -> None:
+    n = await ranking.migrate_th_to_v584(ConnDb(conn))
+    print(f"  Game: patentes de {n} jogadores convertidas para a escada do S2")
+
+
+# (versão, seed, conversão depois do seed)
+STEPS = [
+    ('TH', 'db/gbwc.sql', None),
+    ('WCS1', 'db/seed/WCS1.sql', None),
+    ('WCS2', 'db/seed/WCS2.sql', wcs2_grades),
+]
+
+
+async def import_seed(conn, metadata: MetaData, path: str) -> None:
+    """Importa o seed só nas tabelas vazias."""
+    with open(path, encoding='utf-8') as f:
+        data = parse_data(f.read(), metadata)
+    for table in metadata.sorted_tables:
+        rows = data.get(table.name)
+        if not rows or (await conn.execute(text(f"SELECT COUNT(*) FROM {conn.dialect.identifier_preparer.quote(table.name)}"))).scalar():
+            continue
+        # Linhas com chave primária repetida no dump quebram em bancos estritos
+        pk = [c.name for c in table.primary_key.columns]
+        if pk:
+            rows = list({tuple(r.get(k) for k in pk): r for r in rows}.values())
+        await conn.execute(insert(table), rows)
+        print(f"  {table.name}: {len(rows)} linhas importadas")
+
+
+async def main(uri: str, target: str) -> None:
     engine = create_async_engine(uri)
+    try:
+        await build(engine, target)
+    finally:
+        await engine.dispose()  # sem isso o aiosqlite deixa o processo vivo depois de um erro
+
+
+async def build(engine, target: str) -> None:
+    metadata = MetaData()
     with open(SCHEMA_FILE, encoding='utf-8') as f:
         parse_schema(f.read(), metadata, lower=engine.dialect.name == 'postgresql')
-    with open(DATA_FILE, encoding='utf-8') as f:
-        data = parse_data(f.read(), metadata)
+    version_table = Table('DbVersion', metadata, Column('Phase', String(8)))
+    fix = str.lower if engine.dialect.name == 'postgresql' else str
+    tables = {t.name.lower(): t for t in metadata.tables.values()}
+    for version in VERSIONS[:VERSIONS.index(target) + 1]:
+        for name, cols in VERSION_COLUMNS.get(version, {}).items():
+            for col, type_ in cols:
+                tables[name.lower()].append_column(Column(fix(col), type_))
 
     async with engine.begin() as conn:
         existing = {n.lower() for n in await conn.run_sync(lambda c: c.dialect.get_table_names(c))}
@@ -192,26 +259,30 @@ async def main(uri: str) -> None:
             if table.name.lower() in existing:
                 await upgrade(conn, table)
 
-        for table in metadata.sorted_tables:
-            rows = data.get(table.name)
-            if not rows or table.name.lower() in existing:
-                continue
-            # Linhas com chave primária repetida no dump quebram em bancos estritos
-            pk = [c.name for c in table.primary_key.columns]
-            if pk:
-                rows = list({tuple(r.get(k) for k in pk): r for r in rows}.values())
-            await conn.execute(insert(table), rows)
-            print(f"  {table.name}: {len(rows)} linhas importadas")
+        current = (await conn.execute(version_table.select())).scalar()
+        if current is None and 'game' in existing:
+            current = LEGACY_VERSION
+            print(f"Banco sem versão: tratado como {current}")
+        done = VERSIONS.index(current) + 1 if current else 0
+        if done > VERSIONS.index(target) + 1:
+            raise SystemExit(f"O banco já está em {current}; só dá para ir para a frente ({' -> '.join(VERSIONS)})")
+        for version, seed, convert_step in STEPS[done:VERSIONS.index(target) + 1]:
+            print(f"Passo {version}: {seed}")
+            await import_seed(conn, metadata, seed)
+            if convert_step:
+                await convert_step(conn)
+        await conn.execute(version_table.delete())
+        await conn.execute(insert(version_table), [{'Phase': target}])
+        print(f"Banco na versão {target}")
 
         if engine.dialect.name == 'postgresql':
             # Ajusta as sequences de autoincremento depois de importar dados com IDs explícitos
             for table in metadata.sorted_tables:
                 for col in table.columns:
-                    if col.autoincrement is True and data.get(table.name):
+                    if col.autoincrement is True:
                         await conn.execute(text(
                             f"SELECT setval(pg_get_serial_sequence('\"{table.name}\"', '{col.name}'), "
                             f"(SELECT COALESCE(MAX(\"{col.name}\"), 0) + 1 FROM \"{table.name}\"), false)"))
-    await engine.dispose()
 
 
 async def upgrade(conn, table: Table) -> None:
@@ -237,9 +308,11 @@ async def upgrade(conn, table: Table) -> None:
 
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        uri = sys.argv[1]
+    if len(sys.argv) < 2 or sys.argv[1] not in VERSIONS:
+        sys.exit(__doc__)
+    if len(sys.argv) > 2:
+        uri = sys.argv[2]
     else:
         with open('config.yml', encoding='utf-8') as f:
             uri = yaml.safe_load(f)['database']['uri']
-    asyncio.run(main(uri))
+    asyncio.run(main(uri, sys.argv[1]))

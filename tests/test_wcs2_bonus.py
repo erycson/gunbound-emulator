@@ -17,6 +17,11 @@ class Repo:
     async def add_score(self, uid, v):
         self.score[uid] = self.score.get(uid, 0) + v
 
+    async def add_points(self, uid, column, v):
+        self.points = getattr(self, 'points', {})
+        self.points[uid, column] = self.points.get((uid, column), 0) + v
+        return True
+
 
 class BonusTest(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

@@ -3,6 +3,8 @@ Serviços extraídos do servidor original via REA (endereços em docs/Opcodes do
 Resposta = opcode + 1 (função 0x428040 do original), salvo indicação.
 """
 from __future__ import annotations
+import time
+from datetime import datetime
 from dependency_injector.wiring import Provide, inject
 from gunbound.game.protocol.base import GameRecv, Packet, decrypt_blocks, handler
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
@@ -13,7 +15,7 @@ NICK_LEN = 12
 MAX_ACCUSE_REASON = 0x40
 MAX_ACCUSE_EXTRA = 0x96A
 MAX_GIFT_MSG = 0x32
-RTC_FAIL = 1
+RTC_FAIL = 4    # 0x6029 do original: 0 ok, 4 qualquer falha
 
 
 def cstr(data: bytes) -> str:
@@ -31,13 +33,21 @@ class EncryptedRecv(GameRecv):
             return None
 
 
-# 0x1016 SVC_REP_AUTHDWORD (0x42872d): resposta do cliente ao desafio anti-hack (12 bytes cifrados); o original
-# confere o dword numa lista de desafios enviados. Não implementado: este servidor não envia desafios.
-# @handler(ClientPacket.CLI_REP_AUTHDWORD)
-# class RepAuthDwordRecv(EncryptedRecv):
-#     async def handle(self):
-#         if self.body() is not None:
-#             await self.conn.on_send(Packet.new(ServerPacket.SRV_REP_AUTHDWORD, rtc=0))
+class AntiCheatAnswerRecv(GameRecv):
+    """Respostas do anti-hack: 0x1016 (GameGuard CSAuth2, 16 bytes sem a cifra da sessão), 0x1019/0x101C (HackShield).
+    Corpo cru, sem decrypt_blocks: quem decide é gunbound/game/anticheat.py (off: só registra)."""
+
+    async def handle(self):
+        self.conn.last_activity = time.time()
+        body = self.buf.read_bytes()
+        if self.conn.anticheat is None:
+            print(f"[anticheat] 0x{self.command:04X} antes do anti-hack da sessão existir ({len(body)} bytes), ignorado")
+            return
+        await self.conn.anticheat.on_answer(self.command, body)
+
+
+for _cmd in (ClientPacket.CLI_REP_AUTHDWORD, ClientPacket.CLI_HS_ACK, ClientPacket.CLI_HS_GUID_ACK):
+    handler(_cmd)(type(f"AntiCheat{int(_cmd):04X}Recv", (AntiCheatAnswerRecv,), {"__module__": __name__}))
 
 
 @handler(ClientPacket.CLI_USER_NICK)
@@ -120,25 +130,37 @@ class ItemLocationRecv(GameRecv):
 @handler(ClientPacket.CLI_ITEM_GIFT)
 class ItemGiftRecv(EncryptedRecv):
     """
-    0x6028 (0x42b276), cifrado, até 0x54 bytes: Id do destinatário(16) + 12 bytes (chest u32 + 8 [INVESTIGAR])
-    + u8 tamanho (<= 0x32) + mensagem. Passa o item (não vestido) do próprio baú. Resposta 0x6029 RTC 0 / 1.
+    0x6028, cifrado, até 0x54 bytes (servidores 2006 e 2007, asm 0x42eb6d; cliente TH 0x4d5a12): u32 ChestNo,
+    char[16] Id do destinatário, char[12] apelido, u8 tamanho (<= 0x32) + mensagem. Passa um item C/G não recuperado
+    do próprio baú (vestido ou não; vira 'T') e grava GiftMsg/ReceiptGift. Resposta 0x6029 RTC 0 / 4.
+    GiftProhibitTime no futuro ou mensagem > 0x32: o handler original devolve falso e a conexão cai (2007 0x42eba7).
+    Doar o SuperUserItem tira o power user da sessão, como o original zera o prazo. VIP/Event não existem na config.
+    Destinatário inexistente ou o próprio jogador: RTC 4 (o original não confere; o item sumiria).
     """
 
     @inject
     async def handle(self, inventory_repository=Provide['inventory_repository'], user_repository=Provide['user_repository']):
         body = self.body()
-        if body is None or body.remaining() < ID_LEN + 13:
+        if body is None or body.remaining() < 4 + ID_LEN + NICK_LEN + 1:
             return
-        receiver = cstr(body.read_bytes(ID_LEN))
         chest_id = body.read_uint32()
-        body.read_bytes(8)
+        receiver = cstr(body.read_bytes(ID_LEN))
+        nick = cstr(body.read_bytes(NICK_LEN))
         size = body.read_uint8()
-        if size > MAX_GIFT_MSG or not receiver or receiver == self.user_id():
+        prohibit = (self.conn.data.get('game') or {}).get('GiftProhibitTime')
+        if size > MAX_GIFT_MSG or size > body.remaining() or (prohibit is not None and prohibit > datetime.now()):
+            print(f"[{self.conn.addr}] SVC_ITEM_GIFT: mensagem inválida ou GiftProhibitTime {prohibit}; derrubando")
+            return await self.conn.close()
+        msg = body.read_bytes(size).decode('latin-1')
+        if not receiver or receiver == self.user_id():
             return await self.reply(RTC_FAIL, f"pedido inválido para '{receiver}'")
         if await user_repository.get_profile(receiver) is None:
             return await self.reply(RTC_FAIL, f"destinatário '{receiver}' não existe")
-        if not await inventory_repository.transfer_chest(chest_id, self.user_id(), receiver):
-            return await self.reply(RTC_FAIL, f"item {chest_id} não é do jogador ou está vestido")
+        item = await inventory_repository.transfer_chest(chest_id, self.user_id(), receiver, nick, msg)
+        if item is None:
+            return await self.reply(RTC_FAIL, f"item {chest_id} não é do jogador ou não é C/G não recuperado")
+        if item == self.conn.server.config.get('super_user_item'):
+            self.conn.data['power_user'] = False
         await self.reply(ServerCode.SRV_OK, f"item {chest_id} enviado para '{receiver}'")
 
     async def reply(self, rtc: int, log: str):

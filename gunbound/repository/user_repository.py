@@ -107,6 +107,11 @@ class UserRepository:
         )
         return [m | {'SentTime': to_datetime(m['SentTime'])} for m in msgs]
     
+    async def delete_gift_msgs(self, nos: list[int]) -> int:
+        """Apaga os avisos A/D já entregues pelo 0x6032 (como o original, logo depois do SELECT do 0x6004)."""
+        keys = {f'n{i}': int(n) for i, n in enumerate(nos)}
+        return await self.db.execute(f"DELETE FROM GiftMsg WHERE No IN ({', '.join(':' + k for k in keys)})", keys) if keys else 0
+
     async def get_nicknames(self, user_ids: list[str]) -> List[Dict[str, Any]]:
         """0x1021 SVC_USER_NICK: Id -> Nickname de vários usuários."""
         if not user_ids:
@@ -127,6 +132,13 @@ class UserRepository:
         )
         return result > 0
 
+    async def insert_abnormal_update(self, master: str, user_id: str, score: int, money: int) -> None:
+        """Log ANU do original: INSERT AbnormalUpdate (Master, ID, ScoreDelta, MoneyDelta, Time)."""
+        await self.db.execute(
+            "INSERT INTO AbnormalUpdate (Master, ID, ScoreDelta, MoneyDelta, Time) VALUES (:master, :id, :score, :money, :now)",
+            {'master': master, 'id': user_id, 'score': max(-32768, min(32767, int(score))), 'money': int(money), 'now': datetime.now()}
+        )
+
     async def add_slot_tokens(self, user_id: str, delta: int) -> bool:
         """Fichas do caça-níquel WCS2; não deixa ficar negativo."""
         # shortcut: usa a coluna EventScore2 (sem uso) em vez de coluna própria
@@ -134,7 +146,7 @@ class UserRepository:
                                        {'d': int(delta), 'user_id': user_id})
         return result > 0
 
-    POINTS = frozenset({'DiscountPoints', 'RenaPoints'})  # colunas do Game em db/linked.sql
+    POINTS = frozenset({'DiscountPoints', 'RenaPoints', 'TotalScore'})  # colunas do Game em db/linked.sql
 
     async def add_points(self, user_id: str, column: str, delta: int) -> bool:
         """Pontos da loja WCS2 (desconto/Rena); não deixa ficar negativo."""
@@ -170,3 +182,13 @@ class UserRepository:
             {'client_data': bytes(client_data), 'now': datetime.now(), 'user_id': user_id}
         )
         return result > 0
+
+    async def get_ready_items(self, user_id: str) -> bytes | None:
+        """WCS2: itens da sala de espera (0x6051), como o cliente mandou no 0x6052."""
+        row = await self.db.fetch_one("SELECT ReadyItems FROM Game WHERE Id = :user_id", {'user_id': user_id})
+        data = row and row['ReadyItems']
+        return (data.encode('latin-1') if isinstance(data, str) else bytes(data)) if data else None
+
+    async def set_ready_items(self, user_id: str, data: bytes) -> bool:
+        return await self.db.execute("UPDATE Game SET ReadyItems = :data WHERE Id = :user_id",
+                                     {'data': bytes(data), 'user_id': user_id}) > 0

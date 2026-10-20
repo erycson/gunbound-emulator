@@ -20,8 +20,8 @@ LOCAL_UDP_FIX = False
 
 
 def settings_of(room: 'Room') -> int:
-    """settings u32: B2 62 | modo u16 (bytes 2-3), como a requisição 0x2120."""
-    return (room.options.settings & 0xFFFF) | ((room.options.mode_code & 0xFFFF) << 16)
+    """settings u32 cru da sala (0x2103, 0x2105, 0x21F4, 0x3432)."""
+    return room.options.settings
 
 
 def player_net(conn: 'ClientConnection') -> tuple[bytes, int]:
@@ -52,8 +52,8 @@ def write_player(pkt: Packet, p: 'RoomPlayer', with_flag: bool = True) -> Packet
     if with_flag:  # 0x2111: estado do slot (cliente 0x4cbb9e, +0x24342). 0 some com o jogador; 1 = presente, 3 = pronto (0x4ecbd9)
         pkt.u8(3 if getattr(p, 'ready', False) else 1)
     pkt.fixed(game.get('Guild') or '', 8).raw(phase.of(conn).grades(game))  # patentes antes dos itens, como no 0x200E
-    phase.of(conn).write_avatar(pkt, conn.data.get('avatar') or [])
-    return pkt.u8(1 if is_power_user(conn) else 0)
+    phase.of(conn).write_avatar(pkt, conn.data.get('avatar') or [], conn.data.get('avatar_enchant'))
+    return pkt.raw(phase.of(conn).player_tail(is_power_user(conn)))
 
 
 def is_power_user(conn: 'ClientConnection') -> bool:
@@ -69,6 +69,17 @@ def room_list(rooms: Iterable['Room']) -> Packet:
     return pkt.u8(0)
 
 
+def room_list_by_id(entries) -> Packet:
+    """0x2103 do 0x2101: (id, sala ou None) na ordem pedida; sala inexistente ou automática = u16 id + u8 0 (título vazio)."""
+    pkt = Packet.new(ServerPacket.SRV_ROOM_SORTED_LIST, rtc=0).u16(len(entries))
+    for room_id, r in entries:
+        if r is None or getattr(r, 'auto', False):
+            pkt.u16(room_id).u8(0)
+        else:
+            write_list_entry(pkt, r, in_list=True)
+    return pkt.u8(0)
+
+
 def write_list_entry(pkt: Packet, r: 'Room', in_list: bool = False) -> Packet:
     pkt.u16(r.id)
     write_room_header(pkt, r)
@@ -76,7 +87,10 @@ def write_list_entry(pkt: Packet, r: 'Room', in_list: bool = False) -> Packet:
     if in_list:  # só o 0x2103 (o 0x21F0 não tem): o v440 manda um byte a mais, o TH nenhum
         pkt.raw(phase.of(r.owner).list_entry_extra())
     pkt.u8(r.player_count()).u8(r.options.max_players())
-    return pkt.u8(0 if r.is_waiting() else 1).u8(1 if r.options.is_protected() else 0)
+    pkt.u8(0 if r.is_waiting() else 1).u8(1 if r.options.is_protected() else 0)
+    if in_list and r.options.stage is not None:  # 0x2103 no canal Stage (v584 0x4d5ebf): u16 StageNum-1, u8 GameMode
+        pkt.u16(r.options.stage[0]).u8(r.options.stage[1])
+    return pkt
 
 
 def lobby_room_created(room: 'Room') -> Packet:

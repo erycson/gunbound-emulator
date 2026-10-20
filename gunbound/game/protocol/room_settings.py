@@ -1,6 +1,7 @@
 """Configuração da sala pelo mestre (0x3100..0x3104), time (0x3210), pronto (0x3230) e expulsão (0x3150)."""
 from __future__ import annotations
-from gunbound.base.enums import RoomMode, RoomOptions, ROOM_SIZES, MAP_COUNT
+from gunbound.base.enums import RoomMode, RoomOptions, MAP_COUNT
+from gunbound.game.stage_pos import out_of_range, valid_settings
 from gunbound.game import room_packets as rp, phase
 from gunbound.game.protocol.base import GameRecv, Packet, handler
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket
@@ -8,6 +9,8 @@ from gunbound.game.protocol.enums import ClientPacket, ServerPacket
 
 class RoomChangeBase(GameRecv):
     """Só o mestre e só com a sala aguardando (guardas). `apply()` valida e altera; 0x3105 para o mestre, 0x3400 para os outros."""
+
+    drop = False  # original: validação de settings/mapa falhou -> o handler devolve falso e a conexão cai
 
     def apply(self) -> bool:
         raise NotImplementedError
@@ -17,21 +20,26 @@ class RoomChangeBase(GameRecv):
         return None
 
     async def handle(self):
-        if self.apply():
-            packet = self.lobby()
-            if packet is not None:
-                self.room.room_manager.notify_lobby(self.room, packet)
-            # o cliente trata o 0x3105 como confirmação da própria mudança (0x4ec6e9 aplica o que ele tem na tela);
-            # os outros recebem o cabeçalho novo pelo 0x3400, que relê título, mapa, settings, itens e capacidade (0x4ecb20)
-            await self.conn.on_send(rp.ack(ServerPacket.SRV_ROOM_UPDATE))
-            await self.room.broadcast(rp.host_change(self.room), excepts=[self.conn.id])
+        if not self.apply():
+            if self.drop:
+                print(f"[{self.conn.addr}] {type(self).__name__}: settings/mapa fora do que o cliente gera, derrubando")
+                await self.conn.close()
+            return
+        packet = self.lobby()
+        if packet is not None:
+            self.room.room_manager.notify_lobby(self.room, packet)
+        # o cliente trata o 0x3105 como confirmação da própria mudança (0x4ec6e9 aplica o que ele tem na tela);
+        # os outros recebem o cabeçalho novo pelo 0x3400, que relê título, mapa, settings, itens e capacidade (0x4ecb20)
+        await self.conn.on_send(rp.ack(ServerPacket.SRV_ROOM_UPDATE))
+        await self.room.broadcast(rp.host_change(self.room), excepts=[self.conn.id])
 
 
 @handler(ClientPacket.CLI_ROOM_CHANGE_STAGE, master=True, waiting=True)
 class RoomChangeStageRecv(RoomChangeBase):
     def apply(self) -> bool:
         stage = self.buf.require(1).read_uint8()
-        if stage >= MAP_COUNT:
+        if not valid_settings(self.room.options.settings, stage, phase.of(self.conn).stage_pos):   # original 0x4166f0 -> 0x406700
+            self.drop = out_of_range(self.room.options.settings, stage)
             return False
         self.room.options.map = stage
         return True
@@ -42,18 +50,17 @@ class RoomChangeStageRecv(RoomChangeBase):
 
 @handler(ClientPacket.CLI_ROOM_CHANGE_OPTION, master=True, waiting=True)
 class RoomChangeOptionRecv(RoomChangeBase):
-    """settings u32: bytes 0-1 opções cruas, 2-3 modo. Mudar para um modo inválido é recusado."""
+    """settings u32 gravado cru, como o original (0x4167c0): inclusive o lado (bits 16-17) e o evento (bits 24-31, comando
+    /evento do cliente). Validação do original (0x406700): posições < 3, lado < 4 e o mapa com vaga no stage_pos; o
+    original derruba a conexão quando falha. Aqui só derruba no que não depende da tabela (posições >= 3, mapa >= 20):
+    a tabela do TH (2006) só tem os lados A/B, então faltar linha nela só recusa."""
 
     def apply(self) -> bool:
         settings = self.buf.require(4).read_uint32()
-        mode = RoomMode.parse(settings >> 16)
-        if mode is None and settings >> 24:
-            # comando /<evento> do cliente (ChooseEvent.txt): (settings & 0xFFFFF) | evento << 24, que também apaga o
-            # bit 22 do Score. shortcut: mantém o modo atual e descarta o evento (efeito no original não mapeado)
-            mode = self.room.options.mode
-        if mode is None:
+        if not valid_settings(settings, self.room.options.map, phase.of(self.conn).stage_pos):
+            self.drop = out_of_range(settings, self.room.options.map)
             return False
-        self.room.options.mode, self.room.options.settings = mode, settings & 0xFFFF
+        self.room.options.settings = settings
         return True
 
     def lobby(self):
@@ -73,7 +80,7 @@ class RoomChangeMaxMenRecv(RoomChangeBase):
 
     def apply(self) -> bool:
         capacity = self.buf.require(1).read_uint8()
-        if capacity not in ROOM_SIZES or capacity < self.room.player_count():
+        if capacity not in self.room.options.sizes() or capacity < self.room.player_count():
             return False
         if any(p.slot >= capacity for p in self.room.players.values()):
             return False

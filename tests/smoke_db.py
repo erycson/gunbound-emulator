@@ -15,7 +15,7 @@ from gunbound.repository import UserRepository, InventoryRepository, ServerRepos
 
 
 async def main(uri: str):
-    await init_db.main(uri)
+    await init_db.main(uri, init_db.VERSIONS[-1])
     db = Database(uri)
     await db.connect()
     try:
@@ -63,6 +63,10 @@ async def run(db: Database):
     chest = {c['No']: c for c in await inv.get_chest('test')}
     assert 0 < chest[chest_id]['Expire'] <= 86400 and chest[chest_inf]['Expire'] is None, chest
     assert int(chest[chest_id]['Wearing']) == 0 and int(chest[chest_id]['Recovered']) == 0
+    await inv.set_seal(chest_id, 1234)
+    await inv.set_enchant_level(chest_id, 3)  # nível e selo na mesma linha do ChestEnchant
+    row = {c['No']: c for c in await inv.get_chest('test')}[chest_id]
+    assert (int(row['EnchantLevel']), int(row['Seal'])) == (3, 1234), row
     receipt = await inv.insert_receiptbuy('test', 204805, AcquisitionType.Gold, 100, ReceiptBuyType.Self, ExpireType.Week)
     assert isinstance(receipt, int)
     await inv.insert_buy_info('8452169', 204805, 100, money, AcquisitionType.Gold)
@@ -87,6 +91,9 @@ async def run(db: Database):
     msgs = await users.get_gift_msgs('Mario')
     assert msgs and msgs[-1]['SentTime'] is not None and msgs[-1]['Msg'] == 'oi'
     assert await inv.update_giftmsg_status(msg_id, 'test', 'Mario', GiftMsgType.Accepted)
+    answer = [m for m in await users.get_gift_msgs('Mario') if m['No'] == msg_id]  # Receiver = o 3o argumento
+    assert answer and answer[0]['MsgType'] == 'A', answer
+    assert await users.delete_gift_msgs([msg_id]) == 1 and not await users.delete_gift_msgs([])
     assert await inv.update_receiptgift_result(rg_id, 'test', ReceiptGiftResult.Accepted)
     assert await inv.delete_giftitem(gift_id) is True
     assert await inv.delete_giftitem(gift_id) is False

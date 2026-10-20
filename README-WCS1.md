@@ -24,10 +24,10 @@ Comparação v495 x v440: [docs/Cliente v495 x v440.md](docs/Cliente%20v495%20x%
 | Opcode | Status | Notas |
 |---|---|---|
 | 0x1090 dados do cliente | ✅ | |
-| 0x2130 entrada rápida, 0x3001 sair | ✅ | sem sala livre cria "QuickStartRoom" (0x2132); falha 0x2131 RTC 8 |
-| 0x6004 / 0x6008 presentes recebidos / aceitar | 🟡 | recusar devolve o valor a quem recebeu, não a quem enviou |
+| 0x2130 entrada rápida | 🟡 | como o original: entra só numa "QuickStartRoom" com vaga ou cria uma (`quick_start`: settings 0x451C2, 6 vagas) -> 0x2132; falha 0x2131 RTC 8. Sem "pronto", times pela patente (A,B,B,A...) e início só com a sala completa. QuickStartMan ímpar vira sala de 8 |
+| 0x6004 / 0x6008 presentes recebidos / aceitar | ✅ | recusar devolve o valor a quem enviou (original); no 0x6004 seguinte o remetente recebe o aviso 0x6032 (aceito/recusado) e a linha some, como o original (o v584 não mostra o aviso) |
 | 0x6030 comprar presente | ✅ | |
-| 0x1100 lista do Grand Prix, 0x2140 / 0x2141 fila | 🟡 | colunas do ranking deduzidas por analogia |
+| 0x1100 lista do Grand Prix, 0x2140 / 0x2141 fila | 🟡 | layout e cache de 300 s do original; colunas do v495 deduzidas por analogia |
 | Marca de amigo na lista de servidores | ✅ | o cliente desenha um ícone na linha do servidor onde há amigo online; vem do P2P c051 repassado pelo Buddy, com o u16 índice do 0x1102. Só aparece ao voltar para a lista (o Buddy conecta no 1º canal). Detalhes em [BuddyServ.md](docs/BuddyServ.md) |
 
 ## Comandos
@@ -49,4 +49,4 @@ para a lista de ignorados).
 | `/mute nick segundos` | não é do cliente: vai ao servidor e funciona como `/silence` (a lista de ignorados do S1 é uma janela, sem comando) |
 | `/key`, `/ipconfig`, `/quit`, `/exit` | locais |
 | `/clear`, `/logging` | P2P entre os jogadores da sala |
-| `/<evento>` (`ChooseEvent.txt`) | mestre liga um evento na sala (0x3101); o modo é mantido e o evento ignorado |
+| `/<evento>` (`ChooseEvent.txt`) | mestre liga um evento na sala (0x3101): o servidor grava o settings cru e repassa, como o original; quem interpreta o evento é o cliente |

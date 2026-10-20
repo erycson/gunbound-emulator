@@ -66,6 +66,12 @@ class SlotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((inv.cash, inv.money), (100, 600))
         self.assertIn(0x6101, c.cmds())
 
+    async def test_item_prize(self):  # resultado 2: valor = código do item, sem multiplicar pela aposta
+        c, users, inv = player(100), Users(100), Inv()
+        await self.spin(c, users, inv, 0, 2, (2, slot_machine.MEGAPHONE))
+        self.assertEqual(c.last(0x7111)[2:], struct.pack('<HBI', 0, 2, slot_machine.MEGAPHONE))
+        self.assertIn(0x6001, c.cmds())  # baú atualizado
+
     async def test_no_balance(self):
         c, users, inv = player(), Users(5), Inv()
         await self.spin(c, users, inv, 0, 0, (slot_machine.LOSE, 0))

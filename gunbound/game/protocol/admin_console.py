@@ -37,7 +37,7 @@ class AdminState:
         config.setdefault('guild_limit', 0)
         config.setdefault('function_restrict', 0)
         config.setdefault('passable_auth', 0)
-        config.setdefault('allowed_guild', '')
+        config.setdefault('allowed_guild', [])
         config.setdefault('events', [(0, 0, 0)] * EVENT_SLOTS)
 
     def status(self, clients, rooms) -> Packet:
@@ -109,12 +109,15 @@ async def CmdBcm(self, state, clients, rooms):
 
 @admin_command(ClientPacket.CLI_CMD_SETVERSION)
 async def CmdSetVersion(self, state, clients, rooms):
-    """u32 mínima + u32 máxima. Se a faixa estreitar, o original derruba quem ficou fora (0x40a530) e não responde."""
+    """u32 mínima + u32 máxima. Se a faixa estreitar (mínima subiu ou máxima desceu), o original (2006 0x40a530,
+    2007 0x40ae50) derruba TODAS as conexões, inclusive a do admin, sem responder: força a atualização dos clientes."""
     vmin, vmax = self.buf.read_uint32(), self.buf.read_uint32()
     narrowed = vmin > state.config['version_min'] or vmax < state.config['version_max']
     state.config['version_min'], state.config['version_max'] = vmin, vmax
     if narrowed:
-        print(f"[{self.conn.addr}] SETVERSION estreitou a faixa para {vmin}..{vmax} (sessões abertas não são verificadas)")
+        print(f"[{self.conn.addr}] SETVERSION estreitou a faixa para {vmin}..{vmax}: derrubando todas as conexões")
+        for c in [*clients.clients.values()]:
+            await c.close()
         return None
     return ServerCode.SRV_OK
 
@@ -141,10 +144,12 @@ async def CmdFunctionRestrict(self, state, clients, rooms):
 
 @admin_command(ClientPacket.CLI_CMD_SET_ALLOWEDGUILD)
 async def CmdSetAllowedGuild(self, state, clients, rooms):
-    size = self.buf.read_uint16()
-    if size > MAX_ALLOWED_GUILD:
+    """u16 n (<= 0x4F) + n x char[8] guild; o original regrava o AllowedGuild.txt com a lista (0x407060). n = 0 libera todas."""
+    count = self.buf.read_uint16()
+    if count > MAX_ALLOWED_GUILD:
         return ServerCode.SRV_INVALID_ARG
-    state.config['allowed_guild'] = self.buf.read_bytes(size).split(b'\x00', 1)[0].decode('latin-1')
+    names = (self.buf.read_bytes(8).split(b'\x00', 1)[0].decode('latin-1') for _ in range(min(count, self.buf.remaining() // 8)))
+    state.config['allowed_guild'] = [n for n in names if n]
     return ServerCode.SRV_OK
 
 

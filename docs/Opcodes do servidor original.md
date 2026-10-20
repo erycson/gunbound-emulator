@@ -1,5 +1,8 @@
 # Opcodes do servidor original (GunBoundServ3.exe, via REA)
 
+Builds: 2006 (`server-original`, f176515f…) e 2007 (05/02/2007, da pasta `Season 2 server\GunboundServer01`, 7e954d73…).
+Os dois são do **WC S1**: 67 `SVC_*`, nenhum do S2. O nome da pasta é do pacote; não há servidor original do S2.
+
 Dispatcher em `0x428536` (árvore binária + tabelas de salto). Resposta = opcode + 1 (`0x428040`).
 Permissões: `0x427470` = Authority ≥ 98; `0x427490` = Authority ≥ 99. Cada handler registra `Service Request: SVC_*`.
 Corpos "cifrados" = blocos de 16 bytes (u32 `cmd - 0x79CE9F82` + 12 de dados), lidos por `decrypt_blocks`.
@@ -29,12 +32,12 @@ Corpos "cifrados" = blocos de 16 bytes (u32 `cmd - 0x79CE9F82` + 12 de dados), l
 | 0x5116 | CMD_SETVERSION | +1 | admin_console.py | ≥ 99; estreitar a faixa não responde |
 | 0x5120/0x5122 | GRADELIMIT / GUILDLIMIT | +1 | admin_console.py | |
 | 0x5124 | FUNCTION_RESTRICT | +1 | admin_console.py | u32 máscara + u32 valor |
-| 0x5126 | SET_ALLOWEDGUILD | +1 | admin_console.py | u16 len ≤ 0x4F, senão RTC 0x1B |
+| 0x5126 | SET_ALLOWEDGUILD | +1 | admin_console.py | u16 n ≤ 0x4F (senão RTC 0x1B) + n × char[8]; o original regrava o AllowedGuild.txt (2007 0x407060) |
 | 0x5128 | SET_EVENTACTPROB | +1 | admin_console.py | u16 idx(<4) + u16 prob + u8 + u8; liga bit 0x100000<<idx |
 | 0x512A/0x512C | SET_PASSABLE_AUTH / SET_FACTOR | +1 | admin_console.py | FACTOR: u32 score + u32 gold |
 | 0x6000..0x6104 | ITEM, GIFT_MSG/CONFIRM, WEAR, BUY, CONSUME, GIFT_BUY, CASH, GOLD | | shop/inventário | 0x600F sem corpo (RTC 0/4) |
 | 0x600A | ITEM_LOCATION | 0x600B | services.py | u16 n + n×(chest u32, pos u32), tamanho exato |
-| 0x6028 | ITEM_GIFT | 0x6029 | services.py | cifrado: Id16 + chest u32 + 8 **[INVESTIGAR]** + u8 len(≤0x32) + msg |
+| 0x6028 | ITEM_GIFT | 0x6029 | services.py | cifrado: u32 chest + Id16 + apelido12 + u8 len(≤0x32) + msg (2006 e 2007, asm 0x42eb6d); RTC 0/4 |
 
 ## Enviados pelo servidor sem pedido
 
@@ -55,7 +58,7 @@ u16 passable_auth, u32 score_factor, u32 gold_factor.
 - **0x1004 / 0x1019 / 0x101C**: não existem no dispatcher do original; hoje tratados em silêncio.
 - **SETVERSION**: o original derruba sessões fora da faixa (`0x40a530`); aqui não.
 - **0x1016**: envio dos desafios anti-hack (servidor → cliente) não implementado.
-- **SRV desconhecidos**: 0x1032/0x1033, 0x2005/7/8, 0x2012, 0x3007, 0x6002/3/7, 0x6032. O 0x1031 (RTC 0) já é
+- **SRV desconhecidos**: 0x1032/0x1033, 0x2005/7/8, 0x2012, 0x3007, 0x6002/3/7 (o 0x6032 é o aviso de presente: item_gift_msg.py). O 0x1031 (RTC 0) já é
   mandado na fase WCS2 depois do 0x1012: sem ele o v584 não pede o canal (`phase.WCS2.login_ready`).
 - **Botões cinza após o jogo** ("não consegui sair da sala"): aguardando log do console.
 

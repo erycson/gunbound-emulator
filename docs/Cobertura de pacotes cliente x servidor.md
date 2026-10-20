@@ -154,7 +154,7 @@ Escolhas do emulador, sem fonte: vidas por jogador no Score (`SCORE_LIVES_PER_PL
 | 0x6024 | C→S | ITEM_CONSUME | ✅ | 0x6025 |
 | 0x6028 | C→S | ITEM_GIFT | ✅ | 0x6029; o v440 não manda (é do TH) |
 | 0x6030 | C→S | ITEM_GIFT_BUY | ✅ | 0x6031 |
-| 0x6032 | S→C | ? | ⛔ | |
+| 0x6032 | S→C | 0x6004 | ✅ | aviso de presente aceito/recusado ao remetente (item_gift_msg.py) |
 | 0x6100 | C→S | CASH | ✅ | 0x6101 |
 | 0x6104 | C→S | GOLD | ✅ | 0x6105 |
 

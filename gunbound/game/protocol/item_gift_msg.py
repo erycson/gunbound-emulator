@@ -1,62 +1,52 @@
+"""
+0x6004 (vazio) -> um 0x6005 por presente pendente, sem RTC (servidor original 0x42e140 e leitores TH 0x4118b9,
+v440 0x411017, v584 0x41256b; nenhum deles lê resposta ao 0x6004):
+    u32 MenuId, u32 GiftItemNo (chave que volta no 0x6008), u8 período, remetente12, u32 time_t, u8 len, texto.
+O período é o índice do texto 500020+n do cliente (tabela do original pelo ExpireType). O len não é conferido pelo
+cliente: mais de 0x83 bytes estoura o registro, então corta em 0x82.
+
+0x6032 (sem RTC; servidor 2006 0x42e398, 2007 0x434bb0; clientes v440 0x4118a6 e v584 0x412587): aviso a quem deu o
+presente, mandado só aqui, nas linhas A/D (aceito/recusado) do GiftMsg; depois o original apaga essas linhas no mesmo
+job (0x41f093), então cada aviso sai uma vez. Corpo: Id12 de quem respondeu (o 0x6008 troca Sender/Receiver), u32 MenuId,
+u8 período (W 0, M 1, Y 2; o original manda lixo nos outros), u8 1 = aceito / 0 = recusado. O v440 mostra o diálogo
+(textos 500027/500028); o v584 só enfileira e não mostra. O original só envia linhas com MenuId e GiftItemNo != 0.
+"""
 from __future__ import annotations
-
-from typing import TYPE_CHECKING
 from dependency_injector.wiring import Provide, inject
-from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
-from gunbound.util.binary_buffer import BinaryWriter, BinaryReader
-from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
-if TYPE_CHECKING:
-    from gunbound.repository import UserRepository
-    from gunbound.game.client import ClientConnection
+from gunbound.base.enums import GiftMsgType
+from gunbound.game.protocol.base import GameRecv, Packet, handler
+from gunbound.game.protocol.enums import ClientPacket
 
-@BasePackageFactory.register(ClientPacket.CLI_ITEM_GIFT_MSG.value)
-@inject
-class ItemGiftMsgRecv(BasePackageRecv):
-    def __init__(
-        self,
-        conn: 'ClientConnection',
-        buf: BinaryReader,
-        user_repository: 'UserRepository' = Provide['user_repository'],
-    ):
-        self.buf = buf
-        self.conn = conn
-        self.user_repository = user_repository
+SRV_GIFT = 0x6005
+SRV_GIFT_ANSWER = 0x6032
+ANSWER_PERIOD = {'W': 0, 'M': 1, 'Y': 2}
+GIFT_TEXT_MAX = 0x82
+GIFT_PERIOD = {'3': 0, 'W': 1, 'T': 2, 'M': 3, 'F': 4, 'H': 5, 'Y': 6, 'I': 7}  # original 0x42e340
 
-    async def process(self):
-        gift_msgs = await self.user_repository.get_gift_msgs(self.conn.data['profile']['Id'])
-        if len(gift_msgs) > 0:
-            await self.conn.on_send(ItemGiftMsgResp.success(gift_msgs))
 
-    def log_command(self, conn):
-        cmd = ClientPacket.CLI_ITEM_GIFT_MSG.value
-        seq = conn.expected_client_checksum(self.buf.size())
-        print(f"RECV<< [SS={conn.server.id:08X} SQ={seq:04X} CD={cmd:04X}] {self.buf.to_hex(4)}")
+def gift_packet(msg: dict) -> Packet:
+    text = (msg['Msg'] or '').encode('latin-1', 'replace')[:GIFT_TEXT_MAX]
+    return (Packet.new(SRV_GIFT).u32(msg['MenuId']).u32(msg['GiftItemNo'] or 0).u8(GIFT_PERIOD.get(msg['ExpireType'], 1))
+            .fixed(msg['Sender'], 12).u32(int(msg['SentTime'].timestamp())).u8(len(text)).raw(text))
 
-class ItemGiftMsgResp(BasePackageSend):
-    def __init__(self, buf: BinaryWriter):
-        self.buf = buf 
 
-    @classmethod
-    def success(cls, gift_msgs):
-        buf = BinaryWriter()
-        buf.write_uint16(ServerPacket.SRV_ITEM_GIFT_MSG)
-        buf.write_uint16(ServerCode.SRV_OK)
+def answer_packet(msg: dict) -> Packet:
+    return (Packet.new(SRV_GIFT_ANSWER).fixed(msg['Sender'], 12).u32(msg['MenuId'])
+            .u8(ANSWER_PERIOD.get(msg['ExpireType'], 0)).u8(1 if msg['MsgType'] == GiftMsgType.Accepted else 0))
 
-        for msg in gift_msgs:
-            time = msg['SentTime'].timestamp()
-            buf.write_uint32(msg['MenuId'])
-            buf.write_uint32(msg['No'])
-            buf.write_uint8(1) # Desconhecido, talvez diga se o presente é permanente ou temporário
-            buf.write_string(msg['Sender'], 12)
-            buf.write_uint32(int(time)) # Ingora os milisegundos
-            buf.write_uint8(len(msg['Msg']))
-            buf.write_string(msg['Msg'])
 
-        return cls(buf)
-    
-    def log_command(self, conn):
-        reader = self.buf.to_reader()
-        checksum = reader.read_uint16(pos=2)
-        cmd = reader.read_uint16(pos=4)
-
-        print(f"SEND>> [SS={conn.server.id:08X} SQ={checksum:04X} CD={cmd:04X}] {self.buf.to_hex(6)}")
+@handler(ClientPacket.CLI_ITEM_GIFT_MSG)
+class ItemGiftMsgRecv(GameRecv):
+    @inject
+    async def handle(self, user_repository=Provide['user_repository']):
+        answered = []
+        for msg in await user_repository.get_gift_msgs(self.user_id()):
+            if msg['MsgType'] == GiftMsgType.Gift:
+                if msg['MenuId'] and msg['GiftItemNo']:
+                    await self.conn.on_send(gift_packet(msg))
+            elif msg['MsgType'] in (GiftMsgType.Accepted, GiftMsgType.Denied):
+                if msg['MenuId'] and msg['GiftItemNo']:
+                    await self.conn.on_send(answer_packet(msg))
+                answered.append(msg['No'])  # o original apaga mesmo as que não mandou
+        if answered:
+            await user_repository.delete_gift_msgs(answered)

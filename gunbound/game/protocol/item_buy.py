@@ -11,6 +11,9 @@ if TYPE_CHECKING:
     from gunbound.repository import InventoryRepository
     from gunbound.game.client import ClientConnection
 
+EXPIRE_DAYS = {'3': 3, 'W': 7, 'T': 15, 'M': 30, 'F': 60, 'H': 180, 'Y': 365}
+
+
 @BasePackageFactory.register(ClientPacket.CLI_ITEM_BUY.value)
 @inject
 class ItemBuyRecv(BasePackageRecv):
@@ -108,39 +111,36 @@ class ItemBuyRecv(BasePackageRecv):
         await self.conn.on_send(ItemBuyResp.error())
 
     def calc_period(self, expire_type: str, period: int) -> int | None:
-        if expire_type == "W":
-            return 7 * period
-        elif expire_type == "M":
-            return 30 * period
-        else: # I
-            return None
+        """Dias por ExpireType do original (0x421d40: 3, W 7, T 15, M 30, F 60, H 180, Y 365); I = sem prazo."""
+        days = EXPIRE_DAYS.get(str(expire_type))
+        return days * period if days else None
 
     async def insert_chest(self, user_id: str, menu: dict, acquisition: AcquisitionType, expire_type: str) -> list[dict]:
         chest: list[dict] = []
 
         period = self.calc_period(expire_type, menu['Period1'])
         chest_id = await self.inventory_repository.insert_chest(user_id, menu['Item1'], acquisition, expire_type, period, menu['Volume1'])
-        chest.append({'chest_id': chest_id, 'item_no': menu['Item1'], 'period': period})
+        chest.append({'chest_id': chest_id, 'item_no': menu['Item1'], 'period': period, 'volume': menu['Volume1']})
 
         if menu['Item2'] is not None:
             period = self.calc_period(expire_type, menu['Period2'])
             chest_id = await self.inventory_repository.insert_chest(user_id, menu['Item2'], acquisition, expire_type, period, menu['Volume2'])
-            chest.append({'chest_id': chest_id, 'item_no': menu['Item2'], 'period': period})
+            chest.append({'chest_id': chest_id, 'item_no': menu['Item2'], 'period': period, 'volume': menu['Volume2']})
 
         if menu['Item3'] is not None:
             period = self.calc_period(expire_type, menu['Period3'])
             chest_id = await self.inventory_repository.insert_chest(user_id, menu['Item3'], acquisition, expire_type, period, menu['Volume3'])
-            chest.append({'chest_id': chest_id, 'item_no': menu['Item3'], 'period': period})
+            chest.append({'chest_id': chest_id, 'item_no': menu['Item3'], 'period': period, 'volume': menu['Volume3']})
 
         if menu['Item4'] is not None:
             period = self.calc_period(expire_type, menu['Period4'])
             chest_id = await self.inventory_repository.insert_chest(user_id, menu['Item4'], acquisition, expire_type, period, menu['Volume4'])
-            chest.append({'chest_id': chest_id, 'item_no': menu['Item4'], 'period': period})
+            chest.append({'chest_id': chest_id, 'item_no': menu['Item4'], 'period': period, 'volume': menu['Volume4']})
 
         if menu['Item5'] is not None:
             period = self.calc_period(expire_type, menu['Period5'])
             chest_id = await self.inventory_repository.insert_chest(user_id, menu['Item5'], acquisition, expire_type, period, menu['Volume5'])
-            chest.append({'chest_id': chest_id, 'item_no': menu['Item5'], 'period': period})
+            chest.append({'chest_id': chest_id, 'item_no': menu['Item5'], 'period': period, 'volume': menu['Volume5']})
 
         return chest
 

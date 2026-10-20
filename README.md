@@ -38,12 +38,17 @@ aqui: há muitos tutoriais disso na internet. Este repositório **não** distrib
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
-python init_db.py
+python init_db.py WCS1
 ```
 
-O `init_db.py` cria só as tabelas que faltam e importa os dados iniciais (itens, loja e contas de teste) só em
-tabelas novas. Em tabelas que já existem, acrescenta as colunas e os índices (`INDEX`/`UNIQUE`) que faltam: rode de
-novo depois de atualizar o servidor. Um `UNIQUE` com dados repetidos não é criado e o script avisa qual. Para outro banco, troque `database.uri` no `config.yml` antes:
+O `init_db.py` pede a versão do banco: `TH`, `WCS1` ou `WCS2` (a mesma do `phase` dos game servers). Os seeds são
+encadeados: `TH` importa `db/gbwc.sql` (itens, loja e contas de teste); `WCS1` aplica antes o do TH e depois
+`db/seed/WCS1.sql`; `WCS2` aplica TH, WCS1 e depois `db/seed/WCS2.sql` (encantamento) e converte as patentes para a
+escada do S2. O banco guarda a versão (tabela `DbVersion`): rodar de novo só aplica os passos que faltam, e
+`python init_db.py WCS2` num banco WCS1 leva ele para o S2 (só para a frente; faça backup). Banco antigo, sem
+`DbVersion`, é tratado como WCS1. Cada seed só entra em tabela vazia. Em tabelas que já existem, acrescenta as colunas
+e os índices (`INDEX`/`UNIQUE`) que faltam: rode de novo depois de atualizar o servidor. O game server avisa ao subir se
+o `phase` dele não bate com a versão do banco. Detalhes: [Criação do banco](docs/Database/Cria%C3%A7%C3%A3o%20do%20banco.md). Um `UNIQUE` com dados repetidos não é criado e o script avisa qual. Para outro banco, troque `database.uri` no `config.yml` antes:
 
 | Banco | URI |
 |---|---|
@@ -65,7 +70,8 @@ senhas antes de abrir o servidor para outras pessoas.
 | `config.yml` | configuração de broker, game servers, Buddy e banco |
 | `gunbound/` | código: `broker/`, `game/` (protocolo por fase em `game/phase.py`), `buddy/`, `repository/` (SQL) |
 | `db/linked.sql` | esquema das tabelas (estrutura do servidor original + colunas novas) |
-| `db/gbwc.sql` | dados iniciais: itens, loja (`Menu`), níveis de encantamento e contas de teste |
+| `db/gbwc.sql` | seed do TH (base de todas as versões): itens, loja (`Menu`) e contas de teste |
+| `db/seed/WCS1.sql`, `db/seed/WCS2.sql` | seeds do S1 e do S2, aplicados depois do TH (S2: níveis de encantamento) |
 | `data/` | dados de jogo lidos pelo servidor (posições iniciais por mapa) |
 | `docs/` | protocolo, layouts de pacotes e análises dos clientes |
 | `tests/` | testes unitários (`unittest`) |
@@ -81,6 +87,11 @@ senhas antes de abrir o servidor para outras pessoas.
   - `phase`: **a fase do cliente que esse servidor atende** (veja abaixo).
   - `version_min` / `version_max`: faixa de versão aceita no login.
   - `gold_factor`, `score_factor`, `grade_min`, `grade_max`, `users_max`, `features` (efeitos e avatar).
+  - `grade_min`/`grade_max` também recusam o login fora da faixa (0x1012 RTC 0x5001), menos Authority ≥ 98. A recusa não derruba uma sessão já aberta do mesmo usuário.
+  - chaves do `Setting.txt` original, com os padrões dele: `stage_event` (byte alto do settings de toda sala criada),
+    `idle_room` (sala ociosa: `close`, `warn`, `close_msg`, `warn_msg`), `quick_start` (`man`, `option`),
+    `anu` (limites do resultado, `game_play.py`).
+- `anticheat` (global, no topo; um `anticheat` dentro do game server sobrepõe): `provider` e `mode` off/observe/capture/required ([docs/gameguard-protocol.md](docs/gameguard-protocol.md)).
   - chaves de cada versão (Grand Prix, jackpot, tutorial...): veja o README da versão.
 - `buddy_server`: porta do Buddy (`8352`, TCP e UDP) e `notice` opcional (aviso depois do login). Nos clientes, `BuddyIP`/`BuddyPort` no `GunBound.ini`.
 - `broker.th_port` (opcional): porta extra do broker só para o TH, que lê a lista de servidores com outro layout.
@@ -138,7 +149,7 @@ Testes: `python -m unittest discover -s tests -p "test_*.py"`.
 | `python broker.py` | Sobe o broker (`broker` do config). |
 | `python game.py [arquivo.yml] [índice]` | Sobe um game server; `índice` escolhe o item de `gameservers` (padrão 0). |
 | `python buddy.py` | Sobe o Buddy (amigos), TCP e UDP. |
-| `python init_db.py` | Cria as tabelas que faltam e importa os dados iniciais. |
+| `python init_db.py <TH\|WCS1\|WCS2> [uri]` | Cria o banco da versão (seeds encadeados TH -> WCS1 -> WCS2) ou leva um banco existente até ela. |
 | `python -m tests.smoke_db <uri>` | Testa a conexão com um banco. |
 | `python tools/fake_launcher.py [usuario] [--host] [--port] [--password]` | Imita o NyxLauncher no broker (0x1310 → 0x3000 → 0x4000). Sem `--password`, pede a senha no terminal. |
 | `python tools/give_jackpot_cards.py <usuario> [qtd]` | Dá cartas do Jack Pot Booster Card (S2). O jogador precisa relogar. |
@@ -204,9 +215,10 @@ Fases: T = TH, 1 = WC S1, 2 = WC S2.
 | Opcode | Fases | Status | Notas |
 |---|---|---|---|
 | 0x0000 keep-alive, 0x1000 sessão | T12 | ✅ | |
-| 0x1010 / 0x1011 login | T12 | 🟡 | teste de versão invertido no caminho de senha pura (v440) |
+| 0x1010 / 0x1011 login | T12 | ✅ | senha nos 20 bytes e versão sempre em block_2+12; recusa por patente/guild (0x5001, 0x5011–0x5013) como o original |
 | 0x1020 user id, 0x1021 nick | T12 | ✅ | |
-| 0x1004, 0x1019, 0x101C | T12 | 🟡 | só silenciados, sem resposta |
+| 0x1015 / 0x1016 / 0x1017 GameGuard, 0x1018 / 0x1019 / 0x101B / 0x101C HackShield | T12 | 🟡 | `anticheat` off/observe/capture (0x1015 fixo, grava o 0x1016, sem 0x1017) com timers por conexão; sem validador real, `required` não sobe ([docs/gameguard-protocol.md](docs/gameguard-protocol.md)) |
+| 0x1004 | T12 | 🟡 | só silenciado: resposta do original sem fonte |
 | S→C 0x101F endereço UDP observado | T12 | ✅ | no UDP de 4 bytes com o token do 0x1012, só se o IP/porta diferir do 0x1010 (NAT) |
 | S→C 0x1050 presente chegou | T12 | ✅ | pelo UDP admin 0xF020 |
 | S→C 0x1040 mordaça no chat | T12 | ✅ | pelo `/silence` de GM (o original não tem gatilho) |
@@ -216,34 +228,37 @@ Fases: T = TH, 1 = WC S1, 2 = WC S2.
 
 | Opcode | Fases | Status | Notas |
 |---|---|---|---|
-| 0x2000 entrar no canal, 0x2010 chat | T12 | ✅ | chat: 2 bytes desconhecidos fixos em 0 |
+| 0x2000 entrar no canal, 0x2010 chat | T12 | ✅ | v584: cor do texto (0x65–0x74) repassada no 0x201F |
 | 0x2020 / 0x2022 monitor de canal (admin) | T12 | ✅ | |
-| 0x2100 / 0x2101 lista de salas | T12 | 🟡 | lista enviada a todo o lobby |
+| 0x2100 / 0x2101 lista de salas | T12 | ✅ | até 12 salas (a quantidade que o cliente pede); 0x21F0–0x21F7 só a quem listou a sala há até 30 s |
 
 ### Salas
 
 | Opcode | Fases | Status | Notas |
 |---|---|---|---|
-| 0x2104 detalhe, 0x2110 entrar, 0x2120 criar | T12 | ✅ | 0x2105: u32 extra fixo em 0 |
-| 0x3100–0x3104 mapa, opção, itens, vagas, título | T12 | ✅ | |
+| 0x2104 detalhe, 0x2110 entrar, 0x2120 criar | T12 | ✅ | 0x2105: u32 extra fixo em 0; sala automática (QuickStart/GP) não entra pelo id; Authority ≥ 98 pula a senha |
+| 0x3100–0x3104 mapa, opção, itens, vagas, título | T12 | 🟡 | settings cru; posições ≥ 3 ou mapa ≥ 20 derrubam a conexão (original). Lado/mapa sem linha na tabela de posições só recusa. Tabelas em `data/`: 2006 no TH (lados A/B), 2007 do WCS1 em diante (4 lados, com Y); o WCS2 soma os mapas 11..16 com posições inventadas (`stage_pos_s2.txt`) |
+| 0x3001 sair da sala | T12 | 🟡 | volta ao canal com 0x2001; fora de sala ou em jogo RTC 0x2009, canal inválido RTC 0x1D, cheio RTC 0x1001 (fica na sala, como o original). Canal -1 volta ao canal atual; no original 0xFFFF escolhe um canal |
+| Sala ociosa | T12 | 🟡 | `idle_room`: fecha com 0x3FFF + texto, aviso 0x5101. Servidores 2006 e 2007 (os dois S1): confere a cada 10 s, só salas aguardando e não cheias (leitura do 2006), e expulsa todos, inclusive GM. O S2 não tem servidor original e usa a mesma regra; que só a criação e o fim de partida zeram o relógio é inferido |
 | 0x3150 expulsar, 0x3200 mobile, 0x3210 time, 0x3230 pronto | T12 | ✅ | |
 
 ### Partida
 
 | Opcode | Fases | Status | Notas |
 |---|---|---|---|
-| 0x3430 iniciar, 0x3232 voltar à sala | T12 | 🟡 | posição inicial sempre do lado A; vidas (Score) sem fonte |
+| 0x3430 iniciar, 0x3232 voltar à sala | T12 | 🟡 | lado do mapa, vidas do Score (n/2+1), mapa aleatório, tanques ocultos (2%) e ordem de turno (bit 7: por patente, mais fraco primeiro, times alternados) como o original; vaga inicial pelo CalcInitialPos do original (EvsW: cada time numa metade; Mix: alternado; senão sorteio) e X/Y pela tabela da fase (veja 0x3100) |
 | 0x4100 morte, 0x4104 ressurreição, 0x4200 fim jewel, 0x4500 túnel | T12 | ✅ | |
-| 0x4412 resultado | T12 | 🟡 | limites de gold/GP por partida próprios |
+| 0x4412 resultado | T12 | 🟡 | u16 n + 18 bytes por jogador; limites `ANU_*` do original (grava `AbnormalUpdate`, acima do DROP descarta). Quem é derrubado (o mestre) tem confiança média no RE |
+| Patentes (job diário) | T12 | 🟡 | RankCalc do BatchGIS.exe de 2004 (veio no pacote "Season 2 server") ([docs/Níveis.md](docs/Níveis.md)); TH e S1 conferidos: mesmos 26 ícones no XFS (v404 = v495) e mesmos GP/percentuais nas fontes da internet. v584: escada de 47 ícones do XFS dele (Brasil 2010), gravada no banco pelo job do servidor WCS2 (GP, e posição para medalhas e coroas); vale para o v548 também. Cada fase declara suas tarefas (`Phase.tasks`) e a regra (`Phase.rank_rule`); `init_db.py WCS2` leva um banco WCS1 para o S2 |
 | 0x4000 queda de jogador | T12 | ✅ | o v584 não envia |
 
 ### Loja, baú e presentes
 
 | Opcode | Fases | Status | Notas |
 |---|---|---|---|
-| 0x6000 baú | T12 | 🟡 | cauda u32 do baú fixa em 0; extras do avatar (10 bytes) em 0 |
+| 0x6000 baú | T12 | ✅ | v584: nível de encantamento e selo (`ChestEnchant`) no baú e no avatar da sala |
 | 0x6020 comprar, 0x6024 consumir, 0x600E salvar avatar | T12 | ✅ | |
-| 0x6028 presente (antigo), 0x600A local do item | T12 | ✅ | o v584 não envia |
+| 0x6028 presente (antigo), 0x600A local do item | T12 | 🟡 | layout do original (chest, Id16, apelido12, mensagem); só itens C/G não recuperados; grava GiftMsg (com a mensagem) e ReceiptGift. `GiftProhibitTime` no futuro ou mensagem > 50 derrubam, como o original. Doar o `super_user_item` tira o power user. ReceiptGift com Item/Expire (colunas do TH em diante, `init_db.py`), tudo numa transação. VIP/Event do original não existem aqui. O v584 não envia |
 | 0x6100 cash, 0x6104 gold | T12 | ✅ | |
 
 ### Opcodes de cada versão
@@ -255,9 +270,21 @@ nova...) estão nos READMEs por versão: [TH](README-TH.md), [S1](README-WCS1.md
 
 | Opcode | Status | Notas |
 |---|---|---|
-| 0x5010 BCM, 0x5100 comandos GM | 🟡 | comandos dos modos 3 e 4 incompletos |
-| 0x5110–0x512C console (status, MOTD, versão, limites, fatores...) | ✅ | |
+| 0x5010 BCM, 0x5100 comandos GM | ✅ | `/startgame` monta o 0x3430 como o cliente v584 (seed + 6 joias no Jewel, 3 blocos no modo 4) |
+| 0x5110–0x512C console (status, MOTD, versão, limites, fatores...) | ✅ | SETVERSION que estreita a faixa derruba todos (inclusive o admin), como o original; SET_ALLOWEDGUILD = u16 n + n × 8 bytes |
 | 0x5000 denúncia | ✅ | o v584 não envia |
+
+### Sem fonte
+
+Itens em que o comportamento do original não foi encontrado (nem no servidor nem nos clientes); ficam com o valor
+mais neutro e um comentário `shortcut:` no código:
+
+- resposta ao 0x1004;
+- validador do GameGuard (CSAuth2) e do HackShield: só com as DLLs do fornecedor (`ggauth`), não usadas;
+- v584 (valores nossos, configuráveis): regra do MVP do 0x4415 (aqui: mais gold base), gold/GP por evento
+  (`result_rewards`), pontos de Rena/desconto por partida (`game_points`), taxas do encantamento 0x7115 e posições dos
+  mapas 11..16; ainda em 0: u32 em +0x1E do 0x2105 e o byte a mais do 0x2132;
+- Patentes do v584: medalhas e coroas pedem GP e posição (top 100/50/10, 3/2/1), como as tabelas BR de 2010-2012 trazem; nenhuma fonte diz se a posição é geral ou do país.
 
 ### Buddy (amigos)
 

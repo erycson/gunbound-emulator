@@ -36,11 +36,13 @@ class ChannelChatRecv(BasePackageRecv):
         # Extrai 12 bytes de cada bloco de 16 bytes, ignorando os 4 primeiros bytes de validação
         blocks = [decrypted[i + 4:i + 16] for i in range(0, len(decrypted), 16)]
         message_buf = BinaryReader(b''.join(blocks))
+        # v584 (0x535e9a): u8 cor antes do tamanho (0 sem item de cor); v440: só u8 tamanho + texto
+        color = message_buf.read_uint8() if phase.is_v584(self.conn) else 0
         length = message_buf.read_uint8()
         message = message_buf.read_string(length)
 
-        await self.conn.channel.broadcast(ChannelChatResp.success(self.conn, message))
-        await forward_to_monitors(self.conn, lambda: ChannelChatResp.success(self.conn, message))
+        await self.conn.channel.broadcast(ChannelChatResp.success(self.conn, message, color))
+        await forward_to_monitors(self.conn, lambda: ChannelChatResp.success(self.conn, message, color))
 
     def log_command(self, conn):
         cmd = ClientPacket.CLI_CHANNEL_CHAT.value
@@ -52,13 +54,13 @@ class ChannelChatResp(BasePackageSend):
         self.buf = buf
 
     @classmethod
-    def success(cls, conn: 'ClientConnection', message: str):
+    def success(cls, conn: 'ClientConnection', message: str, color: int = 0):
         buf = BinaryWriter()
         buf.write_uint16(ServerPacket.SRV_CHANNEL_CHAT)
         command = 0x201F - 0x79CE9F82
         position = conn.channel.get_client_position(conn)
 
-        data = phase.of(conn).chat_body(position, conn.data['profile']['Nickname'], message)
+        data = phase.of(conn).chat_body(position, conn.data['profile']['Nickname'], message, color)
         
         for i in range(0, len(data), 12):
             buf.write_int32(command)
