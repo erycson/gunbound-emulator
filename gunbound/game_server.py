@@ -66,6 +66,9 @@ class GameServer:
             print(f"[db] AVISO: o banco é {row['Phase']} e este servidor é {name} (patentes e seeds de outra versão)")
 
     async def stop(self):
+        helper = getattr(self, '_ggauth50_helper', None)
+        if helper is not None:
+            await helper.close()
         self.task.cancel()
         for t in self.tasks:
             t.cancel()

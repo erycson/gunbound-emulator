@@ -1,0 +1,4 @@
+# Proprietary operator-supplied files never belong in Git.
+*
+!.gitignore
+!README.md

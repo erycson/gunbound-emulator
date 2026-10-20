@@ -5,15 +5,15 @@ não é decisão de configuração, não da versão do cliente. Um `anticheat` d
 provider: none | gameguard | hackshield      mode: off | observe | capture | required
 
 - off: não manda desafio nem responde (comportamento de sempre; os clientes do projeto têm patch NoGG/NoHS).
-- observe: registra cada resposta que chegar (tamanho, sha256 curto, tempo desde o desafio) e nunca responde 0x1017;
-  com validador, também manda desafios e registra o veredito, sem derrubar ninguém.
+- observe: registra cada resposta que chegar; sem validador nunca responde 0x1017. Com validador manda desafios,
+  registra o veredito e só envia 0x1017 após check verdadeiro da pergunta pendente, sem derrubar ninguém.
 - capture (só gameguard): manda uma vez o 0x1015 fixo de `capture_query` (16 bytes já no formato do fio) e grava o
   0x1016 em `capture_out` (JSON por linha) para conferir offline. Não valida, nunca manda 0x1017, nunca derruba.
 - required: exige um validador confirmado (sobe com erro se não houver); resposta inválida, repetida, fora do
   tamanho ou atrasada derruba a conexão, como o servidor 2007 (0x42b9d0 retorna 0 -> closesocket).
 
-Nenhum validador real existe no projeto: o algoritmo CSAuth2 é do fornecedor (ggauth5x.dll) e não foi portado. Fora
-do servidor só existe o codec de transporte (gg-server-emu/tools/csauth2_codec.py, offline). Contrato do validador
+O binding experimental ggauth50 usa um helper Windows x86, somente em observe (docs/ggauth50-binding.md).
+Não está registrado como validador confirmado para required. Contrato do validador
 (servidor 2007, wrappers 0x4425D0/0x442780):
 - pergunta: GetAuthQuery -> cópia interna (objeto+0x18) -> Encrypt só se o 1º DWORD interno != 0 -> 0x4430C0 -> fio;
 - resposta: fio -> 0x443120 (XOR diferente do da pergunta) -> Decrypt só se o 1º DWORD interno != 0 -> CheckAuthAnswer
@@ -32,11 +32,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import itertools
+import inspect
 import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, TYPE_CHECKING
+from typing import Awaitable, Protocol, TYPE_CHECKING
 from gunbound.game.protocol.base import Packet
 if TYPE_CHECKING:
     from gunbound.game.client import ClientConnection
@@ -75,8 +76,8 @@ class Query:
 
 class Validator(Protocol):
     """Uma instância por sessão: guarda o descritor (DLL) escolhido na negociação, como objeto+0x00 no 2007."""
-    def query(self, exchange: Exchange) -> Query: ...
-    def check(self, exchange: Exchange, internal: bytes, answer: bytes) -> bool: ...   # answer = corpo cru do fio
+    def query(self, exchange: Exchange) -> Query | Awaitable[Query]: ...
+    def check(self, exchange: Exchange, internal: bytes, answer: bytes) -> bool | Awaitable[bool]: ...   # answer = corpo cru do fio
 
 
 VALIDATORS: dict[str, type] = {}    # nenhum confirmado; um validador de verdade entra aqui (ex.: ponte para o ggauth)
@@ -106,6 +107,11 @@ def settings(config: dict) -> tuple[str, str]:
         raise ValueError(f"anticheat inválido: provider={provider} mode={mode} (provider {PROVIDERS}, mode {MODES})")
     if provider == 'none':
         mode = 'off'
+    if cfg.get('validator') == 'ggauth50':
+        from gunbound.game.ggauth50 import validate_config
+        validate_config(cfg)
+    elif cfg.get('validator'):
+        raise ValueError('anticheat: unknown validator')
     if mode == 'required' and provider not in VALIDATORS:
         raise ValueError(f"anticheat: mode required com provider {provider} exige um validador confirmado, e não há "
                          f"nenhum (docs/gameguard-protocol.md). Use observe ou off.")
@@ -135,12 +141,17 @@ class AntiCheat:
         self.timers: list[asyncio.TimerHandle] = []
         self.started = 0.0
         self.closed = False
+        self.tasks = set()
+        self.asking = False
 
     @classmethod
     def from_config(cls, conn: 'ClientConnection') -> 'AntiCheat':
         provider, mode = settings(conn.server.config)
         cfg = conn.server.config.get('anticheat') or {}
         validator = VALIDATORS[provider]() if provider in VALIDATORS else None
+        if cfg.get('validator') == 'ggauth50':
+            from gunbound.game.ggauth50 import from_config
+            validator = from_config(conn.server, cfg)
         capture = capture_query(cfg) if mode == 'capture' else None
         return cls(conn, provider, mode, validator, float(cfg.get('requery', REQUERY_SECONDS)),
                    float(cfg.get('deadline', DEADLINE_SECONDS)), capture, str(cfg.get('capture_out', CAPTURE_OUT)))
@@ -170,8 +181,28 @@ class AntiCheat:
     def ask(self) -> None:
         if not self.active or self.validator is None:
             return
-        for ex in PROFILES[self.provider]:
-            self._send(ex, self.validator.query(ex))
+        if self.asking or self.pending:
+            return
+        self.asking = True
+        self._task(self._ask())
+
+    def _task(self, coroutine):
+        task = asyncio.get_running_loop().create_task(coroutine)
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+        return task
+
+    async def _ask(self):
+        try:
+            for ex in PROFILES[self.provider]:
+                result = self.validator.query(ex)
+                query = await result if inspect.isawaitable(result) else result
+                if self.active:
+                    self._send(ex, query)
+        except Exception:
+            await self._reject(None, b'', 'validador_indisponivel')
+        finally:
+            self.asking = False
 
     def _send(self, ex: Exchange, query: Query) -> None:
         if len(query.wire) != ex.challenge_len:
@@ -201,7 +232,12 @@ class AntiCheat:
         if self.validator is None:
             self.log('answer', op, len=len(body), sha=digest(body), dur_ms=took, result='nao_verificado')
             return
-        if not self.validator.check(exchange, asked[0].internal, body):
+        try:
+            result = self.validator.check(exchange, asked[0].internal, body)
+            valid = await result if inspect.isawaitable(result) else result
+        except Exception:
+            return await self._reject(op, body, 'validador_indisponivel', dur_ms=took)
+        if not valid:
             return await self._reject(op, body, 'invalido', dur_ms=took)
         self.log('answer', op, len=len(body), sha=digest(body), dur_ms=took, result='ok')
         if self.mode == 'required':
@@ -259,3 +295,17 @@ class AntiCheat:
         if self.mode != 'off':
             self.log('close', pendentes=len(self.pending))
         self.closed = True
+        current = asyncio.current_task()
+        for task in tuple(self.tasks):
+            if task is not current:
+                task.cancel()
+        close = getattr(self.validator, 'close', None)
+        if close is not None:
+            async def cleanup():
+                try:
+                    result = close()
+                    if inspect.isawaitable(result):
+                        await result
+                except Exception:
+                    self.log('validator_close', result='indisponivel')
+            self._task(cleanup())

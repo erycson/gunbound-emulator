@@ -1,0 +1,26 @@
+{
+  "date": "2026-10-20",
+  "method": "original DLL in isolated Windows x86 helper; no live game server restart",
+  "dll_sha256": "a8d81e5276ac502cfa41ffd5142deeaaca102537409d141bf1e628c2daee5257",
+  "original_server_sha256": "7e954d735e380ddc757d1ab20bd4b9341b5bfb55ceb8a9c5dd60dbabb1052e57",
+  "unit_and_integration_tests": {"count": 34, "passed": true},
+  "helper_native_smoke": {
+    "two_initial_queries_match": true,
+    "session_b_initial_accepted": true,
+    "session_a_initial_accepted": true,
+    "session_a_replay_rejected": true,
+    "following_query_generated": true,
+    "wire_mutation_rejected": true,
+    "native_300_second_timer_observed": true,
+    "process_exit_code": 0
+  },
+  "native_vector_checks": [
+    {"case": "initial", "original": 0, "internal_last_byte_mutated": 14, "wire_last_byte_mutated": 12},
+    {"case": "index346", "original": 0, "internal_last_byte_mutated": 0, "wire_last_byte_mutated": 13}
+  ],
+  "explicit_update_timer_return": 0,
+  "required_qualified": false,
+  "end_to_end_client_login_tested": false,
+  "all_501_cases_covered": false,
+  "proprietary_binaries_in_commit": false
+}
