@@ -42,6 +42,9 @@ logs/
 # Testes e caches
 .pytest_cache/
 
+# Configuração local (o modelo é config.example.yml)
+config.yml
+
 # Debug local (útil para análise, não vai para o repositório)
 dec.py
 db/gbwc 2.sql

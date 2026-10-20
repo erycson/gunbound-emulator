@@ -1,3 +1,4 @@
+# Exemplo: copie para config.yml (que fica fora do Git) e ajuste caminhos, IPs e portas.
 crypto:
   broker_key: "A92753041BFCACE65B2338346846038C"
   game_key:   "FFB3B3BEAE97AD83B9610E23A43C2EB0"
@@ -8,11 +9,16 @@ global:
 
 anticheat: # global, vale para todos os game servers (um `anticheat:` dentro do game server sobrepõe); docs/gameguard-protocol.md
   provider: none  # none | gameguard (v495, v548, v584) | hackshield (TH v404, v440)
-  mode: "off"     # off | observe (só registra) | capture (só gameguard: 0x1015 fixo, grava o 0x1016) | required (exige validador confirmado; hoje não há nenhum)
-  # requery: 200   # s até a próxima pergunta depois de uma resposta boa; só corre com mode diferente de off
-  # deadline: 600  # s para responder antes de derrubar; só no mode required
-  # capture_query: ../gg-server-emu/capture-query-protocol50.bin # capture: 16 bytes do 0x1015 já no formato do fio (perfil ggauth50)
-  # capture_out: gg-capture.jsonl                                  # capture: um par pergunta/resposta (hex) por linha, sem usuário
+  mode: "off"     # off | observe | capture | required
+  # validator: ggauth
+  requery: 200    # s até a próxima pergunta depois de uma resposta boa
+  deadline: 600   # s para responder antes de derrubar (só required)
+  ggauth:         # usado com validator: ggauth (docs/ggauth50-binding.md)
+    python_x86: C:\caminho\para\python-x86\python.exe
+    dll: vendor/gameguard/ggauth50.dll
+    original_server: C:\caminho\para\GunBoundServ3.exe
+    minimum_version: 2009010101
+    timeout: 5
 
 database:
   # Exemplos:

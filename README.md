@@ -67,7 +67,7 @@ senhas antes de abrir o servidor para outras pessoas.
 |---|---|
 | `broker.py`, `game.py`, `buddy.py` | pontos de entrada dos três servidores |
 | `init_db.py` | cria/atualiza o banco a partir de `db/` |
-| `config.yml` | configuração de broker, game servers, Buddy e banco |
+| `config.example.yml` | modelo da configuração; copie para `config.yml` (fora do Git) e ajuste |
 | `gunbound/` | código: `broker/`, `game/` (protocolo por fase em `game/phase.py`), `buddy/`, `repository/` (SQL) |
 | `db/linked.sql` | esquema das tabelas (estrutura do servidor original + colunas novas) |
 | `db/gbwc.sql` | seed do TH (base de todas as versões): itens, loja (`Menu`) e contas de teste |
@@ -78,6 +78,8 @@ senhas antes de abrir o servidor para outras pessoas.
 | `tools/` | utilitários de linha de comando (veja [Comandos](#comandos)) |
 
 ## Configuração (`config.yml`)
+
+O `config.yml` é local e não vai para o Git. Na primeira vez, copie o modelo: `cp config.example.yml config.yml`.
 
 - `broker`: host/porta do broker (padrão `8372`, a porta que o cliente procura).
 - `gameservers`: lista de game servers. Cada item vira uma linha na lista de servidores do cliente.
@@ -122,7 +124,7 @@ gameservers:
 ```
 
 Para atender mais de uma fase ao mesmo tempo, rode um game server por fase, cada um com sua porta.
-O `config.yml` do repositório traz dois servidores de exemplo (índice 0 e 1, o 1 com Grand Prix).
+O `config.example.yml` traz dois servidores de exemplo (índice 0 e 1, o 1 com Grand Prix).
 
 ## Rodando
 
