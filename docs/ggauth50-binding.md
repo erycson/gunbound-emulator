@@ -48,10 +48,10 @@ Required continua bloqueado; off/capture com este binding são recusados.
 anticheat:
   provider: gameguard
   mode: observe
-  validator: ggauth50
+  validator: ggauth
   requery: 200
   deadline: 600
-  ggauth50:
+  ggauth:
     python_x86: 'C:\Python32\python.exe'
     dll: 'vendor/gameguard/ggauth50.dll'
     original_server: 'D:\GBWCProject\server\vendor\gameguard\GunBoundServ3.exe'
@@ -63,6 +63,14 @@ Não houve alteração no config.yml em uso. Não é necessário mudar o registr
 HTTP, hosts ou os arquivos do cliente para preparar o binding.
 
 ## Contrato, estado e falhas
+
+A configuração pública usa `validator: ggauth` e um único bloco `ggauth`,
+independentemente do nome do arquivo escolhido em `dll`. O nome antigo
+`ggauth50` ainda é aceito como alias; não declarar os dois blocos ao mesmo tempo.
+Os módulos internos continuam com o sufixo 50 porque somente esse perfil foi
+qualificado. Apontar `dll` para 51/52 não habilita suporte automaticamente:
+o hash/protocolo não suportado é recusado. Novos perfis precisam confirmar ABI,
+estado, negociação e transforms; não exigirão um bloco de configuração por versão.
 
 IPC sem porta TCP: pipes herdados stdin/stdout, JSON UTF-8 com prefixo uint32
 little-endian e limite 4096 bytes. Diagnósticos não recebem corpos de auth.

@@ -271,6 +271,19 @@ class BridgeTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HelperError):
             helper._validate_hello(dict(contract=1))
 
+    def test_generic_config_and_legacy_alias(self):
+        from gunbound.game.anticheat import settings
+        options=dict(python_x86='py32.exe',dll='vendor/gameguard/ggauth50.dll',
+                     original_server='server.exe',minimum_version=2003010101)
+        canonical=dict(provider='gameguard',mode='observe',validator='ggauth',ggauth=options)
+        self.assertEqual(validate_config(canonical),options)
+        self.assertEqual(settings({'anticheat':canonical}),('gameguard','observe'))
+        legacy=dict(provider='gameguard',mode='observe',validator='ggauth50',ggauth50=options)
+        self.assertEqual(validate_config(legacy),options)
+        self.assertEqual(settings({'anticheat':legacy}),('gameguard','observe'))
+        with self.assertRaisesRegex(ValueError,'only anticheat.ggauth'):
+            validate_config(dict(canonical,ggauth50=options))
+
 
 class IntegrationTest(unittest.IsolatedAsyncioTestCase):
     async def test_startup_requires_local_dll_before_starting_worker(self):
@@ -311,7 +324,7 @@ class IntegrationTest(unittest.IsolatedAsyncioTestCase):
     async def test_gameserver_does_not_open_listener_when_worker_fails(self):
         from gunbound.game_server import GameServer
         cfg=dict(phase='TEST',name='test',anticheat=dict(provider='gameguard',mode='observe',
-                 validator='ggauth50',ggauth50=dict(python_x86='py32.exe',original_server='server.exe',
+                 validator='ggauth',ggauth=dict(python_x86='py32.exe',original_server='server.exe',
                  minimum_version=2003010101)))
         server=SimpleNamespace(config=cfg,check_db_version=AsyncMock(),
                  server_repository=SimpleNamespace(delete_all_users=AsyncMock()),tcp_listener=AsyncMock())

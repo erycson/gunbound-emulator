@@ -107,7 +107,7 @@ def settings(config: dict) -> tuple[str, str]:
         raise ValueError(f"anticheat inválido: provider={provider} mode={mode} (provider {PROVIDERS}, mode {MODES})")
     if provider == 'none':
         mode = 'off'
-    if cfg.get('validator') == 'ggauth50':
+    if cfg.get('validator') in ('ggauth', 'ggauth50'):
         from gunbound.game.ggauth50 import validate_config
         validate_config(cfg)
     elif cfg.get('validator'):
@@ -149,7 +149,7 @@ class AntiCheat:
         provider, mode = settings(conn.server.config)
         cfg = conn.server.config.get('anticheat') or {}
         validator = VALIDATORS[provider]() if provider in VALIDATORS else None
-        if cfg.get('validator') == 'ggauth50':
+        if cfg.get('validator') in ('ggauth', 'ggauth50'):
             from gunbound.game.ggauth50 import from_config
             validator = from_config(conn.server, cfg)
         capture = capture_query(cfg) if mode == 'capture' else None

@@ -24,14 +24,16 @@ class HelperError(RuntimeError):
 
 
 def validate_config(cfg):
-    options = cfg.get('ggauth50') or {}
+    if 'ggauth' in cfg and 'ggauth50' in cfg:
+        raise ValueError('use only anticheat.ggauth; do not also specify the legacy ggauth50 block')
+    options = cfg.get('ggauth', cfg.get('ggauth50')) or {}
     if not isinstance(options, dict):
-        raise ValueError('anticheat.ggauth50 must be a mapping')
+        raise ValueError('anticheat.ggauth must be a mapping')
     for key in ('python_x86', 'original_server', 'minimum_version'):
         if not options.get(key):
-            raise ValueError(f'anticheat.ggauth50 requires {key}')
+            raise ValueError(f'anticheat.ggauth requires {key}')
     if cfg.get('provider') != 'gameguard' or cfg.get('mode') != 'observe':
-        raise ValueError('experimental ggauth50 binding supports gameguard observe only; required is unqualified')
+        raise ValueError('experimental ggauth binding supports gameguard observe only; required is unqualified')
     minimum = options['minimum_version']
     if isinstance(minimum, bool) or not isinstance(minimum, int) or not 2003010101 <= minimum <= 2010123199:
         raise ValueError('ggauth50 minimum_version must be an explicit supported integer')

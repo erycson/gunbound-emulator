@@ -42,7 +42,7 @@ class GameServer:
         p.check(self.config)
         await self.check_db_version(self.config.get('phase') or phase.DEFAULT)
         provider, mode = anticheat.settings(self.config)  # required sem validador confirmado: não sobe
-        if (self.config.get('anticheat') or {}).get('validator') == 'ggauth50':
+        if (self.config.get('anticheat') or {}).get('validator') in ('ggauth', 'ggauth50'):
             from gunbound.game.ggauth50 import initialize
             await initialize(self, self.config['anticheat'])
         print(f"[anticheat] {self.config['name']}: provider={provider} mode={mode}")
