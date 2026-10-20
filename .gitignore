@@ -46,3 +46,6 @@ logs/
 dec.py
 db/gbwc 2.sql
 db/users.sql
+
+# Saída do anticheat mode capture (pares pergunta/resposta do GameGuard)
+gg-capture*.jsonl
