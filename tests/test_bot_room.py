@@ -357,6 +357,24 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         b.conn.tail = bytes([20]) + struct.pack('<H', 0)  # vento novo
         self.assertLess(abs(match.aim_at(self.room, b, rng)[2][0] - 700), 20)
 
+    def test_picks_easiest_enemy(self):
+        """O inimigo mais perto está dentro de uma caixa: o bot mira no de longe, que o tiro alcança."""
+        from types import SimpleNamespace as NS
+        t = self.flat(w=1400)
+        for y in range(350, 500):  # caixa fechada em volta do x 600
+            for x in range(520, 680):
+                t.px[y * t.w + x] = int(y < 356 or x < 526 or x >= 674)
+        bot = NS(slot=0, team=0, alive=True,
+                 conn=NS(terrain=t, seen={}, tail=b'', layout='WCS2', shots=0, last=None, n=1.0,
+                         server=NS(config=CONFIG)))
+        near, far = (NS(slot=i, team=1, alive=True) for i in (1, 2))
+        room = NS(players={0: bot, 1: near, 2: far}, is_team_mode=lambda: True,
+                  game=NS(tanks={}, spawns={0: (300, 0), 1: (600, 400), 2: (1100, 0)}))
+        rng = mock.Mock(random=mock.Mock(return_value=0.0))
+        hit = match.aim_at(room, bot, rng)[2]
+        self.assertLess(abs(hit[0] - 1100), 20)
+        self.assertEqual(bot.conn.last[0], far.slot)
+
     async def test_ss_goes_as_c409(self):
         with mock.patch.object(match, 'SS_EVERY', 1):
             sent, _ = await self.own_shot(0.0, shot=False)

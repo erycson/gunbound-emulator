@@ -36,6 +36,7 @@ AIM_WAIT = 1.0      # 0x8006 -> 0xc400, como os humanos
 SHOOTS = {'WCS2'}   # tiro estudado no v584; nas outras fases o bot passa a vez
 SHOT2 = 0.4         # chance do tiro 2 quando ele voa como o 1 (profiles: special=False)
 SS_EVERY = 5        # shortcut: o SS fica pronto a cada 5 tiros do bot; o do cliente enche pelo dano, falta mapear
+TIEBREAK = 0.02     # px de erro da mira que valem 1 px de distância na escolha do alvo
 REPEAT = 5          # px: o último tiro que acertou se repete se nem o bot nem o alvo andaram mais que isso
 V584_POWER = 5      # força do 0xc400 do v584 = 5x a do antigo (tiros do admin, até 2200); aim.py usa a escala antiga
 DIES_NOW = 0x10     # 0xc304: com o bit, quem recebe tira o tanque na hora (0x4df66b, y = 10000); o dono que se vê morto
@@ -174,9 +175,10 @@ def pick_kind(conn, tank: int, rng=random):
 
 
 def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None, object] | None:
-    """(ângulo, força, impacto, tiro) no inimigo mais perto; erra a força pela chance de acerto (gunbound/bot/skill.py).
-    Se o último tiro acertou e ninguém andou, repete: com o mesmo vento, o mesmo ângulo e a força 1..2% diferente; com
-    outro vento, a mira nova, sem sortear erro."""
+    """(ângulo, força, impacto, tiro) no inimigo mais fácil: simula o melhor tiro em cada um e fica com o menor erro
+    (a distância só desempata); erra a força pela chance de acerto (gunbound/bot/skill.py).
+    Se o último tiro acertou e ninguém andou, repete no mesmo alvo: com o mesmo vento, o mesmo ângulo e a força 1..2%
+    diferente; com outro vento, a mira nova, sem sortear erro."""
     conn, t = bot.conn, getattr(bot.conn, 'terrain', None)
     if t is None:
         return None
@@ -185,22 +187,26 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None, obj
     enemies = [p for p in others if p.team != bot.team or not room.is_team_mode()]
     if not enemies:
         return None
-    target = min(enemies, key=lambda p: math.dist(me, place(room, bot, p.slot)))
-    tx, ty = place(room, bot, target.slot)
     tank = room.game.tanks.get(bot.slot, (0, 0))[0]
     gravity, w = aim.GRAVITY.get(tank, 98), wind(conn)
     bodies = [(x, y - aim.BODY // 2) for x, y in (place(room, bot, p.slot) for p in others)]
     friends = [me] + [place(room, bot, p.slot) for p in others if p not in enemies]
     kind = pick_kind(conn, tank, rng)
     last = getattr(conn, 'last', None)
-    steady = (last is not None and last[0] == target.slot and math.dist(last[1], me) <= REPEAT
-              and math.dist(last[2], (tx, ty)) <= REPEAT)
+    target = next((p for p in enemies if last is not None and last[0] == p.slot and math.dist(last[1], me) <= REPEAT
+                   and math.dist(last[2], place(room, bot, p.slot)) <= REPEAT), None)
+    steady = target is not None
     if steady and last[3] == w:
         angle, power = last[4], last[5] * (1 + rng.choice((-1, 1)) * rng.uniform(0.01, 0.02))
         power = max(aim.POWER[0], min(aim.POWER[1], round(power)))
         hit = aim.fly(t, *me, angle, power, gravity, w, bodies)
     else:
-        angle, power, hit, _ = aim.best_shot(t, me, (tx, ty), gravity, w, bodies, friends[1:])
+        plans = {p.slot: aim.best_shot(t, me, place(room, bot, p.slot), gravity, w, bodies, friends[1:])
+                 for p in ([target] if steady else enemies)}
+        target = target or min(enemies, key=lambda p: plans[p.slot][3]
+                               + TIEBREAK * math.dist(me, place(room, bot, p.slot)))
+        angle, power, hit, _ = plans[target.slot]
+    tx, ty = place(room, bot, target.slot)
     situation = skill.ShotSituation(angle=angle if angle <= 90 else 180 - angle, distance=abs(tx - me[0]),
                                     max_distance=t.w, wind=w[0] / 26, ss=kind == 'ss')
     shot = profiles.shot(conn.layout, tank, kind)
