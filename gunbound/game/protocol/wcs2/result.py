@@ -11,8 +11,9 @@ Resultado da partida no v584. Layouts lidos do GunBound.gme (VA).
 
 Valor de cada evento: regra do servidor (o cliente não tem a tabela). Chave de config `result_rewards`, com os
 padrões em DEFAULT_REWARDS: {evento: [gold, gp]}.
-MVP (u8 final, < 9 destaca o slot na tela, 0x560670): sem fonte da regra do original; aqui é quem fez mais gold base
-(desempate: mais GP), só se alguém fez gold > 0. `mvp: false` no config volta a 0xFF (nenhum).
+MVP (u8 final): o mestre repassa no P2P 0xc30c (0x501a00) e a tela só desenha o painel do MVP (apelido, score, kill,
+death, foto) com slot 0..8 (0x56064a); com 0xFF fica a moldura branca vazia. Sem fonte da regra do original: aqui é
+quem fez mais gold base (desempate: mais GP), mesmo negativo. `mvp: false` no config volta a 0xFF (nenhum).
 Pontos por partida (Rena/desconto, sem fonte no jogo): config `game_points`, padrão DEFAULT_GAME_POINTS, para cada
 jogador com registro no 0x4412.
 """
@@ -40,8 +41,7 @@ def mvp(rows: list[tuple], config) -> int:
     """rows como no reward_packet; slot do MVP ou NO_MVP."""
     if config.get('mvp') is False or not rows:
         return NO_MVP
-    slot, gold, _, gp, _ = max(rows, key=lambda r: (r[1], r[3]))
-    return slot if gold > 0 else NO_MVP
+    return max(rows, key=lambda r: (r[1], r[3]))[0]
 
 
 def parse(body, stage: bool = False) -> list[dict]:

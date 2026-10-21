@@ -23,6 +23,12 @@ class ResultTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.reward(rows[0], cfg), (100 + 50 + 100, 1 + 1 + 2))
         self.assertEqual(result.reward(rows[1], cfg), (-50 + 30, -1))
 
+    def test_mvp_even_when_everyone_lost_gold(self):
+        # 0xFF deixava o painel do MVP vazio (moldura branca) no v584
+        self.assertEqual(result.mvp([(0, -46, 0, -3, 0), (1, -80, 0, -5, 0)], {}), 0)
+        self.assertEqual(result.mvp([(0, 10, 0, 1, 0), (1, 10, 0, 2, 0)], {}), 1)
+        self.assertEqual(result.mvp([(0, 10, 0, 1, 0)], {'mvp': False}), result.NO_MVP)
+
     async def test_handler_sends_4415_then_4413(self):
         a, b = FakeConn('a'), FakeConn('b')
         a.server.config = {'phase': 'WCS2', 'gold_factor': 200, 'score_factor': 100}
