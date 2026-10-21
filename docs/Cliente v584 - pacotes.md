@@ -126,6 +126,7 @@ Os offsets são em bytes, contados a partir do início do corpo (depois do cabe�
 | 0x3020 / 0x3400 / 0x4102 | S→C | igual no início | mesmos primeiros campos (slot, u32). O corpo cifrado é lido em outras funções: [INVESTIGAR] |
 | 0x6021 / 0x6009 / 0x6031 loja | S→C | [INVESTIGAR] | no v584 a leitura saiu da tela da loja (vai para diálogos/funções auxiliares); não comparei |
 | 0x6001 baú | S→C | **MUDOU** | v584: `Recovered` + u16 nível de encantamento + u32 (o v548 lê só o `Recovered`) |
+| 0x1032 cash | S→C | cifrado, u32 em +0 | o cliente grava o cash (`0x4102e6` → G+0x1b824); mandado depois do 0x1031 no login. Sem ele a loja abre com 0 até o 0x6101 |
 
 Onde cada layout foi lido (feito na fase `WCS2`; campos sem significado conhecido vão em 0):
 

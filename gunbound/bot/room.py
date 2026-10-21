@@ -1,14 +1,18 @@
 """
 Bot na sala: um jogador sem socket (BotConn) num slot da sala, sempre pronto. Não existe no banco.
 Comandos (texto do 0x5100, para o mestre da sala; docs/Bots.md):
-  /bot add [patente] [mobile]   sem patente: equilibra os times (ou a média da sala no Solo); mobile só GM com gm_mobile
+  /bot add [patente|auto] [mobile|auto]   sem patente (ou auto): equilibra os times (ou a média da sala no Solo);
+                                          mobile só GM com gm_mobile; auto = aleatório
   /bot remove [nome|all]        sem nome: o último que entrou
 Config do game server: bots: {enabled, gm_mobile, max, reward, skill: {...}}.
 """
 from __future__ import annotations
+import asyncio
 import itertools
 import random
 import re
+import struct
+from Crypto.Cipher import AES
 from gunbound.bot import profiles, skill
 from gunbound.game import phase, room_packets as rp
 from gunbound.game.protocol.enums import ServerPacket
@@ -17,6 +21,8 @@ _ids = itertools.count(1 << 32)  # fora da faixa dos ClientConnection (id(self) 
 SYLLABLES = ('ka', 'ro', 'mi', 'zu', 'te', 'na', 'lo', 'vi', 'ga', 're', 'xo', 'bu', 'ny', 'da', 'ki', 'po', 'se', 'ta')
 CASH_GOLD = 100     # 1 cash vale isso em gold na hora de medir o quanto o equipamento é "caro"
 REWARD = 0.0        # fator do gold/GP de quem joga com bot (0 = nada, contra farm)
+SUFFIX = '[BOT]'    # no apelido (12 bytes no fio), para ninguém confundir com gente
+AUTO = ('auto', 'random')
 
 
 def cfg(server_config) -> dict:
@@ -39,6 +45,7 @@ class BotConn:
 
     def __init__(self, server, nick: str, gender: int, game: dict, avatar: list[int], n: float):
         self.id, self.server, self.room, self.n = next(_ids), server, None, n
+        self.seq: dict[int, int] = {}  # seq do frame P2P por slot de destino
         self.addr = f"bot:{nick}"
         self.data = {'profile': {'Id': None, 'Nickname': nick, 'Gender': gender, 'Authority': 0},
                      'game': game, 'avatar': avatar}
@@ -51,13 +58,51 @@ class BotConn:
 
 
 def bot_name(taken: set[str], rng=random) -> str:
+    base = 12 - len(SUFFIX)
     for _ in range(50):
         name = ''.join(rng.choice(SYLLABLES) for _ in range(rng.randint(2, 3))).capitalize()
         if rng.random() < 0.4:
             name += str(rng.randint(1, 99))
+        name = name[:base] + SUFFIX
         if name.lower() not in taken:
-            return name[:12]
-    return f"Bot{rng.randint(100, 999)}"
+            return name
+    return f"Bot{rng.randint(100, 999)}{SUFFIX}"
+
+
+# P2P da partida pelo túnel 0x4501 (docs/Bots.md): frame = u16 hdr (0x8000 dado | tamanho), u8 seq, u8 soma do cifrado,
+# AES-128-ECB(u16 tipo + corpo, zeros até 16). Chave = u16 índice do servidor no broker + "comsik" + u16 sala + cauda.
+TAIL = bytes.fromhex('d222eafaee3a')
+LOAD_STEP, LOAD_DONE = 0x8201, 0x82FF  # progresso (u8 slot, u8 etapa 1..3) e carregou: captura v584 de 2 clientes
+
+
+def p2p_frame(key: bytes, seq: int, kind: int, body: bytes) -> bytes:
+    plain = struct.pack('<H', kind) + body
+    cipher = AES.new(key, AES.MODE_ECB).encrypt(plain.ljust(-(-len(plain) // 16) * 16, b'\x00'))
+    return struct.pack('<HBB', 0x8000 | (4 + len(cipher)), seq & 0xFF, sum(cipher) & 0xFF) + cipher
+
+
+async def p2p_send(room, bot_player, kind: int, body: bytes) -> None:
+    key = struct.pack('<H', bot_player.conn.server.index) + b'comsik' + struct.pack('<H', room.id) + TAIL
+    for p in list(room.players.values()):
+        if is_bot(p.conn):
+            continue
+        seq = bot_player.conn.seq.get(p.slot, 0)
+        bot_player.conn.seq[p.slot] = seq + 1
+        await p.conn.on_send(rp.tunnel(bot_player.slot, p2p_frame(key, seq, kind, body)))
+
+
+async def load(room, delay: float = 0.3) -> None:
+    """Depois do 0x3432: cada bot avisa as 3 etapas do carregamento e o fim, como um cliente (senão a tela trava em 0%).
+    shortcut: só o carregamento; o turno (0xc302/0xc412) ainda não existe e a partida trava no 1º fim de turno."""
+    bots = [p for p in room.players.values() if is_bot(p.conn)]
+    for p in bots:
+        p.conn.seq.clear()
+    for step in (1, 2, 3):
+        await asyncio.sleep(delay)
+        for p in bots:
+            await p2p_send(room, p, LOAD_STEP, bytes([p.slot, step]).ljust(14, b'\x00'))
+    for p in bots:
+        await p2p_send(room, p, LOAD_DONE, bytes(14))
 
 
 def pick_avatar(slots: list[list[tuple[int, int]]], n: float, rng=random) -> list[int]:
@@ -138,7 +183,8 @@ async def remove(room, who: str) -> str:
     if who.lower() == 'all':
         targets = bots
     elif who:
-        targets = [p for p in bots if p.conn.data['profile']['Nickname'].lower() == who.lower()]
+        names = (who.lower(), (who + SUFFIX).lower())
+        targets = [p for p in bots if p.conn.data['profile']['Nickname'].lower() in names]
     else:
         targets = bots[-1:]
     for p in targets:
@@ -157,14 +203,18 @@ async def command(conn, text: str, inventory_repository) -> str:
     if sub == 'remove':
         return await remove(room, ' '.join(args))
     if sub != 'add':
-        return "BOT>> Use /bot add [patente] [mobile] ou /bot remove [nome|all]."
+        return "BOT>> Use /bot add [patente|auto] [mobile|auto] ou /bot remove [nome|all]."
     layout = type(phase.of(conn)).__name__
     grade = tank = None
-    if args and re.fullmatch(r'-?\d+', args[0]):
+    if args and args[0].lower() in AUTO:
+        args.pop(0)
+    elif args and re.fullmatch(r'-?\d+', args[0]):
         low, high, _ = skill.GRADE_SCALE[layout]
         grade = int(args.pop(0))
         if not min(low, high) <= grade <= max(low, high):
             return f"BOT>> Patente de {min(low, high)} a {max(low, high)} nesta versão."
+    if args and ' '.join(args).lower() in AUTO:
+        args = []
     if args:
         from gunbound.game.protocol.gm_commands import is_gm
         if not (cfg(conn.server.config).get('gm_mobile') and is_gm(conn)):

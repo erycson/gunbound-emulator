@@ -65,7 +65,7 @@ class ItemGiftConfirmRecv(BasePackageRecv):
 
             await self.inventory_repository.update_giftmsg_status(giftmsg['No'], user_id, giftitem['Sender'], GiftMsgType.Denied)
             if acquisition == AcquisitionType.Cash:
-                await self.inventory_repository.insert_buy_info(self.config['product_version'], giftmsg['MenuId'], price, 0, acquisition)
+                await self.inventory_repository.insert_buy_info(self.conn.server.config['product_version'], giftmsg['MenuId'], price, 0, acquisition)
                 await self.inventory_repository.update_cash(giftitem['Sender'], price)  # o original devolve ao remetente (GiftItem.Sender)
             elif acquisition == AcquisitionType.Gold:
                 await self.inventory_repository.update_money(giftitem['Sender'], price)

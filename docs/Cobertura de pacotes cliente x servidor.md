@@ -67,7 +67,8 @@ Escolhas do emulador, sem fonte: vidas por jogador no Score (`SCORE_LIVES_PER_PL
 | 0x1020 | C→S | USER_ID | ✅ | |
 | 0x1022 | S→C | USER_NICK (resposta) | ✅ | resposta ao 0x1021 (`services.py`) |
 | 0x1031 | S→C | ? | ✅ só WCS2 | RTC 0 depois do 0x1012: o v584 só pede o canal depois dele |
-| 0x1032/0x1033 | S→C | ? (aviso/kick/desconexão?) | ⛔ | tratados no dispatch |
+| 0x1032 | S→C | cash (u32, cifrado; v584 `0x4102e6`) | ✅ só v584 | no login, depois do 0x1031 |
+| 0x1033 | S→C | ? | ⛔ | tratado no dispatch |
 | 0x1090 | C→S | CLIENT_DATA | ✅ | resposta 0x1091 |
 | 0x0000 | C→S | KEEPALIVE | ✅ | sem resposta |
 

@@ -99,7 +99,7 @@ class ItemGiftBuyRecv(BasePackageRecv):
                     return
             
             if (acquisition == AcquisitionType.Cash):
-                await self.inventory_repository.insert_buy_info(self.config.product_version(), menu_no, price, asset, acquisition)
+                await self.inventory_repository.insert_buy_info(self.conn.server.config['product_version'], menu_no, price, asset, acquisition)
             
             await transaction.commit()
             

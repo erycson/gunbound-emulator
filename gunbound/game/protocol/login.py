@@ -1,5 +1,6 @@
 from __future__ import annotations
 import hashlib
+import struct
 import socket
 from datetime import datetime
 import asyncio
@@ -9,10 +10,10 @@ from dependency_injector.wiring import Provide, inject
 from gunbound.base.protocol import BasePackageFactory, BasePackageRecv, BasePackageSend
 from gunbound.util import BinaryWriter, BinaryReader
 from gunbound.game import phase
-from gunbound.game.protocol.base import Packet
+from gunbound.game.protocol.base import Packet, EncryptedPacket
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket, ServerCode
 if TYPE_CHECKING:
-    from gunbound.repository import UserRepository, RecordsRepository, ServerRepository
+    from gunbound.repository import UserRepository, RecordsRepository, ServerRepository, InventoryRepository
     from gunbound.game.client import ClientConnection
 
 def check_password(crypto, username: str, password: str, session_bytes: bytes, raw_1: bytes, raw_2: bytes):
@@ -62,6 +63,7 @@ class LoginRecv(BasePackageRecv):
         user_repository: 'UserRepository' = Provide['user_repository'],
         server_repository: 'ServerRepository' = Provide['server_repository'],
         records_repository: 'RecordsRepository' = Provide['records_repository'],
+        inventory_repository: 'InventoryRepository' = Provide['inventory_repository'],
     ):
         self.conn = conn
         self.buf = buf
@@ -69,6 +71,7 @@ class LoginRecv(BasePackageRecv):
         self.user_repository = user_repository
         self.server_repository = server_repository
         self.records_repository = records_repository
+        self.inventory_repository = inventory_repository
 
     async def process(self):
         username = self.crypto_manager.decrypt(self.buf.read_bytes(16)).decode('latin-1').rstrip('\x00')
@@ -170,6 +173,11 @@ class LoginRecv(BasePackageRecv):
             await self.conn.on_send(LoginResp.success_record(stage, mobile))
         if (ready := phase.of(self.conn).login_ready) is not None:
             await self.conn.on_send(Packet.new(ready, rtc=0))
+        if phase.is_v584(self.conn):
+            # 0x1032 (cifrado, u32 em +0) é o cash do cliente (v584 0x4102e6 -> G+0x1b824). Sem ele a loja abre com 0 e
+            # recusa comprar com cash até o 0x6100/0x6101 da volta de foco
+            cash = await self.inventory_repository.get_cash(profile['Id']) or 0
+            await self.conn.on_send(EncryptedPacket.build(0x1032, struct.pack('<I', cash)))
         self.conn.is_alive()
         self.conn.last_activity = time.time()
 

@@ -18,6 +18,8 @@ partida. Hoje uma partida com bot começa, mas o bot não age: os clientes devem
 - **Acoplável:** só existe no game server com `bots.enabled`; os comandos se registram quando ligado.
 - **Comandos (para todos):** `/bot add [lvl] [mobile]`, `/bot remove [nome|all]`. Sem `lvl`, o nível é a média da
   sala, e o bot entra no time mais fraco. O kick do mestre também tira o bot.
+- **`auto`:** no lugar do `lvl` ou do mobile, o mesmo que omitir (`/bot add auto auto`). O apelido termina em `[BOT]`
+  (até 7 letras + sufixo, 12 bytes no fio); o `/bot remove` aceita o nome com ou sem o sufixo.
 - **Escolher o mobile:** opção acoplável à parte, só para GM.
 - **Nível por versão:** a patente vira `n` de 0 (pintinho) a 1 (topo): TH/S1 19..-4, S2 1..41 (`skill.normalize`).
 - **Equipamento:** sorteado pela patente e pelo preço do item na `Menu`; nome aleatório. O bot pertence à sala,
@@ -66,6 +68,10 @@ posição, 0x4001/0x4005/0x4006 virar/trocar tiro/mira (só UDP, não passam pel
 0xc302 relatório de fim de turno (todos mandam, o mestre espera todos), 0xc303 novo turno (só o mestre, com o
 vento), 0x4002/0x4003 chat, 0x8201 progresso do carregamento, 0x82FF carregou, 0xc304 morte (mesmo corpo do TCP
 0x4100). O bot precisa mandar 0xc302 a cada fim de turno (senão o mestre trava) e o próprio 0xc412 no turno dele.
+
+**Feito:** o carregamento. Depois do 0x3432 cada bot manda pelo 0x4501, a cada humano, 0x8201 (u8 slot, u8 etapa
+1..3) e 0x82FF, com seq próprio por destino (`bots.load`). Falta o turno: sem o 0xc302 do bot o mestre trava no
+primeiro fim de turno.
 
 ### Captura
 

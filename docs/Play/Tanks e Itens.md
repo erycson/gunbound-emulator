@@ -83,3 +83,21 @@ ocupa 2 bytes (`FF` + código).
 | 6 × 1 | itens (um item de 2 espaços ocupa 2 bytes) |
 | 1 | `0x24` [INCERTO] |
 | 91 | `0x00` [INCERTO] |
+
+## Mobiles bloqueados no S2 (v584)
+
+A janela de escolha (`0x567310`) deixa cinza os botões 0xDA..0xDF conforme bits do **meu** slot em `G+0x27568`.
+O cliente monta esses bits em `G+0x68184` ao ler cada item do baú (0x6001, switch em `0x412155`) e repassa aos outros
+no P2P 0x8400. O servidor não precisa de nada além de mandar o item no baú; o 0x3200 aceita 0x13..0x18 de qualquer um.
+
+| Mobile | Libera com | Item (Menu) |
+|---|---|---|
+| Phoenix (0x13) | bit 0x4 | 204801 Power User |
+| Maya (0x14) | bit 0x8 **ou** 0x10 | 204802 Power User 2, ou 204803 Mobile License |
+| Tiburon (0x16) | bit 0x1 | 204919 (sem nome no Menu) |
+| Frank (0x18) | bit 0x10 | 204803 Mobile License |
+| todos | bit 0x20000 | 205253 (sem Menu) |
+
+Outros itens também ligam bits (0x32020..0x32022, 0x320e6..0x320e8, 0x32168/9, 0x321b6, 0x321c0/1/4/5/7, 0x321f4,
+0x3221d/e, 229640 EventUserItem = 0x2), sem uso na janela de mobiles.
+[INCERTO] sozinho na sala: o slot próprio é zerado ao criar a sala (`0x433f5c`) e só o 0x8400 o preenche.

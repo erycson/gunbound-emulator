@@ -53,6 +53,26 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((b.tank1, b.conn.data['game']['TotalGrade']), (0x05, 5))
         self.assertIn('não existe', await bots.command(gm, '/bot add 5 Phoenix', Inventory()))  # só no S2
 
+    async def test_auto_and_suffix(self):
+        self.assertIn('entrou', await self.cmd('/bot add auto auto'))  # antes: "Mobile 'auto' não existe"
+        [b] = self.bots()
+        nick = b.conn.data['profile']['Nickname']
+        self.assertTrue(nick.endswith(bots.SUFFIX) and len(nick) <= 12)
+        self.assertIn('1 bot', await self.cmd(f'/bot remove {nick[:-len(bots.SUFFIX)]}'))
+
+    async def test_load_frames_decode_like_a_client(self):
+        from tools.tunnel_decode import decode, key
+        await self.cmd('/bot add')
+        [b] = self.bots()
+        self.master.server.index = 0
+        await bots.load(self.room, delay=0)
+        frames = [raw[3:] for raw in self.master.sent if raw[:2] == bytes([0x01, 0x45])]  # 0x4501: cmd, slot, frame
+        got = [decode(f, key(0, self.room.id)) for f in frames]
+        self.assertEqual([(seq, plain[:4]) for _, seq, plain in got],
+                         [(0, bytes([1, 0x82, b.slot, 1])), (1, bytes([1, 0x82, b.slot, 2])),
+                          (2, bytes([1, 0x82, b.slot, 3])), (3, bytes([0xFF, 0x82, 0, 0]))])
+        self.assertTrue(all(f[3] == sum(f[4:]) & 0xFF and f[:2] == b'\x14\x80' for f in frames))
+
     async def test_only_master(self):
         other = player('outro')
         await self.room.join(other)

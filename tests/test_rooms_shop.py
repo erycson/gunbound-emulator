@@ -391,6 +391,35 @@ class ShopTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(conn.sent, [])
         self.assertEqual((AcquisitionType.try_parse_int(0), AcquisitionType.try_parse_int(1)), (AcquisitionType.Gold, AcquisitionType.Cash))
 
+    async def test_buy_with_cash_logs_product_version_of_server(self):
+        # o config injetado é a raiz do YAML (product_version fica em global:); o recibo usa o do game server
+        from gunbound.game.protocol.item_buy import ItemBuyRecv
+        conn = FakeConn('rico')
+        plain = struct.pack('<IIBB', (0x6020 + 0x8631607E) & 0xFFFFFFFF, 0x3000b, 1, 7) + b'\x00' * 6
+        conn.decrypt = lambda data: data
+        log = []
+
+        class Inv:
+            async def get_menu(self, *a):
+                return {'PriceByCashForI': 500, 'Item1': 1, 'Period1': 0, 'Volume1': 1,
+                        'Item2': None, 'Item3': None, 'Item4': None, 'Item5': None}
+            async def get_cash(self, user_id): return 1000
+            async def insert_chest(self, *a): return 9
+            async def insert_receiptbuy(self, *a): pass
+            async def update_cash(self, user_id, delta): return True
+            async def insert_buy_info(self, version, *a): log.append(version)
+
+        class Tx:
+            async def commit(self): pass
+            async def rollback(self): pass
+
+        class Db:
+            async def transaction(self): return Tx()
+
+        await ItemBuyRecv(conn, BinaryReader(plain), db=Db(), config={}, inventory_repository=Inv()).process()
+        self.assertEqual(log, [440])
+        self.assertEqual(conn.cmds(), [0x6021])
+
 
     async def test_item_wear_real_client_body(self):
         from gunbound.game.protocol.misc import AvatarSaveRecv

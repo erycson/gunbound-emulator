@@ -6,6 +6,7 @@ Comandos de GM, como no servidor original (GunBoundServ3.exe FUN_00425a10, via R
 - Extra deste servidor: /startgame (GM inicia a partida sozinho ou com times desbalanceados).
 """
 from __future__ import annotations
+import asyncio
 import os
 import random
 import struct
@@ -226,6 +227,8 @@ async def start_game(room, master: 'ClientConnection', echo: bytes) -> None:
     body = rp.game_start_body(room, echo)
     print(f"[sala {room.id}] 0x3432 em claro: {body.hex(' ').upper()}")
     await room.broadcast(rp.game_start(body))
+    if any(bots.is_bot(p.conn) for p in room.players.values()):
+        room.bot_load = asyncio.create_task(bots.load(room))  # referência: task sem dono pode ser coletada
 
 
 @handler(ClientPacket.CLI_COMMAND)
