@@ -86,7 +86,7 @@ async def react(room, bot, sender, kind: int, body: bytes) -> None:
         await report(room, bot, 0x02)
     elif kind == SYNC and from_master and body[:1] == b'\x02' and conn.whose == bot.slot:
         conn.whose = -1
-        later(room, bot, TURN_WAIT, take_turn(room, bot, game))
+        later(room, bot, 0, take_turn(room, bot, game))
     elif kind == CHECK and from_master and bot.alive:  # todo cliente responde (0x4e0425 não lê o slot)
         await send(room, bot, CHECK_ACK, b'')
     elif kind == KILL and from_master and body[:1] == bytes([bot.slot]) and bot.alive:
@@ -157,7 +157,8 @@ async def take_turn(room, bot, game) -> None:
     if room.game is not game:
         return
     try:
-        path = await asyncio.to_thread(route, room, bot)
+        # o lugar é procurado (até ~3 s com 4 inimigos) enquanto o bot "pensa": o turno não fica mais longo
+        path, _ = await asyncio.gather(asyncio.to_thread(route, room, bot), asyncio.sleep(TURN_WAIT))
         if path:
             await stroll(room, bot, game, path)
         if room.game is not game or not bot.alive:
@@ -235,7 +236,7 @@ def route(room, bot) -> list[tuple[int, int, bool, int]]:
     Anda se daqui o erro passa de MOVE_ERR ou o lugar é de risco (aim.risk: beira, chão fino sobre o vazio); testa a
     cada SPOT_EVERY quadros para os dois lados, até acabar o limite do turno ou bater em parede/subida."""
     t = getattr(bot.conn, 'terrain', None)
-    if t is None or room.game is None:
+    if t is None or room.game is None or not getattr(bot.conn, 'v584', False):  # 0x8005/0x8402 só estudados no v584
         return []
     me = place(room, bot, bot.slot)
     best = spot_error(room, bot, me) + RISK_W * aim.risk(t, *me)

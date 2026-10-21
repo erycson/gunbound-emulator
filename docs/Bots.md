@@ -176,7 +176,7 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
   px de altura (parede), borda do mapa ou fim do limite (~150 px no plano). Cada quadro manda 0x8005 (u16 x, u16 y);
   quem recebe anda até o x com o próprio chão, só na vez daquele jogador e antes do tiro. Ao cair de degrau de mais de
   15 px manda 0x8402 (x, y, lado). Sai do mapa por baixo: morre.
-  O bot anda quando daqui o erro do melhor tiro passa de 36 px (2 corpos) ou o lugar tem risco de cair (parte do
+  Só no v584 (o S1 nem carrega o mapa). O lugar é procurado durante os 3 s em que o bot "pensa". O bot anda quando daqui o erro do melhor tiro passa de 36 px (2 corpos) ou o lugar tem risco de cair (parte do
   tanque sem chão, chão fino sobre o vazio, ou vazio até o fim do mapa a 40 px de um lado): testa a cada 15 quadros
   para os dois lados (erro + 100·risco + 0,2 px por quadro) e vai até o melhor; cair para fora do mapa corta o lado.
   shortcut: tanque 30x30, limite 100 e subida 70 para todos os mobiles (o characterdata tem o de cada um); o vazio

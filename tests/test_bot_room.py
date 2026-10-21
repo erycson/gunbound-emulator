@@ -143,7 +143,8 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
             tail = bytes.fromhex('0954001a8902ffffffff00')
             await match.react(self.room, b, me, match.NEXT, bytes([b.slot]) + struct.pack('<H', 4) + tail)
             await match.react(self.room, b, me, match.SYNC, b'\x02' + bytes(13))
-            await self.settle()
+            for _ in range(5):
+                await self.settle()
         phases = [(body[0], body[1]) for k, body in self.turn_frames()]
         self.assertEqual(phases, [(0x0f, 0), (0x02, 5), (0x0f, 5)])  # início, pronto, passe
         from tools.tunnel_decode import decode, key
@@ -426,7 +427,8 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
 
         def room_with(t, me, enemy):
             bot = NS(slot=0, team=0, alive=True, conn=NS(terrain=t, seen={}, tail=b'', layout='WCS2', shots=0,
-                                                         last=None, n=1.0, server=NS(config=CONFIG), pos=None))
+                                                         last=None, n=1.0, server=NS(config=CONFIG), pos=None,
+                                                         v584=True))
             return bot, NS(players={0: bot, 1: NS(slot=1, team=1, alive=True)}, is_team_mode=lambda: True,
                            game=NS(tanks={}, spawns={0: me, 1: enemy}))
         cave = self.flat(w=1400)
@@ -447,6 +449,9 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(aim.risk(edge, *path[-1][:2]), 0)
         bot, room = room_with(self.flat(w=1400), (300, 500), (1100, 400))
         self.assertEqual(match.route(room, bot), [])  # já tem tiro: fica
+        bot, room = room_with(cave, (300, 500), (1100, 400))
+        bot.conn.v584 = False
+        self.assertEqual(match.route(room, bot), [])  # andar só estudado no v584
 
     async def test_walk_frames_before_shot(self):
         """Um 0x8005 por quadro, 0x8402 no degrau, e o tiro sai de onde ele parou."""
