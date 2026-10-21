@@ -175,6 +175,23 @@ class SetSyncTest(unittest.TestCase):
         self.assertEqual([s['code'] for s in plan['insert']], [0x32002])
         self.assertEqual(len(plan['not_sellable']), 1)
 
+    def test_s2_ex3_own_item_cash_only(self):  # selo do v584 (menu 700124): sem itens, só cash
+        r = bytearray(set_sync.SET_STRIDE)
+        struct.pack_into('<I', r, 0, 700124)
+        r[20:20 + 12] = b'Delay 3 Seal'
+        struct.pack_into('<II', r, 96, 0, 600)
+        data = struct.pack('<I', 1) + bytes(r)
+        self.assertEqual(set_sync.parse_sets(data), [])  # ex1: sem itens fica de fora
+        sets = set_sync.parse_sets(data, own_item=True)
+        self.assertEqual(sets[0]['items'], [(700124, 1)])
+        con = sqlite3.connect(':memory:')
+        price_cols = ', '.join(f'PriceByGoldFor{p} INT, PriceByCashFor{p} INT' for p in item_sync.PERIODS)
+        item_cols = ', '.join(f'Item{n} INT, Period{n} INT, Volume{n} INT' for n in range(1, 6))
+        con.execute(f'CREATE TABLE Menu (No INT PRIMARY KEY, Name TEXT, {item_cols}, {price_cols})')
+        set_sync.apply_sets(con, set_sync.plan_sets(con, sets))
+        self.assertEqual(con.execute('SELECT Item1, Volume1, PriceByGoldForW, PriceByCashForW FROM Menu '
+                                     'WHERE No=700124').fetchone(), (700124, 1, None, 600))
+
 
 TH_AVATAR = r'D:\GBWCProject\clientes\TH-v404\avatar.xfs'
 

@@ -71,4 +71,7 @@ ao subir o servidor e às 4h.
 
 - Itens e loja (`Menu`, `Item`, `avatar_table`) são os mesmos nas três versões, todos no seed do TH. Para alinhar com
   o XFS de um cliente, use `tools/xfs_sync/item_sync.py` com o XFS daquela versão.
+- Itens próprios do S2 (selos, tickets e outros 700xxx, nas tabelas `ex3`/`ex4`) e os pacotes ficam fora do
+  seed: rode `tools/xfs_sync/set_sync.py --xfs <GunBound.xfs do v584>` (senha em `GB_SOLFS_PASSWORD`). Sem eles a
+  compra é recusada com "menu N não existe" (Message Code 203 no cliente).
 - Só para a frente. Para voltar, restaure o backup.
