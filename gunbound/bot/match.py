@@ -75,7 +75,8 @@ async def react(room, bot, sender, kind: int, body: bytes) -> None:
         await report(room, bot, 0x0f)
     elif kind in SHOTS:
         conn.last_hit = sender.slot  # o cliente guarda quem acertou por último (+0x2a4); aqui, quem atirou por último
-        craters(conn, body)
+        if digs(room, sender, kind, body):
+            craters(conn, body)
         later(room, bot, SHOT_WAIT, report(room, bot, 0x0e, game))
     elif kind == PASS:
         await report(room, bot, 0x0f)
@@ -132,6 +133,18 @@ def place(room, bot, slot: int) -> tuple[int, int]:
         room.game.spawns.get(slot, (0, 0)) if room.game else (0, 0))
     ground = conn.terrain.ground(x, y) if conn.terrain else None
     return x, ground if ground is not None else y
+
+
+def digs(room, shooter, kind: int, body: bytes) -> bool:
+    """Se os impactos do tiro valem como crateras: os do humano vêm da simulação do cliente dele; os de bot, só de tiro
+    que a mira simula como o cliente (profiles special=False). Cratera que o cliente não abriu deixa o bot mais fundo
+    que o tanque na tela: 30 px abaixo o cliente não o tira do chão (0x476c30) e ele fica enterrado (Bupo, SS da baleia
+    na partida de 21/10)."""
+    if not is_bot(shooter.conn) or room.game is None:
+        return True
+    tank = room.game.tanks.get(shooter.slot, (0, 0))[0]
+    shot = 'ss' if kind == SS else 2 if len(body) > 5 and body[5] else 1
+    return not profiles.shot(shooter.conn.layout, tank, shot).special
 
 
 def craters(conn, body: bytes) -> None:
@@ -222,7 +235,7 @@ def spot_error(room, bot, me: tuple[int, int]) -> float:
     """Erro do melhor tiro a partir de me no inimigo mais fácil (como o aim_at escolhe); 0 sem inimigo."""
     conn, t = bot.conn, bot.conn.terrain
     others = [p for p in room.players.values() if p is not bot and p.alive]
-    enemies = [p for p in others if p.team != bot.team or not room.is_team_mode()]
+    enemies = [p for p in others if p.team != bot.team]  # todo modo é time A x B, o Solo também
     tank = room.game.tanks.get(bot.slot, (0, 0))[0]
     bodies = [(x, y - aim.BODY // 2) for x, y in (place(room, bot, p.slot) for p in others)]
     friends = [place(room, bot, p.slot) for p in others if p not in enemies]
@@ -290,7 +303,7 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None, obj
         return None
     me = place(room, bot, bot.slot)
     others = [p for p in room.players.values() if p is not bot and p.alive]
-    enemies = [p for p in others if p.team != bot.team or not room.is_team_mode()]
+    enemies = [p for p in others if p.team != bot.team]  # todo modo é time A x B, o Solo também
     if not enemies:
         return None
     tank = room.game.tanks.get(bot.slot, (0, 0))[0]
@@ -357,7 +370,8 @@ async def shoot(room, bot, game, angle: int, power: int, hit, kind=1) -> None:
     await asyncio.sleep(AIM_WAIT)
     if room.game is not game or not bot.alive:
         return
-    craters(bot.conn, body)
+    if digs(room, bot, SS if kind == 'ss' else SHOT, body):
+        craters(bot.conn, body)
     await send(room, bot, SS if kind == 'ss' else SHOT, body)
     later(room, bot, SHOT_WAIT, report(room, bot, 0x0e, game, SHOT_DELAY))
 

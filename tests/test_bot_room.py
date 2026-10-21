@@ -215,6 +215,17 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         match.craters(conn, match.shot_body(1052, 400, 200, 238, (0, 204), (762, 500), True))
         self.assertGreater(t.ground(762), 500 + 10)
 
+    def test_digs_only_simulated_shots(self):
+        """Tiro de bot que a mira não simula (baleia) não cava a cópia; o de humano e o tiro normal de bot cavam."""
+        from types import SimpleNamespace as NS
+        bot = lambda slot: NS(slot=slot, conn=NS(layout='WCS2', data={'bot': True}))
+        room = NS(game=NS(tanks={1: (0x17, 0), 2: (0x00, 0)}))
+        body = match.shot_body(100, 500, 60, 200, (0, 0), (300, 500), True)
+        with mock.patch.object(match, 'is_bot', side_effect=lambda c: hasattr(c, 'data')):
+            self.assertFalse(match.digs(room, bot(1), match.SHOT, body))
+            self.assertTrue(match.digs(room, bot(2), match.SHOT, body))
+            self.assertTrue(match.digs(room, NS(slot=3, conn=object()), match.SHOT, body))
+
     def test_aim_avoids_self_and_walls(self):
         self.assertIsNone(aim.stage_name(1, 2))  # lado C: o mapa não está no xfs do S1
         t = self.flat()
@@ -369,12 +380,23 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
                  conn=NS(terrain=t, seen={}, tail=b'', layout='WCS2', shots=0, last=None, n=1.0,
                          server=NS(config=CONFIG)))
         near, far = (NS(slot=i, team=1, alive=True) for i in (1, 2))
-        room = NS(players={0: bot, 1: near, 2: far}, is_team_mode=lambda: True,
+        room = NS(players={0: bot, 1: near, 2: far},
                   game=NS(tanks={}, spawns={0: (300, 0), 1: (600, 400), 2: (1100, 0)}))
         rng = mock.Mock(random=mock.Mock(return_value=0.0))
         hit = match.aim_at(room, bot, rng)[2]
         self.assertLess(abs(hit[0] - 1100), 20)
         self.assertEqual(bot.conn.last[0], far.slot)
+
+    def test_never_targets_teammate(self):
+        """Solo também é time A x B (partida de 21/10: no Solo os bots miravam no aliado mais fácil)."""
+        from types import SimpleNamespace as NS
+        bot = NS(slot=0, team=1, alive=True,
+                 conn=NS(terrain=self.flat(w=1400), seen={}, tail=b'', layout='WCS2', shots=0, last=None, n=1.0,
+                         server=NS(config=CONFIG)))
+        friend, enemy = NS(slot=1, team=1, alive=True), NS(slot=2, team=0, alive=True)
+        room = NS(players={0: bot, 1: friend, 2: enemy}, game=NS(tanks={}, spawns={0: (300, 0), 1: (600, 0), 2: (1200, 0)}))
+        hit = match.aim_at(room, bot, mock.Mock(random=mock.Mock(return_value=0.0)))[2]
+        self.assertLess(abs(hit[0] - 1200), 20)
 
     def test_digs_or_passes(self):
         """Inimigo dentro de uma caixa grossa: o bot cava (o impacto fica na caixa e a cratera entra na cópia do mapa).
@@ -390,7 +412,7 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
             bot = NS(slot=0, team=0, alive=True, conn=NS(terrain=t, seen={}, tail=b'', layout='WCS2', shots=0,
                                                          last=None, n=1.0, server=NS(config=CONFIG)))
             enemy = NS(slot=1, team=1, alive=True)
-            return bot, NS(players={0: bot, 1: enemy}, is_team_mode=lambda: True,
+            return bot, NS(players={0: bot, 1: enemy},
                            game=NS(tanks={}, spawns={0: me, 1: (1100, 400)}))
         rng = mock.Mock(random=mock.Mock(return_value=0.0))
         t = self.flat(w=1400)
@@ -429,7 +451,7 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
             bot = NS(slot=0, team=0, alive=True, conn=NS(terrain=t, seen={}, tail=b'', layout='WCS2', shots=0,
                                                          last=None, n=1.0, server=NS(config=CONFIG), pos=None,
                                                          v584=True))
-            return bot, NS(players={0: bot, 1: NS(slot=1, team=1, alive=True)}, is_team_mode=lambda: True,
+            return bot, NS(players={0: bot, 1: NS(slot=1, team=1, alive=True)},
                            game=NS(tanks={}, spawns={0: me, 1: enemy}))
         cave = self.flat(w=1400)
         for y in range(458, 466):

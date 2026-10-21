@@ -139,7 +139,9 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
   gravados como `<nome>.v584`) e 13 novos (loveu, lond, fourheads, desert, gray, jungle, myroom e os B). Sem a tabela
   da versão o bot usa a do S1; sem `server/maps`, o graphics.xfs do S1 (`bots.graphics_xfs`, só A/B dos mapas 0..10).
 - O y do bot é o primeiro chão abaixo do spawn; os impactos de cada 0xc400 cavam crateras de raio fixo 30 na cópia do
-  bot. Sem o mapa (lado C/D no S1, mapa fora da tabela) o bot passa a vez em vez de atirar com o mapa errado (o
+  bot, menos os de tiro de bot que a mira não simula (profiles special: baleia, Frank, Trico 2...). Cratera que o
+  cliente não abriu deixa o bot mais fundo que o tanque na tela; 30 px abaixo o cliente não o tira do chão (0x476c30) e
+  ele fica enterrado (partida de 21/10: Bupo depois do SS da baleia). Sem o mapa (lado C/D no S1, mapa fora da tabela) o bot passa a vez em vez de atirar com o mapa errado (o
   0xc400 põe o tanque no x/y do pacote, e com o chão errado ele caía de novo a cada turno).
 - Mira: inimigo vivo mais perto (último x/y que ele mandou), elevações 25..85 de 5 em 5, força 40..400; fica o tiro
   que cai mais perto (chão ou corpo de tanque), checando a colisão a cada 4 px (o tiro anda até ~40 px por passo e
@@ -147,6 +149,8 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
   neles). Erra pela chance de `skill.py`: força 10..25% para mais ou menos, nunca em cima de si mesmo nem de aliado.
   Se o último tiro acertou (na conta do bot) e nem ele nem o alvo andaram mais de 5 px, repete: com o mesmo vento, o
   mesmo ângulo e a força 1..2% diferente; com outro vento, a mira nova; nos dois casos sem sortear erro.
+- Times: todo modo é time A x B, o Solo também (o resultado sai por time); inimigo = time diferente. Até 21/10 o Solo
+  era tratado como todos contra todos e os bots miravam no aliado.
 - Alvo: o bot simula o melhor tiro em cada inimigo vivo e fica com o de menor erro (a distância só desempata, 1 px de
   erro = 50 px de distância); com o clima na simulação, escolhe quem o tornado/espelho ajuda a acertar.
 - Clima (v584; análise estática, conferida nos 0xc300 da captura do admin): o 0xc300 depois de u8 vez, u16 contador

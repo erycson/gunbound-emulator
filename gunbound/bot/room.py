@@ -148,13 +148,13 @@ def strength(p) -> float:
     return skill.normalize(layout, int((p.conn.data.get('game') or {}).get('TotalGrade') or 0))
 
 
-def auto_level(others: list, team_mode: bool, team: int) -> float:
-    """Time: o que falta para igualar a força somada do outro time. Solo (ou sem adversário): a média da sala."""
-    if team_mode:
-        mine = sum(strength(p) for p in others if p.team == team)
-        theirs = [strength(p) for p in others if p.team != team]
-        if theirs:
-            return min(1.0, max(0.0, sum(theirs) - mine))
+def auto_level(others: list, team: int) -> float:
+    """O que falta para igualar a força somada do outro time (todo modo é time A x B, o Solo também); sem adversário,
+    a média da sala."""
+    mine = sum(strength(p) for p in others if p.team == team)
+    theirs = [strength(p) for p in others if p.team != team]
+    if theirs:
+        return min(1.0, max(0.0, sum(theirs) - mine))
     return sum(strength(p) for p in others) / len(others) if others else 0.5
 
 
@@ -188,7 +188,7 @@ async def add(conn, room, grade: int | None, tank: int | None, inventory_reposit
     if player is None:
         return "BOT>> A sala está cheia."
     others = [p for p in room.players.values() if p is not player]
-    bot.n = skill.normalize(layout, grade) if grade is not None else auto_level(others, room.is_team_mode(), player.team)
+    bot.n = skill.normalize(layout, grade) if grade is not None else auto_level(others, player.team)
     level = skill.denormalize(layout, bot.n)
     bot.data['game'] = {'Guild': '', 'TotalGrade': level, 'SeasonGrade': level, 'CountryGrade': level,
                         'Country': (conn.data.get('game') or {}).get('Country') or 0}

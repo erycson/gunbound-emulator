@@ -172,9 +172,6 @@ class Room:
         a = sum(1 for p in self.players.values() if p.team == TEAM_A)
         return a, self.player_count() - a
 
-    def is_team_mode(self) -> bool:
-        return self.options.mode != RoomMode.SOLO
-
     # ---------- validações ----------
     def can_join(self, conn: 'ClientConnection', password: str | None) -> ServerCode:
         """0x2110 (original 2006 0x414266): sala automática (QuickStart/GP) não entra pelo id; Authority >= 98 pula a senha."""
