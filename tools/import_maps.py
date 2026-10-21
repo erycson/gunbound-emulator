@@ -50,6 +50,11 @@ def graphics(path: Path) -> io.BytesIO:
         return io.BytesIO(path.read_bytes())
     if not solfs.resolve_password():
         raise SystemExit(f'{path.name} é SolFS cifrado: defina GB_SOLFS_PASSWORD no ambiente')
+    try:
+        import Crypto  # noqa: F401  (o AES do SolFS)
+    except ImportError:
+        raise SystemExit('falta o pycryptodome: rode com o .venv do servidor (.venv\\Scripts\\python.exe) '
+                         'ou pip install -r requirements.txt') from None
     sf = solfs.Solfs.open(str(path))
     inner = next((n for n in sf.entries() if n.lower() == 'graphics.xfs'), None)
     if inner is None:
