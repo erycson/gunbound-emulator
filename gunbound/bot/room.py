@@ -47,6 +47,7 @@ class BotConn:
         self.id, self.server, self.room, self.n = next(_ids), server, None, n
         self.seq: dict[int, int] = {}  # seq do frame P2P por slot de destino
         self.counter, self.whose, self.tail, self.last_hit = 0, -1, b'', -1  # turno (gunbound/bot/match.py)
+        self.seen, self.terrain, self.layout = {}, None, ''  # tiro (gunbound/bot/match.py, aim.py)
         self.addr = f"bot:{nick}"
         self.data = {'profile': {'Id': None, 'Nickname': nick, 'Gender': gender, 'Authority': 0},
                      'game': game, 'avatar': avatar}
@@ -103,6 +104,7 @@ async def load(room, delay: float = 0.3) -> None:
     for p in bots:
         p.conn.seq.clear()
         p.conn.counter, p.conn.whose, p.conn.tail, p.conn.last_hit = 0, -1, b'', -1
+        p.conn.seen, p.conn.terrain = {}, None
     for step in (1, 2, 3):
         await asyncio.sleep(delay)
         for p in bots:
@@ -165,6 +167,7 @@ async def add(conn, room, grade: int | None, tank: int | None, inventory_reposit
     gender = rng.getrandbits(1)
     taken = {p.conn.data['profile']['Nickname'].lower() for p in room.players.values()}
     bot = BotConn(conn.server, bot_name(taken, rng), gender, {}, [], 0.5)
+    bot.layout = layout
     player = await room.join(bot)
     if player is None:
         return "BOT>> A sala está cheia."

@@ -2,7 +2,8 @@
 
 Status: **em construção**. Pronto: o bot entra e sai da sala (`gunbound/bot/room.py`), curva de acerto, penalidades
 e perfis de mobile, o log do túnel, o carregamento e o ciclo de turno (`gunbound/bot/match.py`, estágio 1a: o bot
-passa a vez e a partida não trava) e a morte (1b). Falta: **2** o bot atirar.
+passa a vez e a partida não trava), a morte (1b) e o tiro (2, só S2 e mapas 0..10; fora disso o bot passa a vez).
+Falta validar jogando: física ajustada pela captura, mobiles com tiro especial e as fases TH/S1.
 
 ### Na sala (`gunbound/bot/room.py`)
 - `BotConn` imita o `ClientConnection` sem socket; tudo que a sala manda para ele é descartado.
@@ -88,8 +89,7 @@ decifra e entrega a `match.on_frame`. O que o bot manda vai aos humanos e, como 
   (passes da captura: 7200..9100) e o estado do último 0xc300 (o vento não muda no passe do bot).
 - Diferença conhecida: o humano segura o 02 até os tanques assentarem (morte do mestre no fim do turno); o bot manda
   no 0xc300. O mestre só conta, então a ordem não importa.
-- O bot não manda 0x8402 (posição): o y do chão só o cliente sabe (spawn com y 0). O mesmo falta para dano (1b) e
-  mira (2).
+- O bot não manda 0x8402 (posição) nem anda; o x/y dele vai no 0xc40a e no 0xc400 (y do chão, ver 2).
 - [INCERTO] a captura é 1x1; com mais jogadores o mestre pode esperar o 0xc309 ou o 02 de outro jeito.
 
 **Feito (1b): a morte.** Cada cliente calcula o HP de todos os tanques (tank+0x150, máximo em +0x14c, x em +0x8c,
@@ -102,6 +102,28 @@ tanque de quem respondeu e manda 0xc315 (u8 slot, 0x4e04bb); o dono manda 0xc304
 é quem atirou por último (o cliente usa quem acertou por último).
 - [INCERTO] o mestre só examina, a cada escolha de turno, os slots com delay menor que o melhor vivo até ali; o bot
   morto pode levar um turno a mais para ser confirmado.
+
+**Feito (2): o tiro** (`gunbound/bot/aim.py`, `match.shoot`). Quem recebe o 0xc400 (0x4e075b) põe o atirador no x/y do
+pacote, grava o vento global (G+0x283dc força, G+0x283e0 ângulo) e cria o projétil (fábrica 0x443310): a lista de
+impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simula o tiro e o dano; o bot só escolhe
+ângulo e força.
+- Projétil (0x445426..0x445671): pos = (x, y) << 8; v = força * 512 * (cos, -sin) / 100 (seno da tabela 0x5fd6b0,
+  5 casas); a = (vento_x, gravidade - vento_y) << 8 / 100; gravidade do mobile (characterdata coluna 40, por slot em
+  G+0x296bc + slot*0x104: 98, Mage/Lightning/Dragon 90, Aduka 94, J.Frog 92). [INCERTO] o alcance só bate com a
+  captura com velocidade x5 (36 tiros, erro mediano ~25 px); o passo por frame que dá esse fator não foi achado.
+- 0xc400 (layout da captura, que diverge 2 bytes da leitura à mão do receptor; vale o da captura): u16 x, u16 y, 01, 00,
+  s16 ângulo absoluto (0 direita, 90 cima, 180 esquerda), u16 força, 01, 3x (s16, s16) boca do cano em relação ao pé
+  (y para cima), s16 força e s16 ângulo do vento, 00, u8 n + n x (u8 tipo, u16 x, u16 y) dos impactos.
+- Sequência do humano e do bot: 0x8006 (u16 x, u16 y, 00 01), ~1 s depois o 0xc400, e quando o tiro termina o 0xc40a
+  + 0xc302 0e com o delay do turno em +5 (captura 7900..8900; o bot manda 8900).
+- O vento é o do 0xc300 do turno (u8 força, u16 ângulo no começo do estado). O terreno é o .lnd (u32 w, u32 h, w*h
+  bytes, 0 = ar) do graphics.xfs do S1 (`bots.graphics_xfs`, padrão `../clientes/WC-S1-v495/graphics.xfs`; o
+  GunBound.xfs do S2 é cifrado): mapa = stage.dat[mapa], lado B = mapa + 11 (cave não tem B). O y do bot é o primeiro
+  chão abaixo do spawn; os impactos de cada 0xc400 cavam crateras de raio fixo 30 na cópia do bot.
+- Mira: inimigo vivo mais perto (último x/y que ele mandou), elevações 25..85 de 5 em 5, força 40..400; fica o tiro
+  que cai mais perto (chão ou corpo de tanque). Erra pela chance de `skill.py`: força 10..25% para mais ou menos.
+- [INCERTO] tiros especiais (Nak cavando, Boomer curvando, Turtle dividindo...) seguem a trajetória normal na mira.
+  Mapas S2 acima de 10 (o v584 tem 18 por lado) não estão no xfs do S1: o bot passa a vez.
 
 ### Captura
 

@@ -6,7 +6,7 @@ import asyncio
 import struct
 from pathlib import Path
 from unittest import mock
-from gunbound.bot import match, room as bots, skill
+from gunbound.bot import aim, match, room as bots, skill
 from gunbound.game.room import GameState
 from gunbound.game.protocol.enums import ServerPacket
 from tests.test_rooms_shop import FakeConn, FakeServer, manager, settle
@@ -176,6 +176,66 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         other = player('outro')
         await self.room.join(other)
         self.assertIn('Só o mestre', await self.cmd('/bot add', other))
+
+    def flat(self, w=1000, h=600, ground=500):
+        return aim.Terrain(struct.pack('<II', w, h) + bytes(w * ground) + b'\x01' * (w * (h - ground)))
+
+    def test_terrain_and_flight(self):
+        t = self.flat()
+        self.assertEqual(t.ground(10), 500)
+        t.carve(300, 500, 10)
+        self.assertEqual(t.ground(300), 511)
+        self.assertEqual(t.ground(320), 500)
+        right, left = aim.fly(t, 500, 500, 45, 100, 98, (0, 0)), aim.fly(t, 500, 500, 135, 100, 98, (0, 0))
+        self.assertLess(abs((right[0] - 500) - (500 - left[0])), 3)  # sem vento, espelhado
+        self.assertGreater(aim.fly(t, 500, 500, 45, 100, 98, (20, 0))[0], right[0])  # vento a favor leva mais longe
+
+    def test_shot_body_like_capture(self):
+        """Tiro do mestre na captura: mesmos bytes com o mesmo cano."""
+        with mock.patch.object(aim, 'muzzle', return_value=(-17, 21)):
+            body = match.shot_body(1480, 1410, 145, 184, (10, 84), (1087, 1388))
+        self.assertEqual(body.hex(' '), 'c8 05 82 05 01 00 91 00 b8 00 01 ef ff 15 00 ef ff 15 00 ef ff 15 00 0a 00 54 00 '
+                                        '00 01 08 3f 04 6c 05')
+
+    async def own_shot(self, roll):
+        """Turno do bot num mapa plano: (corpos dos frames que ele mandou por tipo, corpo do 0xc400)."""
+        b, me = await self.start_match()
+        b.conn.layout = 'WCS2'
+        self.room.game.spawns = {me.slot: (700, 0), b.slot: (200, 0)}
+        frame = bots.p2p_frame(bots.p2p_key(self.room, self.master.server), 0, match.START, bytes(14))
+        with mock.patch.object(aim.Terrain, 'load', return_value=self.flat()),                 mock.patch.object(match, 'TURN_WAIT', 0), mock.patch.object(match, 'AIM_WAIT', 0),                 mock.patch.object(match, 'SHOT_WAIT', 0), mock.patch.object(match.random, 'random', return_value=roll):
+            from gunbound.game.protocol.game_play import GameTunnelRecv
+            from gunbound.util.binary_buffer import BinaryReader
+            await GameTunnelRecv(self.master, BinaryReader(bytes([1, 0, b.slot]) + frame)).process()
+            tail = bytes.fromhex('0954001a8902ffffffff00')
+            await match.react(self.room, b, me, match.NEXT, bytes([b.slot]) + struct.pack('<H', 4) + tail)
+            await match.react(self.room, b, me, match.SYNC, b'\x02' + bytes(13))
+            for _ in range(5):
+                await self.settle()
+        from tools.tunnel_decode import decode, key
+        plains = [decode(raw[3:], key(0, self.room.id))[2] for raw in self.master.sent if raw[:2] == b'\x01\x45']
+        sent = {}
+        for p in plains:
+            sent.setdefault(struct.unpack_from('<H', p)[0], []).append(p[2:])
+        return sent, sent[match.SHOT][0]
+
+    async def test_shoots_on_own_turn(self):
+        """Mira no inimigo com o vento do C300: 0x8006, 0xc400 e o 0e com delay; sem passe."""
+        sent, c400 = await self.own_shot(0.0)
+        self.assertNotIn(match.PASS, sent)
+        self.assertEqual(sent[match.AIM][0][:6], struct.pack('<HH', 200, 500) + b'\x00\x01')
+        x, y, angle, power = *struct.unpack_from('<HH', c400), *struct.unpack_from('<hH', c400, 6)
+        self.assertEqual((x, y), (200, 500))
+        self.assertTrue(25 <= angle <= 85 and 40 <= power <= 400)
+        self.assertEqual(struct.unpack_from('<hh', c400, 23), (9, 84))
+        self.assertEqual(c400[28], 1)
+        hx, hy = struct.unpack_from('<HH', c400, 30)
+        self.assertLess(abs(hx - 700), 20)
+        self.assertIn(struct.pack('<BII', 0x0e, 5, match.SHOT_DELAY), [r[:9] for r in sent[match.REPORT]])
+
+    async def test_misses_by_skill(self):
+        _, c400 = await self.own_shot(1.0)
+        self.assertGreater(abs(struct.unpack_from('<H', c400, 30)[0] - 700) if c400[28] else 999, 40)
 
     async def test_remove_and_room_closes_without_humans(self):
         await self.cmd('/bot add')
