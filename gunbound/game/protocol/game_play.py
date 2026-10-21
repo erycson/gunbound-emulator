@@ -73,9 +73,14 @@ class GameDeadRecv(GameRecv):
             return
         winner = room.on_dead(self.conn)
         await self.conn.on_send(Packet.new(ServerPacket.SRV_GAME_DEAD_ACK))
-        await room.broadcast(rp.player_dead(player.slot, player.team))
-        if winner != -1:
-            asyncio.create_task(announce_winner(room, winner))
+        await announce_death(room, player, winner)
+
+
+async def announce_death(room, player, winner: int) -> None:
+    """0x4102 para a sala e, se acabou, 0x4410. Também a morte do bot (gunbound/bot/match.py)."""
+    await room.broadcast(rp.player_dead(player.slot, player.team))
+    if winner != -1:
+        asyncio.create_task(announce_winner(room, winner))
 
 
 @handler(ClientPacket.CLI_GAME_RESURRECT, in_game=True)

@@ -151,6 +151,27 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         await match.react(self.room, b, me, match.PASS, bytes(14))
         self.assertEqual(len(self.master.sent), n)
 
+    async def test_dies_when_master_confirms(self):
+        """0xc312 do mestre -> 0xc314; 0xc315 -> 0xc304 (causa 1, matador = quem atirou) + 0xc309 + morte no servidor."""
+        b, me = await self.start_match()
+        with mock.patch.object(match, 'SHOT_WAIT', 0):
+            await match.react(self.room, b, me, 0xC400, bytes(40))
+            await self.settle()
+        await match.react(self.room, b, me, match.CHECK, bytes([b.slot + 1]))  # outro slot: nada
+        await match.react(self.room, b, me, match.CHECK, bytes([b.slot]))
+        await match.react(self.room, b, me, match.KILL, bytes([b.slot]))
+        await match.react(self.room, b, me, match.KILL, bytes([b.slot]))  # repetido: já morreu
+        from tools.tunnel_decode import decode, key
+        plains = [decode(raw[3:], key(0, self.room.id))[2] for raw in self.master.sent if raw[:2] == bytes([0x01, 0x45])]
+        kinds = [struct.unpack_from('<H', p)[0] for p in plains]
+        self.assertEqual(kinds.count(match.CHECK_ACK), 1)
+        [death] = [p[2:7] for p in plains if p[:2] == struct.pack('<H', match.DEATH)]
+        self.assertEqual(death, struct.pack('<IB', 1, me.slot))
+        self.assertIn(match.DEATH_ACK, kinds)
+        self.assertFalse(b.alive)
+        await settle()
+        self.assertTrue(self.master.last(ServerPacket.SRV_GAME_DEAD))
+
     async def test_only_master(self):
         other = player('outro')
         await self.room.join(other)

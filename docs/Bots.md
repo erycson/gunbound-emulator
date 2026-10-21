@@ -2,8 +2,7 @@
 
 Status: **em construção**. Pronto: o bot entra e sai da sala (`gunbound/bot/room.py`), curva de acerto, penalidades
 e perfis de mobile, o log do túnel, o carregamento e o ciclo de turno (`gunbound/bot/match.py`, estágio 1a: o bot
-passa a vez e a partida não trava). Falta: **1b** o bot morrer (dano) e **2** o bot atirar. Até a 1b ninguém vence o
-bot: ele não perde HP.
+passa a vez e a partida não trava) e a morte (1b). Falta: **2** o bot atirar.
 
 ### Na sala (`gunbound/bot/room.py`)
 - `BotConn` imita o `ClientConnection` sem socket; tudo que a sala manda para ele é descartado.
@@ -92,6 +91,17 @@ decifra e entrega a `match.on_frame`. O que o bot manda vai aos humanos e, como 
 - O bot não manda 0x8402 (posição): o y do chão só o cliente sabe (spawn com y 0). O mesmo falta para dano (1b) e
   mira (2).
 - [INCERTO] a captura é 1x1; com mais jogadores o mestre pode esperar o 0xc309 ou o 02 de outro jeito.
+
+**Feito (1b): a morte.** Cada cliente calcula o HP de todos os tanques (tank+0x150, máximo em +0x14c, x em +0x8c,
+y em +0x90); o servidor não calcula dano. O cliente se declara morto no fim do turno (0x482720: HP <= 0 ou
+y >= 9000 → 0xc304 + 0x4100). Para quem não se declarou, o mestre, ao escolher o próximo turno (0x4f5aa0, menor delay
+entre os vivos), manda 0xc312 (u8 slot); quem recebe responde 0xc314 (vazio, 0x4e0425); o mestre confere o HP/y do
+tanque de quem respondeu e manda 0xc315 (u8 slot, 0x4e04bb); o dono manda 0xc304 (u32 causa, u8 matador) e o 0x4100
+(0x4e0596). O bot faz esse caminho: 0xc312 com o slot dele → 0xc314; 0xc315 → 0xc304 + 0xc309 e a morte no servidor
+(`announce_death`, o mesmo do 0x4100). Causa como o cliente (0x47b156): 1 inimigo, 2 aliado, 3 o próprio; o matador
+é quem atirou por último (o cliente usa quem acertou por último).
+- [INCERTO] o mestre só examina, a cada escolha de turno, os slots com delay menor que o melhor vivo até ali; o bot
+  morto pode levar um turno a mais para ser confirmado.
 
 ### Captura
 
