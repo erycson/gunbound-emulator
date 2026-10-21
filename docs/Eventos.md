@@ -33,6 +33,18 @@ clima, bits 20..23 eventos 1..4. Exemplo com avatar e os 7 climas ligados: `1040
 evento: `2088976` (evento 1), `3137552` (2), `5234704` (3), `9429008` (4). Também dá para mudar em tempo real pelo console (0x5128 SET_EVENTACTPROB / 0x5124
 FUNCTION_RESTRICT), que no original regrava o `setting.txt`.
 
+### Quem lê cada bit (análise estática do original e dos clientes v404, v440, v495, v548, v584)
+| bits | servidor original (`GunBoundServ3.exe`, global 0x4969dc) | clientes |
+|---|---|---|
+| 0..3, 5..12, 24..31 | só repassa: log, STATUS 0x5111 e login 0x1012 (0x42d89c), sem filtro | nenhum teste: sem uso |
+| 4 avatar | não testa | todas as versões |
+| 13..19 climas | não testa | laço `0x2000 << i` no TH e S1; no S2 só o teste do bit 16 foi achado [INCERTO] |
+| 20..23 eventos | sorteio em 0x41653f, lista no 0x5111, console 0x5128 | todas as versões (recursos 0xC351..0xC354) |
+
+Os `setting.txt` originais ligavam bits baixos (`1040399` = 0xFE00F: bits 0..3 e 13..19, **sem** avatar; `1048575` =
+0xFFFFF no GunBoundServ2), mas nesses binários eles não fazem nada. Por isso o `config.example.yml` não lista mais os
+antigos `UNK_*`; o emulador repassa a máscara inteira, como o original. Outro build pode ler bits que estes não leem.
+
 ### O que o cliente faz com o índice
 Ele lê o **`Event14.txt` de dentro do `graphics.xfs`** (não é arquivo solto; o cliente procura nesse pacote).
 Uma linha por evento:

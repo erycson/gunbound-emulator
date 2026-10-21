@@ -62,7 +62,7 @@ O dump do pacote só tem tabelas (nenhuma procedure/function). Comparado com `db
 
 ## 4. Lacunas priorizadas
 
-1. **Usar `function_restrict`** (já aceito no item de `gameservers`, padrão 0): mapear no binário o que cada bit do FuncRestrict bloqueia.
+1. **Usar `function_restrict`** (já aceito no item de `gameservers`, padrão 0): mapear no binário o que cada bit do FuncRestrict bloqueia. **Mapeado:** o original não testa nenhum bit além dos eventos (20..23) e só repassa a máscara; ver [Eventos.md](Eventos.md).
 2. **Eventos do servidor 2007**: sorteio por `EventActProp`, prêmios do `[EventTrigger]`, log em `eventlog`.
 3. **Trava de patente no login** (`GradeLimitFirst/Last`).
 4. **Sala ociosa**: aviso e fechamento (`IdleRoom*` + mensagens).

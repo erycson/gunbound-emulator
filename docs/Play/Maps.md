@@ -28,7 +28,8 @@ Exemplo: settings `B2 62 0C 00` = modo Jewel.
 ## Climas (efeitos do mapa)
 
 Ligados por servidor em `features` no `config.yml` (bits 13..19). O efeito em si roda no cliente; o servidor só manda a
-máscara no login.
+máscara no login. No TH e no S1 o cliente liga os climas por um laço `0x2000 << i`; no S2 (v548/v584) esse laço não foi
+achado na análise estática, só o teste próprio do bit 16 [INCERTO]. Os demais bits da máscara: [Eventos.md](../Eventos.md).
 
 | Bit em `features` | Efeito no jogo |
 |---|---|

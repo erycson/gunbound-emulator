@@ -27,17 +27,7 @@ database:
   #   PostgreSQL: "postgresql+asyncpg://gbuser:gbpass@127.0.0.1:5432/gbwc"
   uri: "sqlite+aiosqlite:///gbwc.db"
 
-features:
-  UNK_1: 1
-  UNK_4: 4
-  UNK_8: 8
-  UNK_32: 32
-  UNK_256: 256
-  UNK_512: 512
-  UNK_768: 768
-  UNK_3072: 3072
-  UNK_4096: 4096
-
+features: # FuncRestrict do original; os bits 0..12 e 24..31 não são lidos por nenhum cliente nem pelo servidor (docs/Eventos.md)
   AVATAR_ENABLED: &AVATAR_ENABLED 16 # 1 << 4
   EFFECT_FORCE: &EFFECT_FORCE 8192 # 1 << 13
   EFFECT_TORNADO: &EFFECT_TORNADO 16384 # 1 << 14
