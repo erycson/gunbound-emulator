@@ -21,7 +21,7 @@ class Inventory:
 
 def player(nick, authority=0):
     c = FakeConn(nick, authority)
-    c.server = type('S', (FakeServer,), {'config': CONFIG})()
+    c.server = type('S', (FakeServer,), {'config': CONFIG, 'index': 0})()
     return c
 
 
@@ -70,6 +70,7 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         await self.cmd('/bot add')
         [b] = self.bots()
         self.master.server.index = 0
+        self.master.sent.clear()  # sem o 0x8102 da entrada
         await bots.load(self.room, delay=0)
         frames = [raw[3:] for raw in self.master.sent if raw[:2] == bytes([0x01, 0x45])]  # 0x4501: cmd, slot, frame
         got = [decode(f, key(0, self.room.id)) for f in frames]
@@ -241,6 +242,19 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(match, 'aim_at', side_effect=ValueError('mapa')):
             sent, _ = await self.own_shot(0.0, shot=False)
         self.assertIn(match.PASS, sent)
+
+    async def test_ready_over_p2p_and_after_match(self):
+        """O mestre só vê o bot pronto pelo 0x8102 03 do túnel; depois da partida o bot continua pronto."""
+        await self.cmd('/bot add')
+        [b] = self.bots()
+        from tools.tunnel_decode import decode, key
+        plains = [decode(raw[3:], key(self.master.server.index, self.room.id))[2]
+                  for raw in self.master.sent if raw[:2] == bytes([0x01, 0x45])]
+        self.assertIn(struct.pack('<HB', bots.READY, 3), [p[:3] for p in plains])
+        self.room.game = GameState(1, [0, 1], {}, {0: (100, 0), 1: (200, 0)})
+        self.room.finish()
+        self.assertTrue(b.ready)
+        self.assertFalse(self.room.player(self.master).ready)
 
     async def test_remove_and_room_closes_without_humans(self):
         await self.cmd('/bot add')

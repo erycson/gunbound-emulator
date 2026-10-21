@@ -230,6 +230,7 @@ class RoomReturnResultRecv(GameRecv):
         if room.game is not None and room.game.winner != -1 and not room.game.result_sent:
             room.finish()
         await self.conn.on_send(rp.ack(ServerPacket.SRV_ROOM_RETURN_RESULT))
+        match.later(room, None, 1.0, bots.announce_ready(room))  # depois que o cliente entra na sala
 
 
 @handler(ClientPacket.CLI_GAME_TUNNEL, room=True)

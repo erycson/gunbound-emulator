@@ -75,6 +75,9 @@ def bot_name(taken: set[str], rng=random) -> str:
 # AES-128-ECB(u16 tipo + corpo, zeros até 16). Chave = u16 índice do servidor no broker + "comsik" + u16 sala + cauda.
 TAIL = bytes.fromhex('d222eafaee3a')
 LOAD_STEP, LOAD_DONE = 0x8201, 0x82FF  # progresso (u8 slot, u8 etapa 1..3) e carregou: captura v584 de 2 clientes
+# Sala de espera: o "pronto" não passa pelo servidor; quem não é mestre manda 0x8102 u8 (3 pronto, 1 presente) pelo
+# túnel (captura; envio em 0x50923a, ReadyMode do v584). 0x8100 é o ping ("250ms").
+READY = 0x8102
 
 
 def p2p_frame(key: bytes, seq: int, kind: int, body: bytes) -> bytes:
@@ -95,6 +98,14 @@ async def p2p_send(room, bot_player, kind: int, body: bytes) -> None:
         seq = bot_player.conn.seq.get(p.slot, 0)
         bot_player.conn.seq[p.slot] = seq + 1
         await p.conn.on_send(rp.tunnel(bot_player.slot, p2p_frame(key, seq, kind, body)))
+
+
+async def announce_ready(room, delay: float = 0.0) -> None:
+    """Todo bot da sala avisa os humanos que está pronto (ao entrar e quando eles voltam do resultado)."""
+    await asyncio.sleep(delay)
+    for p in [p for p in room.players.values() if is_bot(p.conn)]:
+        p.conn.seq.clear()  # sala nova para o P2P, como no começo da partida
+        await p2p_send(room, p, READY, bytes([3]).ljust(14, b'\x00'))
 
 
 async def load(room, delay: float = 0.3) -> None:
@@ -183,6 +194,7 @@ async def add(conn, room, grade: int | None, tank: int | None, inventory_reposit
     player.ready = True
     room.room_manager.notify_lobby(room, rp.lobby_room(ServerPacket.SRV_LOBBY_ROOM_PLAYERS, room).u8(room.player_count()))
     await room.broadcast(rp.player_joined(player), excepts=[bot.id])
+    await announce_ready(room)
     name = profiles.BY_PHASE[layout][player.tank1].name
     return f"BOT>> {bot.data['profile']['Nickname']} entrou: patente {level}, {name}, time {'AB'[player.team]}."
 

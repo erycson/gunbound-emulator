@@ -9,6 +9,9 @@ Falta validar jogando: física ajustada pela captura, mobiles com tiro especial 
 - `BotConn` imita o `ClientConnection` sem socket; tudo que a sala manda para ele é descartado.
 - Entra como um jogador comum (0x3010 para a sala), sempre pronto, com patente, guild vazia, roupa sorteada pela
   patente (cabeça, corpo e bandeira da `Menu`, cash vale 100 gold na conta) e mobile sorteado entre os da versão.
+- "Pronto" não passa pelo servidor: quem não é mestre avisa os outros pelo túnel com 0x8102 u8 (3 pronto, 1 presente;
+  captura e envio em 0x50923a do v584; o 0x8100 é o ping). O bot manda 0x8102 03 ao entrar e 1 s depois de cada
+  0x3232 (volta do resultado); quem entra depois vê pelo estado do 0x2111. No fim da partida o bot continua pronto.
 - O mestre nunca vira bot; sala só com bots fecha. O kick do mestre e o `/close` também tiram bots.
 - Prêmio (`bots.reward`, padrão 0): bot não recebe; com bot na sala, os outros recebem o fator.
 - Só o mestre de uma sala comum aguardando usa `/bot` (não em Grand Prix, QuickStart nem Stage).

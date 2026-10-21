@@ -372,7 +372,7 @@ class Room:
         self.idle_since = time.time()
         self._notify_state()
         for p in self.players.values():
-            p.ready = False
+            p.ready = getattr(p.conn, 'bot', False)  # bot volta pronto (gunbound/bot/room.py)
             p.alive = True
 
     # ---------- envio ----------
