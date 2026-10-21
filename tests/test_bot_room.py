@@ -13,7 +13,8 @@ from gunbound.game.room import GameState
 from gunbound.game.protocol.enums import ServerPacket
 from tests.test_rooms_shop import FakeConn, FakeServer, manager, settle
 
-CONFIG = {**FakeServer.config, 'phase': 'WCS1', 'bots': {'enabled': True, 'gm_mobile': True, 'reward': 0.5}}
+CONFIG = {**FakeServer.config, 'phase': 'WCS1', 'bots': {'enabled': True, 'gm_mobile': True, 'reward': 0.5,
+                                                                   'maps': 'tests/sem-mapas'}}
 
 
 class Inventory:
@@ -238,50 +239,51 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         body[:4] = struct.pack('<I', ptr)
         return bytes(body)
 
-    def test_s2_terrain_from_solfs(self):
-        """v584: stage.dat do graphics.xfs de dentro do GunBound.xfs dá o .lnd de mapa + lado * 18 (lado C também)."""
-        lzhuf, solfs = aim._gbedit()
-        stage = bytearray(aim.S2_STAGE_SIZE)
-        at = (2 + 2 * 18) * aim.S2_STAGE_RECORD
-        stage[at:at + 5] = b'MineC'
+    def test_import_maps(self):
+        """tools/import_maps.py: stage.dat do v584 (prefixo em +128, mapa + lado * 18) vira .lnd.gz + stages-v584.txt;
+        .lnd que mudou entre versões ganha nome próprio. O v584 grava lado % 2, então o lado D usa o B."""
+        from tools import import_maps
+        lzhuf, _ = import_maps._gbedit()
+        size, rec, off, per_side, _ = import_maps.LAYOUTS['v584']
+        stage = bytearray(size)
+        for side, name in ((0, b'MineC'), (1, b'MineCB')):
+            at = (2 + side * per_side) * rec + off
+            stage[at:at + len(name)] = name
         lnd = struct.pack('<II', 4, 2) + bytes([0, 0, 0, 0, 1, 1, 1, 1])
-        inner = self.fake_xfs({'stage.dat': b'vers' + lzhuf.encode(bytes(stage)), 'minec.lnd': lnd})
-        self.assertEqual(aim.s2_stage_name(bytes(stage), 2, 2), 'minec')
-        self.assertIsNone(aim.s2_stage_name(bytes(stage), 2, 3))  # registro vazio
+        lnd_b = struct.pack('<II', 4, 2) + bytes([0, 0, 0, 0, 0, 0, 1, 1])
         import tempfile
         with tempfile.TemporaryDirectory() as d:
-            path = Path(d) / 'GunBound.xfs'  # só as 2 páginas que o looks_like confere
-            path.write_bytes(solfs.SIGNATURE.ljust(solfs.PAGE_SIZE, b'\x00')
-                             + (solfs.BOOT_PAGE_TAG + solfs.BANNER.encode('utf-16-le')).ljust(solfs.PAGE_SIZE, b'\x00'))
-            aim._lnd.cache_clear()
-            with mock.patch.object(aim, '_s2_graphics', return_value=inner) as opened:
-                t = aim.Terrain.load(path, 2, 2)
-                self.assertIsNone(aim.Terrain.load(path, 2, 3))
-            self.assertEqual((t.w, t.h, t.ground(1)), (4, 2, 1))
-            self.assertEqual(opened.call_count, 2)
-            aim._lnd.cache_clear()
-            with mock.patch.dict(os.environ, {'GB_SOLFS_PASSWORD': ''}), self.assertRaises(solfs.SolfsError):
-                aim.Terrain.load(path, 2, 2)  # sem senha: erro antes de ler o arquivo (o bot passa a vez)
+            xfs, out = Path(d) / 'graphics.xfs', Path(d) / 'maps'
+            xfs.write_bytes(self.fake_xfs({'stage.dat': b'vers' + lzhuf.encode(bytes(stage)), 'minec.lnd': lnd,
+                                           'mineCB.lnd': lnd_b}))
+            table, lnds = import_maps.read(xfs, 'v584')
+            self.assertEqual(table, {(2, 0): 'minec', (2, 1): 'minecb'})
+            out.mkdir()
+            import gzip
+            (out / 'minec.lnd.gz').write_bytes(gzip.compress(lnd_b))  # o do s1 era outro
+            self.assertEqual(import_maps.save(out, 'v584', table, lnds), ['minec'])
+            self.assertEqual((out / 'stages-v584.txt').read_text().split(), '2 0 minec.v584 2 1 minecb'.split())
+            self.assertEqual(aim.load_map(2, 0, 'v584', out).ground(1), 1)
+            self.assertEqual(aim.load_map(2, 3, 'v584', out).px, bytearray(lnd_b[8:]))
+            self.assertIsNone(aim.load_map(3, 0, 'v584', out))  # mapa fora da tabela: o bot passa a vez
 
-    async def test_v584_falls_back_to_s1_terrain(self):
-        """Sem senha do SolFS, o v584 nos lados A/B usa o mapa do S1 (como antes); avisa uma vez só."""
+    async def test_terrain_without_imported_maps(self):
+        """Sem server/maps, o graphics.xfs do S1; o v584 pede o lado % 2. Erro de leitura avisa uma vez só."""
         self.master.data['client_version'] = 584
         b, _ = await self.start_match()
         b.conn.layout = 'WCS2'
+        self.room.options.settings |= 3 << 16
         flat = self.flat()
-
-        def load(path, game_map, side):
-            if path.name == 'GunBound.xfs':
-                raise RuntimeError('sem senha')
-            return flat
-
         match._warned.clear()
-        with mock.patch.object(aim.Terrain, 'load', side_effect=load) as loads, \
-                mock.patch('builtins.print') as said:
-            await match.prepare(self.room, b)
+        with mock.patch.object(aim.Terrain, 'load', return_value=flat) as loads:
             await match.prepare(self.room, b)
         self.assertIs(b.conn.terrain, flat)
-        self.assertEqual([c.args[0].name for c in loads.call_args_list], ['GunBound.xfs', 'graphics.xfs'] * 2)
+        self.assertEqual(loads.call_args.args[0].name, 'graphics.xfs')
+        self.assertEqual(loads.call_args.args[1:], (self.room.game.map, 1))
+        with mock.patch.object(aim.Terrain, 'load', side_effect=OSError('ilegível')),                 mock.patch('builtins.print') as said:
+            await match.prepare(self.room, b)
+            await match.prepare(self.room, b)
+        self.assertIsNone(b.conn.terrain)
         self.assertEqual(said.call_count, 1)
 
     async def own_shot(self, roll, shot=True, version=0):

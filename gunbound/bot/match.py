@@ -90,33 +90,21 @@ async def prepare(room, bot) -> None:
 
 
 async def terrain(room, conn) -> aim.Terrain | None:
-    """Mapa da partida: o do v584 (lados C/D e mapas 11+) e, se ele faltar (sem senha, sem arquivo), o do S1, que só
-    tem A/B dos mapas 0..10. Sem nenhum o bot só passa a vez. O 0x3432 já chama isto (warm) para encher o cache."""
+    """Mapa da partida no cliente dos humanos: os importados por tools/import_maps.py (bots.maps) ou, sem eles, o
+    graphics.xfs do S1. Sem mapa o bot só passa a vez."""
     if room.game is None:
         return None
     c = cfg(conn.server.config)
-    s1 = c.get('graphics_xfs') or aim.DEFAULT_XFS
-    paths = [c.get('s2_xfs') or aim.DEFAULT_S2_XFS, s1] if conn.v584 else [s1]
     side = (room.options.settings >> 16) & 3
-    for path in paths:
-        try:
-            found = await asyncio.to_thread(aim.Terrain.load, aim.ROOT / Path(path), room.game.map, side)
-        except Exception as e:  # xfs ausente, ilegível ou sem senha: avisa uma vez e tenta o próximo
-            if str(e) not in _warned:
-                _warned.add(str(e))
-                print(f"[BOT] terreno do mapa {room.game.map} lado {side} ({Path(path).name}): {e}")
-            continue
-        if found is not None:
-            return found
-    return None
-
-
-async def warm(room) -> None:
-    """Abre o mapa durante a tela de carregamento (o SolFS do v584 leva ~2 s); o 0x8600 acha no cache."""
-    bots = [p for p in room.players.values() if is_bot(p.conn) and getattr(p.conn, 'layout', None) in SHOOTS]
-    if bots:
-        bots[0].conn.v584 = any(phase.is_v584(p.conn) for p in room.players.values() if not is_bot(p.conn))
-        await terrain(room, bots[0].conn)
+    try:
+        return await asyncio.to_thread(aim.load_map, room.game.map, side, 'v584' if conn.v584 else 's1',
+                                       aim.ROOT / Path(c.get('maps') or aim.MAPS),
+                                       aim.ROOT / Path(c.get('graphics_xfs') or aim.DEFAULT_XFS))
+    except Exception as e:  # arquivo ausente ou ilegível: avisa uma vez
+        if str(e) not in _warned:
+            _warned.add(str(e))
+            print(f"[BOT] terreno do mapa {room.game.map} lado {side}: {e}")
+        return None
 
 
 def place(room, bot, slot: int) -> tuple[int, int]:

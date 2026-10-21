@@ -55,3 +55,6 @@ gg-capture*.jsonl
 
 # Captura do túnel 0x4500 (tunnel_log)
 tunnel-capture*.jsonl
+
+# Mapas dos clientes (tools/import_maps.py)
+maps/

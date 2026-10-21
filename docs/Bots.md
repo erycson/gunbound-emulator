@@ -127,19 +127,18 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
 - Sequência do humano e do bot: 0x8006 (u16 x, u16 y, 00 01), ~1 s depois o 0xc400, e quando o tiro termina o 0xc40a
   + 0xc302 0e com o delay do turno em +5 (captura 7900..8900; o bot manda 8900).
 - O vento é o do 0xc300 do turno (u8 força, u16 ângulo no começo do estado). O terreno é o .lnd (u32 w, u32 h, w*h
-  bytes, 0 = ar). S1: graphics.xfs do S1 (`bots.graphics_xfs`, padrão `../clientes/WC-S1-v495/graphics.xfs`), mapa =
-  stage.dat[mapa], lado B = mapa + 11 (cave não tem B), sem lados C/D. v584 (algum humano no v584): graphics.xfs de
-  dentro do GunBound.xfs SolFS (`bots.s2_xfs`, padrão `../clientes/WC-S2-v584/GunBound.xfs`; senha só por
-  GB_SOLFS_PASSWORD no ambiente do servidor). O stage.dat dele (carga em 0x423cdf: LZHUF depois de 4 bytes, 0x9c00
-  abertos = 64 registros de 0x270, prefixo do .lnd em +0) é indexado por mapa + lado * 18 (G+0x2799c + G+0x279a0 *
-  0x12, 0x458dd7), então tem os lados C/D. Abrir o SolFS lê o arquivo inteiro (~300 MB, até ~2,5 s de AES): o mapa
-  abre na tela de carregamento (0x3432, `match.warm`), um bot por vez, e os últimos 4 ficam em cache. Se o S2 falhar
-  (sem senha, sem arquivo), o v584 usa o mapa do S1 nos lados A/B, como antes; o motivo sai no log uma vez.
-  Conferência (só lê; com GB_SOLFS_PASSWORD no ambiente): `python -m gunbound.bot.aim [GunBound.xfs]` mostra o
-  prefixo e o tamanho do .lnd de cada mapa por lado. [INCERTO] ainda não rodou no arquivo real: nome do graphics.xfs
-  interno, LZHUF do stage.dat do v584 e os blocos do graphics.xfs (o xfs_reader não lê blocos com flag 0xC0).
+  bytes, 0 = ar), importado de cada cliente por `python tools/import_maps.py` para `server/maps/` (`bots.maps`; fora
+  do git): um `<prefixo>.lnd.gz` por mapa e `stages-<versão>.txt` ("mapa lado prefixo"). O TH v404, o v440 e o v495
+  têm os mesmos .lnd byte a byte; muda por versão só o stage.dat (LZHUF depois de 4 bytes). S1: 32 registros de 484,
+  prefixo em +128, índice = mapa + lado * 11 (cave não tem B). v584 (graphics.xfs de dentro do GunBound.xfs SolFS,
+  senha só por GB_SOLFS_PASSWORD no ambiente de quem roda a ferramenta; carga em 0x423cdf): 0x9c00 abertos, registros
+  de 0x270, prefixo em +128, índice = mapa + lado * 18 (G+0x2799c + G+0x279a0 * 0x12), 36 registros = só A/B. O
+  cliente grava lado = (settings >> 16) % 2 (0x509716): os lados C/D da sala usam o terreno de A/B (o "Turtle caindo"
+  era o bot com o lado A num lado D = B). Comparado ao S1, o v584 tem 19 .lnd iguais, 2 diferentes (babob, kettleb,
+  gravados como `<nome>.v584`) e 13 novos (loveu, lond, fourheads, desert, gray, jungle, myroom e os B). Sem a tabela
+  da versão o bot usa a do S1; sem `server/maps`, o graphics.xfs do S1 (`bots.graphics_xfs`, só A/B dos mapas 0..10).
 - O y do bot é o primeiro chão abaixo do spawn; os impactos de cada 0xc400 cavam crateras de raio fixo 30 na cópia do
-  bot. Sem o mapa (lado C/D no S1, registro vazio, sem senha) o bot passa a vez em vez de atirar com o mapa errado (o
+  bot. Sem o mapa (lado C/D no S1, mapa fora da tabela) o bot passa a vez em vez de atirar com o mapa errado (o
   0xc400 põe o tanque no x/y do pacote, e com o chão errado ele caía de novo a cada turno).
 - Mira: inimigo vivo mais perto (último x/y que ele mandou), elevações 25..85 de 5 em 5, força 40..400; fica o tiro
   que cai mais perto (chão ou corpo de tanque), checando a colisão a cada 4 px (o tiro anda até ~40 px por passo e
