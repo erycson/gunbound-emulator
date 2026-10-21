@@ -147,6 +147,11 @@ class SetSyncTest(unittest.TestCase):
         self.assertEqual(len(plan['insert']), 1)
         sets[0]['tiers'][-1] = (item_sync.PRICE_SENTINEL_GOLD, 63000)
         self.assertEqual(set_sync.plan_sets(con, sets)['insert'], [])  # sentinela = sem venda
+        sets[0]['tiers'][-1] = (6999993, 699999)
+        self.assertEqual(set_sync.plan_sets(con, sets)['insert'], [])  # sentinela com 30% de desconto também
+        sets[0]['tiers'] = [(6999993, 699999)] * 4 + [(0, 0)]  # prêmio de GP do v584: placeholder em W..Y
+        self.assertEqual(set_sync.plan_sets(con, sets)['insert'], [])
+        sets[0]['tiers'] = [(0, 0)] * 4 + [(630000, 63000)]
         sets[0]['tiers'][-1] = (630000, 63000)
         set_sync.apply_sets(con, plan)
         row = con.execute('SELECT Item1, Item2, Item3, Item4, Item5, Volume1, PriceByGoldForW, PriceByGoldForI, '

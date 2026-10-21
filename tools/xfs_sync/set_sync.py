@@ -20,7 +20,8 @@ Regras:
     (0 ou 0xFFFFFFFF vira 1).
   - Preço por período e moeda, como o cliente mostra: o S2 vende selos só por semana e outros itens com W/M/I
     diferentes. Período ou moeda com preço 0 fica NULL (a compra é recusada). O TH (188) tem preço único.
-  - Set já existente em Menu não é tocado. Sentinela no ilimitado (9999990 gold / 999999 cash) = sem venda: não entra.
+  - Set já existente em Menu não é tocado. Sentinela no ilimitado (9999990 gold / 999999 cash, ou os mesmos com 30%
+    de desconto: 6999993 / 699999) = sem venda: não entra. Em outro período, a sentinela vira NULL.
 """
 import argparse
 import os
@@ -37,6 +38,9 @@ import item_sync  # noqa: E402
 SET_GROUPS = ('ex1.dat', 'ex2.dat')   # ex1 = sets; ex2 = power user/mapas/eventos (mesmo layout)
 S2_GROUPS = ('ex3.dat', 'ex4.dat')    # vazios ("1111") no WC S1; no S2 trazem os itens 700xxx (selos, tickets)
 PRICE_SENTINEL_CASH = 999999
+# 9999990 / 999999 com 30% de desconto (S1 "Clown Set", S2 prêmios de GP e o placeholder 0x32000): também é "sem venda"
+SENTINEL_GOLD_DC, SENTINEL_CASH_DC = 6999993, 699999
+FLAGS_684 = (56, 68, 80, 92)   # u32 "habilita" de T, M, Y, I (gbedit PRICE_ROWS_684); a semana não tem
 TIERS_684 = [(48, 52), (60, 64), (72, 76), (84, 88), (96, 100)]   # gold/cash W,T,M,Y,I (gbedit PRICE_ROWS_684)
 SET_STRIDE = 684
 SET_HEAD = 4
@@ -85,6 +89,7 @@ def parse_sets(data: bytes, own_item: bool = False):
             'tiers': [struct.unpack_from('<II', rec, g) for g, _ in TIERS_684] if stride == SET_STRIDE
             else [(gold, cash)] * len(item_sync.PERIODS),
             'sells': tuple(rec[104:106]) if stride == SET_STRIDE else (),  # vende gold/cash: só para o relatório
+            'flags': tuple(struct.unpack_from('<I', rec, f)[0] for f in FLAGS_684) if stride == SET_STRIDE else (),
         })
     return sets
 
@@ -106,10 +111,10 @@ def prices(s) -> tuple:
     """Gold W,T,M,Y,I + cash W,T,M,Y,I para o Menu; None = não vende naquele período/moeda.
     Sentinela no ilimitado = registro sem venda (placeholders do S1/S2 têm preço nos outros períodos)."""
     i_gold, i_cash = s['tiers'][-1]
-    if i_gold >= item_sync.PRICE_SENTINEL_GOLD or i_cash >= PRICE_SENTINEL_CASH:
+    if i_gold >= SENTINEL_GOLD_DC or i_cash >= SENTINEL_CASH_DC:
         return (None,) * 10
-    return (tuple(g if 0 < g < item_sync.PRICE_SENTINEL_GOLD else None for g, _ in s['tiers'])
-            + tuple(c if 0 < c < PRICE_SENTINEL_CASH else None for _, c in s['tiers']))
+    return (tuple(g if 0 < g < SENTINEL_GOLD_DC else None for g, _ in s['tiers'])
+            + tuple(c if 0 < c < SENTINEL_CASH_DC else None for _, c in s['tiers']))
 
 
 def plan_sets(con, sets):
@@ -164,7 +169,7 @@ def main(argv=None):
         items = ','.join(f'{c:#x}x{v}' for c, v in s['items'])
         p = prices(s)
         print(f'  {s["code"]} ({s["code"]:#x}) {s["name"]!r} gold(W,T,M,Y,I)={list(p[:5])} '
-              f'cash={list(p[5:])} itens=[{items}] vende g/c={s["sells"]}')
+              f'cash={list(p[5:])} itens=[{items}] vende g/c={s["sells"]} habilita T,M,Y,I={s["flags"]}')
 
     if args.apply and plan['insert']:
         ts = time.strftime('%Y%m%d-%H%M%S')
