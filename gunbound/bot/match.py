@@ -120,11 +120,13 @@ async def report(room, bot, phase: int, game=None, delay: int = 0) -> None:
 async def take_turn(room, bot, game) -> None:
     if room.game is not game:
         return
-    plan = aim_at(room, bot)
-    if plan is None:
-        await pass_turn(room, bot, game)
-    else:
-        await shoot(room, bot, game, *plan)
+    try:
+        plan = aim_at(room, bot)
+        if plan is not None:
+            return await shoot(room, bot, game, *plan)
+    except Exception as e:  # o turno tem que terminar, senão o mestre espera para sempre
+        print(f"[BOT] tiro de {bot.conn.data['profile']['Nickname']}: {e!r}")
+    await pass_turn(room, bot, game)
 
 
 async def pass_turn(room, bot, game) -> None:
@@ -162,7 +164,7 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None] | N
     if rng.random() > skill.hit_chance(conn.n, situation, shot, skill.config(conn.server.config)):
         power = aim.miss(rng, power)
         hit = aim.fly(t, *me, angle, power, gravity, w, bodies)
-    return angle, power, hit
+    return angle, power, hit or (max(0, min(t.w - 1, tx)), ty)  # saiu do mapa: a câmera mira o alvo (n >= 1 sempre)
 
 
 def shot_body(x: int, y: int, angle: int, power: int, wind_: tuple[int, int], hit) -> bytes:

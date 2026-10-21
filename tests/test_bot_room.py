@@ -197,7 +197,7 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body.hex(' '), 'c8 05 82 05 01 00 91 00 b8 00 01 ef ff 15 00 ef ff 15 00 ef ff 15 00 0a 00 54 00 '
                                         '00 01 08 3f 04 6c 05')
 
-    async def own_shot(self, roll):
+    async def own_shot(self, roll, shot=True):
         """Turno do bot num mapa plano: (corpos dos frames que ele mandou por tipo, corpo do 0xc400)."""
         b, me = await self.start_match()
         b.conn.layout = 'WCS2'
@@ -217,7 +217,7 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         sent = {}
         for p in plains:
             sent.setdefault(struct.unpack_from('<H', p)[0], []).append(p[2:])
-        return sent, sent[match.SHOT][0]
+        return sent, sent[match.SHOT][0] if shot else None
 
     async def test_shoots_on_own_turn(self):
         """Mira no inimigo com o vento do C300: 0x8006, 0xc400 e o 0e com delay; sem passe."""
@@ -236,6 +236,11 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
     async def test_misses_by_skill(self):
         _, c400 = await self.own_shot(1.0)
         self.assertGreater(abs(struct.unpack_from('<H', c400, 30)[0] - 700) if c400[28] else 999, 40)
+
+    async def test_passes_when_aim_fails(self):
+        with mock.patch.object(match, 'aim_at', side_effect=ValueError('mapa')):
+            sent, _ = await self.own_shot(0.0, shot=False)
+        self.assertIn(match.PASS, sent)
 
     async def test_remove_and_room_closes_without_humans(self):
         await self.cmd('/bot add')
