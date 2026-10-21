@@ -154,9 +154,15 @@ def fly(t: Terrain, x: int, y: int, angle: int, power: int, gravity: int, wind: 
     return None
 
 
+def safe(hit, target, friends) -> bool:
+    """O impacto não pega o bot nem um aliado (friends inclui o bot), salvo quando o alvo está colado neles."""
+    return hit is not None and all(math.dist(hit, f) >= SAFE or math.dist(target, f) <= 2 * SAFE for f in friends)
+
+
 def best_shot(t: Terrain, me: tuple[int, int], target: tuple[int, int], gravity: int, wind: tuple[int, int],
-              bodies=()) -> tuple[int, int, tuple[int, int] | None, int]:
-    """(ângulo absoluto, força, impacto, erro em px) que leva o tiro mais perto do alvo."""
+              bodies=(), friends=()) -> tuple[int, int, tuple[int, int] | None, int]:
+    """(ângulo absoluto, força, impacto, erro em px) que leva o tiro mais perto do alvo sem cair em cima do bot nem
+    dos aliados (friends)."""
     x, y = me
     tx, ty = target
     aim = (tx, ty - BODY // 2)
@@ -166,8 +172,8 @@ def best_shot(t: Terrain, me: tuple[int, int], target: tuple[int, int], gravity:
 
         def score(p):
             hit = fly(t, x, y, angle, p, gravity, wind, bodies)
-            if hit is None or (math.dist(hit, me) < SAFE and math.dist(target, me) > 2 * SAFE):
-                return 1e9, hit  # fora do mapa ou em cima de si mesmo
+            if not safe(hit, target, (me, *friends)):
+                return 1e9, hit  # fora do mapa ou em cima de si mesmo / de um aliado
             return math.dist(hit, aim), hit
 
         coarse = min(range(POWER[0], POWER[1] + 1, 10), key=lambda p: score(p)[0])

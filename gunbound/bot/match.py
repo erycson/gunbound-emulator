@@ -177,15 +177,16 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None] | N
     tank = room.game.tanks.get(bot.slot, (0, 0))[0]
     gravity, w = aim.GRAVITY.get(tank, 98), wind(conn)
     bodies = [(x, y - aim.BODY // 2) for x, y in (place(room, bot, p.slot) for p in others)]
-    angle, power, hit, _ = aim.best_shot(t, me, (tx, ty), gravity, w, bodies)
+    friends = [me] + [place(room, bot, p.slot) for p in others if p not in enemies]
+    angle, power, hit, _ = aim.best_shot(t, me, (tx, ty), gravity, w, bodies, friends[1:])
     situation = skill.ShotSituation(angle=angle if angle <= 90 else 180 - angle, distance=abs(tx - me[0]),
                                     max_distance=t.w, wind=w[0] / 26)
     shot = profiles.shot(conn.layout, tank, 1)
     if rng.random() > skill.hit_chance(conn.n, situation, shot, skill.config(conn.server.config)):
-        for _ in range(3):  # erra, mas não em cima de si mesmo
+        for _ in range(3):  # erra, mas não em cima de si mesmo nem de um aliado
             wrong = aim.miss(rng, power)
             miss = aim.fly(t, *me, angle, wrong, gravity, w, bodies)
-            if miss is None or math.dist(miss, me) >= aim.SAFE:
+            if miss is None or aim.safe(miss, (tx, ty), friends):
                 power, hit = wrong, miss
                 break
     return angle, power, hit or (max(0, min(t.w - 1, tx)), ty)  # saiu do mapa: a câmera mira o alvo (n >= 1 sempre)

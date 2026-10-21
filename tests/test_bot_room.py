@@ -223,6 +223,11 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         angle, power, hit, _ = aim.best_shot(t, (300, 500), (600, 500), 98, (0, 0))
         self.assertLess(abs(hit[0] - 600), 20)
         self.assertGreaterEqual(math.dist(hit, (300, 500)), aim.SAFE)
+        me, enemy = (300, 500), (640, 500)
+        self.assertFalse(aim.safe((520, 500), enemy, [me, (500, 500)]))  # cai no aliado
+        self.assertTrue(aim.safe((630, 500), enemy, [me, (500, 500)]))
+        self.assertTrue(aim.safe((630, 500), enemy, [me, (620, 500)]))  # aliado colado no inimigo: atira mesmo assim
+        self.assertFalse(aim.safe(None, enemy, [me]))
 
     @staticmethod
     def fake_xfs(files: dict) -> bytes:
