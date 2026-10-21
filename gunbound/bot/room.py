@@ -82,6 +82,12 @@ READY = 0x8102
 # outros usuários" até receber o de todos (captura de 2 humanos e do v584). O 0xc30c do mestre chega ao bot com a
 # partida já fechada (room.game None), então o servidor manda o OK dos bots depois do 0x4413.
 RESULT_OK = 0x8103
+# 0x8400 (v584): dados do jogador que cada cliente manda aos outros no começo da partida (emissor 0x50e710, receptor
+# 0x42d927). Do byte 57 em diante o humano manda zeros: licença de mobile (118), bônus de dano (122..130), pct de dano
+# e cratera (163/165; <= -50 zera os dois, 0x4274f0) e avatar 4/5 (179/181). Sem o pacote o cliente fica com o que
+# tinha na memória para o slot desde a entrada na sala (0x4d93b0 zera), então o bot manda o dele com os zeros.
+PLAYER_INFO = 0x8400
+INFO_SIZE = 0x100
 RESULT_OK_WAIT = 3.0
 
 
@@ -133,12 +139,27 @@ async def load(room, delay: float = 0.3) -> None:
         p.conn.counter, p.conn.whose, p.conn.tail, p.conn.last_hit = 0, -1, b'', -1
         p.conn.seen, p.conn.terrain, p.conn.shots, p.conn.last = {}, None, 0, None
         p.conn.weather, p.conn.event, p.conn.joker, p.conn.pos, p.conn.items = [], None, None, None, None
+    if any(phase.is_v584(p.conn) for p in room.players.values() if not is_bot(p.conn)):
+        for p in bots:
+            await p2p_send(room, p, PLAYER_INFO, player_info(p))
     for step in (1, 2, 3):
         await asyncio.sleep(delay)
         for p in bots:
             await p2p_send(room, p, LOAD_STEP, bytes([p.slot, step]).ljust(14, b'\x00'))
     for p in bots:
         await p2p_send(room, p, LOAD_DONE, bytes(14))
+
+
+def player_info(p) -> bytes:
+    """Corpo do 0x8400 como o do humano (captura v584 de 21/10): apelido (16), apelido de novo (12; [INCERTO] guild),
+    u16 0, u32 [INCERTO] id, u32 x4 (o humano manda 2, 2, 0, 2: [INCERTO] patente), u16 0x1c ([INCERTO], igual nos 2
+    humanos), sinal (1 = positivo) + u32 GP, zeros."""
+    nick = p.conn.data['profile']['Nickname'].encode('latin-1')
+    grade = int(p.conn.data['game'].get('TotalGrade') or 0)
+    score = int(p.conn.data['game'].get('TotalScore') or 0)
+    body = (nick[:15].ljust(16, b'\x00') + nick[:12].ljust(12, b'\x00') + struct.pack('<HI4IHBI', 0, 0, grade, grade, 0, grade,
+                                                                                         0x1c, int(score >= 0), abs(score)))
+    return body.ljust(INFO_SIZE, b'\x00')
 
 
 def pick_avatar(slots: list[list[tuple[int, int]]], n: float, rng=random) -> list[int]:

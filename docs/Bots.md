@@ -12,6 +12,14 @@ Falta validar jogando: física ajustada pela captura, mobiles com tiro especial 
 - "Pronto" não passa pelo servidor: quem não é mestre avisa os outros pelo túnel com 0x8102 u8 (3 pronto, 1 presente;
   captura e envio em 0x50923a do v584; o 0x8100 é o ping). O bot manda 0x8102 03 ao entrar e 1 s depois de cada
   0x3232 (volta do resultado); quem entra depois vê pelo estado do 0x2111. No fim da partida o bot continua pronto.
+- 0x8400 (v584, emissor 0x50e710, receptor 0x42d927): dados do jogador que cada cliente manda aos outros no começo da
+  partida, 184 bytes úteis (o humano manda 0x100): apelido 16, apelido 12 ([INCERTO] guild), u16, u32, 4 x u32, u16
+  0x1c, u8 sinal + u32 GP, e do 57 em diante zeros no humano: licença de mobile (118), bônus de dano (122..130), pct de
+  dano e cratera (s16 163/165, <= -50 zera os dois, 0x4274f0) e avatar 4/5 (179/181). Sem o pacote o slot fica com o
+  que estava na memória desde a entrada na sala (0x4d93b0 zera). O bot manda o dele no começo de cada partida.
+  [INCERTO] o Frank, o Trico e a baleia do bot não abriram cratera nos humanos (o Frank do humano abre); o pct e o
+  GroundDamage do avatar (d0 += d0*GD/167, 0x427171, GD de -100..100: no pior caso ~40%) são os únicos atributos do
+  atirador que mexem na cratera, e nenhum é só desses mobiles.
 - Tela de resultado: cada cliente manda 0x8103 (vazio) pelo túnel ao clicar OK; quem clicou fica em "espere até os
   outros usuários clicarem" até ter o de todos (captura de 2 humanos e do v584). O 0xc30c do mestre chega ao bot com
   a partida já fechada, então o servidor manda o 0x8103 de cada bot 3 s depois do 0x4413.

@@ -589,6 +589,26 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(b.ready)
         self.assertFalse(self.room.player(self.master).ready)
 
+    async def test_player_info_at_load_v584(self):
+        """No começo da partida (v584) o bot manda o 0x8400 como o humano: apelido nos 2 nomes, GP com sinal em 52, zeros
+        do 57 em diante (pct de dano/cratera 163/165 = 0); no S1 não manda."""
+        from tools.tunnel_decode import decode, key
+        for version, sends in ((584, True), (0, False)):
+            self.master.data['client_version'] = version
+            b, _ = await self.start_match()
+            self.master.sent.clear()
+            await bots.load(self.room, 0)
+            plains = [decode(raw[3:], key(0, self.room.id))[2] for raw in self.master.sent if raw[:2] == b'\x01\x45']
+            info = [p[2:] for p in plains if p[:2] == struct.pack('<H', bots.PLAYER_INFO)]
+            self.assertEqual(bool(info), sends)
+            if sends:
+                nick = b.conn.data['profile']['Nickname'].encode('latin-1')
+                self.assertEqual(info[0][:len(nick)], nick)
+                self.assertEqual(info[0][16:16 + min(12, len(nick))], nick[:12])
+                self.assertEqual(info[0][52], 1)
+                self.assertEqual(info[0][57:bots.INFO_SIZE], bytes(bots.INFO_SIZE - 57))
+            await self.cmd('/bot remove')
+
     async def test_confirms_result_screen(self):
         """Na tela de resultado o bot manda o 0x8103 (OK), senão o humano fica esperando os outros usuários."""
         await self.cmd('/bot add')
