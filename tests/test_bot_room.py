@@ -375,6 +375,33 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertLess(abs(hit[0] - 1100), 20)
         self.assertEqual(bot.conn.last[0], far.slot)
 
+    def test_digs_or_passes(self):
+        """Inimigo dentro de uma caixa grossa: o bot cava (o impacto fica na caixa e a cratera entra na cópia do mapa).
+        Bot preso numa caixa colada nele: nenhum tiro seguro, passa a vez."""
+        from types import SimpleNamespace as NS
+
+        def box(t, x0, x1, y0, thick):
+            for y in range(y0, 500):
+                for x in range(x0, x1):
+                    t.px[y * t.w + x] = int(y < y0 + thick or x < x0 + thick or x >= x1 - thick)
+
+        def room_with(t, me=(300, 400)):
+            bot = NS(slot=0, team=0, alive=True, conn=NS(terrain=t, seen={}, tail=b'', layout='WCS2', shots=0,
+                                                         last=None, n=1.0, server=NS(config=CONFIG)))
+            enemy = NS(slot=1, team=1, alive=True)
+            return bot, NS(players={0: bot, 1: enemy}, is_team_mode=lambda: True,
+                           game=NS(tanks={}, spawns={0: me, 1: (1100, 400)}))
+        rng = mock.Mock(random=mock.Mock(return_value=0.0))
+        t = self.flat(w=1400)
+        box(t, 1000, 1200, 300, 40)
+        bot, room = room_with(t)
+        hit = match.aim_at(room, bot, rng)[2]
+        self.assertTrue(1000 <= hit[0] < 1200 and hit[1] < 500)
+        t = self.flat(w=1400)
+        box(t, 250, 350, 455, 10)
+        bot, room = room_with(t, (300, 470))
+        self.assertIsNone(match.aim_at(room, bot, rng))
+
     def test_weather_from_next(self):
         """0xc300 do admin (v584, 4 jogadores): o evento da rodada vem no u8 5 do 0xc300 anterior; coluna nova entra no
         1º turno da rodada; o coringa (slot 6) traz o tipo no 1º byte."""

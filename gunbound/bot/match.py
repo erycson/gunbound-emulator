@@ -246,7 +246,9 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None, obj
                  for p in ([target] if steady else enemies)}
         target = target or min(enemies, key=lambda p: plans[p.slot][3]
                                + TIEBREAK * math.dist(me, place(room, bot, p.slot)))
-        angle, power, hit, _ = plans[target.slot]
+        angle, power, hit, err = plans[target.slot]
+        if err >= aim.UNSAFE:  # nenhum tiro seguro (preso colado em parede/teto): passa a vez
+            return None
     tx, ty = place(room, bot, target.slot)
     crossed = set()
     aim.fly(t, *me, angle, power, gravity, w, bodies, weather=cols, crossed=crossed)

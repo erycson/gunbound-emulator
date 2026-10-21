@@ -39,6 +39,7 @@ POWER = (40, 400)
 TORNADO_VX = 200 * SPEED  # piso do |vx| preso no tornado (0x470115), na escala do passo daqui
 MIRROR_Y = 640            # o espelho do 0xc300 só rebate com Y >= 640 (0x471f66)
 BOOSTS = {'force', 'blackforce', 'electric'}
+UNSAFE = 1e9              # erro de tiro que sai do mapa ou cai em cima do bot/aliado
 ELEVATIONS = range(25, 86, 5)
 _EXC = {37: 60181, 113: 92051, 132: 74315, 171: 15644, 216: -58778, 217: -60181, 240: -86602, 287: -95631,
         293: -92051, 310: -76605, 312: -74315, 351: -15644}  # onde a tabela do cliente difere do seno arredondado
@@ -218,7 +219,7 @@ def best_shot(t: Terrain, me: tuple[int, int], target: tuple[int, int], gravity:
             crossed = set()
             hit = fly(t, x, y, angle, p, gravity, wind, bodies, weather=weather, crossed=crossed)
             if not safe(hit, target, (me, *friends)):
-                return 1e9, hit  # fora do mapa ou em cima de si mesmo / de um aliado
+                return UNSAFE, hit  # fora do mapa ou em cima de si mesmo / de um aliado
             d = math.dist(hit, aim)
             return d - (BODY if d <= BODY and crossed & BOOSTS else 0), hit
 
