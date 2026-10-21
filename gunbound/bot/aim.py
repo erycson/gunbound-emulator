@@ -202,3 +202,29 @@ def miss(rng: random.Random, power: int) -> int:
     """Força errada de 10 a 25%, para mais ou para menos."""
     f = rng.uniform(0.10, 0.25) * rng.choice((-1, 1))
     return max(POWER[0], min(POWER[1], round(power * (1 + f))))
+
+
+if __name__ == '__main__':
+    # Conferência só de leitura (docs/Bots.md): python -m gunbound.bot.aim [GunBound.xfs do v584]. Abre o SolFS uma vez
+    # (senha só por GB_SOLFS_PASSWORD) e mostra, por lado, o prefixo de cada mapa no stage.dat e o tamanho do .lnd.
+    import time
+    t0 = time.time()
+    spec = importlib.util.spec_from_file_location('_xfs_reader', ROOT / 'tools' / 'xfs_sync' / 'xfs_reader.py')
+    xr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(xr)
+    f = io.BytesIO(_s2_graphics(sys.argv[1] if len(sys.argv) > 1 else str(DEFAULT_S2_XFS)))
+    entries = {e.name.lower(): e for e in xr.read_trailer(f)[1]}
+    print(f'graphics.xfs: {len(entries)} arquivos, {sum(n.endswith(".lnd") for n in entries)} .lnd ({time.time() - t0:.1f} s)')
+    stage = _gbedit()[0].decode(xr.read_entry(f, entries['stage.dat'])[4:], S2_STAGE_SIZE)
+    for side in range(4):
+        row = []
+        for m in range(S2_SIDE_MAPS):
+            name = s2_stage_name(stage, m, side)
+            entry = name and entries.get(name + '.lnd')
+            try:
+                size = 'x'.join(map(str, struct.unpack_from('<II', xr.read_entry(f, entry)))) if entry else 'sem .lnd'
+            except Exception as e:  # bloco que o xfs_reader não lê: o bot passaria a vez neste mapa
+                size = f'ilegível ({e})'
+            row.append(f'{m}={name or "-"}' + (f' {size}' if name else ''))
+        print(f'lado {"ABCD"[side]}:', ', '.join(row))
+    print(f'{time.time() - t0:.1f} s')

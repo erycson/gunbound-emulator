@@ -120,6 +120,8 @@ async def load(room, delay: float = 0.3) -> None:
         p.conn.seq.clear()
         p.conn.counter, p.conn.whose, p.conn.tail, p.conn.last_hit = 0, -1, b'', -1
         p.conn.seen, p.conn.terrain = {}, None
+    from gunbound.bot import match  # import tardio: match importa este módulo
+    match.later(room, None, 0, match.warm(room))
     for step in (1, 2, 3):
         await asyncio.sleep(delay)
         for p in bots:

@@ -132,8 +132,12 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
   dentro do GunBound.xfs SolFS (`bots.s2_xfs`, padrão `../clientes/WC-S2-v584/GunBound.xfs`; senha só por
   GB_SOLFS_PASSWORD no ambiente do servidor). O stage.dat dele (carga em 0x423cdf: LZHUF depois de 4 bytes, 0x9c00
   abertos = 64 registros de 0x270, prefixo do .lnd em +0) é indexado por mapa + lado * 18 (G+0x2799c + G+0x279a0 *
-  0x12, 0x458dd7), então tem os lados C/D. Abrir o SolFS lê o arquivo inteiro (~300 MB): um bot por vez, os últimos
-  4 mapas ficam em cache.
+  0x12, 0x458dd7), então tem os lados C/D. Abrir o SolFS lê o arquivo inteiro (~300 MB, até ~2,5 s de AES): o mapa
+  abre na tela de carregamento (0x3432, `match.warm`), um bot por vez, e os últimos 4 ficam em cache. Se o S2 falhar
+  (sem senha, sem arquivo), o v584 usa o mapa do S1 nos lados A/B, como antes; o motivo sai no log uma vez.
+  Conferência (só lê; com GB_SOLFS_PASSWORD no ambiente): `python -m gunbound.bot.aim [GunBound.xfs]` mostra o
+  prefixo e o tamanho do .lnd de cada mapa por lado. [INCERTO] ainda não rodou no arquivo real: nome do graphics.xfs
+  interno, LZHUF do stage.dat do v584 e os blocos do graphics.xfs (o xfs_reader não lê blocos com flag 0xC0).
 - O y do bot é o primeiro chão abaixo do spawn; os impactos de cada 0xc400 cavam crateras de raio fixo 30 na cópia do
   bot. Sem o mapa (lado C/D no S1, registro vazio, sem senha) o bot passa a vez em vez de atirar com o mapa errado (o
   0xc400 põe o tanque no x/y do pacote, e com o chão errado ele caía de novo a cada turno).

@@ -37,6 +37,7 @@ V584_POWER = 5      # força do 0xc400 do v584 = 5x a do antigo (tiros do admin,
 DIES_NOW = 0x10     # 0xc304: com o bit, quem recebe tira o tanque na hora (0x4df66b, y = 10000); o dono que se vê morto
                     # manda causa | 0x10 (0x482955). Sem o bit o mestre ainda o acha vivo e manda outro 0xc312
 _tasks: set[asyncio.Task] = set()
+_warned: set[str] = set()
 
 
 async def on_frame(room, bot, sender, frame: bytes) -> None:
@@ -84,14 +85,38 @@ async def prepare(room, bot) -> None:
     conn = bot.conn
     conn.terrain = None
     conn.v584 = any(phase.is_v584(p.conn) for p in room.players.values() if not is_bot(p.conn))
-    if getattr(conn, 'layout', None) in SHOOTS and room.game is not None:
-        c = cfg(conn.server.config)  # o v584 tem mapas e lados C/D próprios, no GunBound.xfs dele
-        path = (c.get('s2_xfs') or aim.DEFAULT_S2_XFS) if conn.v584 else (c.get('graphics_xfs') or aim.DEFAULT_XFS)
-        side = (room.options.settings >> 16) & 3
+    if getattr(conn, 'layout', None) in SHOOTS:
+        conn.terrain = await terrain(room, conn)
+
+
+async def terrain(room, conn) -> aim.Terrain | None:
+    """Mapa da partida: o do v584 (lados C/D e mapas 11+) e, se ele faltar (sem senha, sem arquivo), o do S1, que só
+    tem A/B dos mapas 0..10. Sem nenhum o bot só passa a vez. O 0x3432 já chama isto (warm) para encher o cache."""
+    if room.game is None:
+        return None
+    c = cfg(conn.server.config)
+    s1 = c.get('graphics_xfs') or aim.DEFAULT_XFS
+    paths = [c.get('s2_xfs') or aim.DEFAULT_S2_XFS, s1] if conn.v584 else [s1]
+    side = (room.options.settings >> 16) & 3
+    for path in paths:
         try:
-            conn.terrain = await asyncio.to_thread(aim.Terrain.load, aim.ROOT / Path(path), room.game.map, side)
-        except Exception as e:  # xfs ausente ou ilegível: o bot só passa a vez
-            print(f"[BOT] terreno do mapa {room.game.map}: {e}")
+            found = await asyncio.to_thread(aim.Terrain.load, aim.ROOT / Path(path), room.game.map, side)
+        except Exception as e:  # xfs ausente, ilegível ou sem senha: avisa uma vez e tenta o próximo
+            if str(e) not in _warned:
+                _warned.add(str(e))
+                print(f"[BOT] terreno do mapa {room.game.map} lado {side} ({Path(path).name}): {e}")
+            continue
+        if found is not None:
+            return found
+    return None
+
+
+async def warm(room) -> None:
+    """Abre o mapa durante a tela de carregamento (o SolFS do v584 leva ~2 s); o 0x8600 acha no cache."""
+    bots = [p for p in room.players.values() if is_bot(p.conn) and getattr(p.conn, 'layout', None) in SHOOTS]
+    if bots:
+        bots[0].conn.v584 = any(phase.is_v584(p.conn) for p in room.players.values() if not is_bot(p.conn))
+        await terrain(room, bots[0].conn)
 
 
 def place(room, bot, slot: int) -> tuple[int, int]:

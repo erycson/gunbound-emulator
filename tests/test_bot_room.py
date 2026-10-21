@@ -263,6 +263,27 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
             with mock.patch.dict(os.environ, {'GB_SOLFS_PASSWORD': ''}), self.assertRaises(solfs.SolfsError):
                 aim.Terrain.load(path, 2, 2)  # sem senha: erro antes de ler o arquivo (o bot passa a vez)
 
+    async def test_v584_falls_back_to_s1_terrain(self):
+        """Sem senha do SolFS, o v584 nos lados A/B usa o mapa do S1 (como antes); avisa uma vez só."""
+        self.master.data['client_version'] = 584
+        b, _ = await self.start_match()
+        b.conn.layout = 'WCS2'
+        flat = self.flat()
+
+        def load(path, game_map, side):
+            if path.name == 'GunBound.xfs':
+                raise RuntimeError('sem senha')
+            return flat
+
+        match._warned.clear()
+        with mock.patch.object(aim.Terrain, 'load', side_effect=load) as loads, \
+                mock.patch('builtins.print') as said:
+            await match.prepare(self.room, b)
+            await match.prepare(self.room, b)
+        self.assertIs(b.conn.terrain, flat)
+        self.assertEqual([c.args[0].name for c in loads.call_args_list], ['GunBound.xfs', 'graphics.xfs'] * 2)
+        self.assertEqual(said.call_count, 1)
+
     async def own_shot(self, roll, shot=True, version=0):
         """Turno do bot num mapa plano: (corpos dos frames que ele mandou por tipo, corpo do 0xc400)."""
         self.master.data['client_version'] = version
