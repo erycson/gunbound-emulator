@@ -9,6 +9,8 @@ Formato do registro de set (684 bytes, count = (len-4)/684; decodificado de ex1.
   @0   u32 código do menu (= Menu.No), ex.: 0x30001 = 196609 = "Golden Armor Set(M)"
   @20  nome (cstring)
   @48..103 (gold, cash) por período W,T,M,Y,I (gbedit PRICE_ROWS_684); @104/@105 u8 vende gold/cash
+       (v584: o loader 0x42fbd9 copia para obj+0x70/+0x71; a janela de compra 0x53b679/0x53b6e4 só habilita o botão
+       de cash com @105 e o de gold com @104)
   @112 até 5 triplas u32 (código do item, volume, período); período 0xFFFFFFFF = não usado,
        código 0 ou 0xFFFFFFFF = slot vazio. Os códigos são as chaves dos itens únicos (mesmo formato de item_sync).
 
@@ -20,6 +22,7 @@ Regras:
     (0 ou 0xFFFFFFFF vira 1).
   - Preço por período e moeda, como o cliente mostra: o S2 vende selos só por semana e outros itens com W/M/I
     diferentes. Período ou moeda com preço 0 fica NULL (a compra é recusada). O TH (188) tem preço único.
+  - Moeda com o byte "vende" zerado fica NULL, como o cliente (sets GM/eventos com 0,0 não entram).
   - Set já existente em Menu não é tocado. Sentinela no ilimitado (9999990 gold / 999999 cash, ou os mesmos com 30%
     de desconto: 6999993 / 699999) = sem venda: não entra. Em outro período, a sentinela vira NULL.
 """
@@ -88,7 +91,7 @@ def parse_sets(data: bytes, own_item: bool = False):
             # (gold, cash) de W,T,M,Y,I; o TH tem um preço só
             'tiers': [struct.unpack_from('<II', rec, g) for g, _ in TIERS_684] if stride == SET_STRIDE
             else [(gold, cash)] * len(item_sync.PERIODS),
-            'sells': tuple(rec[104:106]) if stride == SET_STRIDE else (),  # vende gold/cash: só para o relatório
+            'sells': tuple(rec[104:106]) if stride == SET_STRIDE else (1, 1),  # vende gold/cash; o TH não tem
             'flags': tuple(struct.unpack_from('<I', rec, f)[0] for f in FLAGS_684) if stride == SET_STRIDE else (),
         })
     return sets
@@ -113,8 +116,9 @@ def prices(s) -> tuple:
     i_gold, i_cash = s['tiers'][-1]
     if i_gold >= SENTINEL_GOLD_DC or i_cash >= SENTINEL_CASH_DC:
         return (None,) * 10
-    return (tuple(g if 0 < g < SENTINEL_GOLD_DC else None for g, _ in s['tiers'])
-            + tuple(c if 0 < c < SENTINEL_CASH_DC else None for _, c in s['tiers']))
+    sells_gold, sells_cash = s['sells']
+    return (tuple(g if sells_gold and 0 < g < SENTINEL_GOLD_DC else None for g, _ in s['tiers'])
+            + tuple(c if sells_cash and 0 < c < SENTINEL_CASH_DC else None for _, c in s['tiers']))
 
 
 def plan_sets(con, sets):

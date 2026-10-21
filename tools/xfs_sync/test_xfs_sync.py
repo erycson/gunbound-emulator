@@ -126,6 +126,7 @@ class SetSyncTest(unittest.TestCase):
         rec[20:20 + 19] = b'Golden Armor Set(M)'
         struct.pack_into('<I', rec, 96, 630000)
         struct.pack_into('<I', rec, 100, 63000)
+        rec[104:106] = b''  # vende gold e cash
         for k, (code, vol) in enumerate([(0x18029, 1), (0x8027, 1), (0x28001, 1)]):
             struct.pack_into('<III', rec, 112 + k * 12, code, vol, 0xFFFFFFFF)
         for k in range(3, 5):
@@ -152,7 +153,6 @@ class SetSyncTest(unittest.TestCase):
         sets[0]['tiers'] = [(6999993, 699999)] * 4 + [(0, 0)]  # prêmio de GP do v584: placeholder em W..Y
         self.assertEqual(set_sync.plan_sets(con, sets)['insert'], [])
         sets[0]['tiers'] = [(0, 0)] * 4 + [(630000, 63000)]
-        sets[0]['tiers'][-1] = (630000, 63000)
         set_sync.apply_sets(con, plan)
         row = con.execute('SELECT Item1, Item2, Item3, Item4, Item5, Volume1, PriceByGoldForW, PriceByGoldForI, '
                           'PriceByCashForI FROM Menu WHERE No=196609').fetchone()
@@ -166,6 +166,7 @@ class SetSyncTest(unittest.TestCase):
             r[20:20 + len(name)] = name.encode('latin-1')
             struct.pack_into('<I', r, 96, gold)
             struct.pack_into('<I', r, 100, gold // 10)
+            r[104:106] = b''
             struct.pack_into('<III', r, 112, item, 1, 0xFFFFFFFF)
             return bytes(r)
         data = struct.pack('<I', 2) + rec(0x32002, 'Power User (1wk)', 35000, 0x32001)             + rec(0x32020, 'Power User (2wk)', 9999990, 0x32001)
@@ -185,7 +186,9 @@ class SetSyncTest(unittest.TestCase):
         struct.pack_into('<I', r, 0, 700124)
         r[20:20 + 12] = b'Delay 3 Seal'
         struct.pack_into('<II', r, 48, 0, 7693)
+        r[105] = 1  # vende cash
         data = struct.pack('<I', 1) + bytes(r)
+        self.assertIsNone(set_sync.prices(dict(set_sync.parse_sets(data, True)[0], sells=(1, 0)))[5])  # sem @105
         self.assertEqual(set_sync.parse_sets(data), [])  # ex1: sem itens fica de fora
         sets = set_sync.parse_sets(data, own_item=True)
         self.assertEqual(sets[0]['items'], [(700124, 1)])
