@@ -159,8 +159,9 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         with mock.patch.object(match, 'SHOT_WAIT', 0):
             await match.react(self.room, b, me, 0xC400, bytes(40))
             await self.settle()
-        await match.react(self.room, b, me, match.CHECK, bytes([b.slot + 1]))  # outro slot: nada
-        await match.react(self.room, b, me, match.CHECK, bytes([b.slot]))
+        await match.react(self.room, b, b, match.CHECK, bytes([b.slot]))  # não veio do mestre: nada
+        await match.react(self.room, b, me, match.CHECK, bytes([b.slot + 1]))  # qualquer slot: responde
+        await match.react(self.room, b, me, match.KILL, bytes([b.slot + 1]))  # outro morreu: nada
         await match.react(self.room, b, me, match.KILL, bytes([b.slot]))
         await match.react(self.room, b, me, match.KILL, bytes([b.slot]))  # repetido: já morreu
         from tools.tunnel_decode import decode, key
@@ -221,8 +222,9 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertLess(abs(hit[0] - 600), 20)
         self.assertGreaterEqual(math.dist(hit, (300, 500)), aim.SAFE)
 
-    async def own_shot(self, roll, shot=True):
+    async def own_shot(self, roll, shot=True, version=0):
         """Turno do bot num mapa plano: (corpos dos frames que ele mandou por tipo, corpo do 0xc400)."""
+        self.master.data['client_version'] = version
         b, me = await self.start_match()
         b.conn.layout = 'WCS2'
         self.room.game.spawns = {me.slot: (700, 0), b.slot: (200, 0)}
@@ -256,6 +258,15 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         hx, hy = struct.unpack_from('<HH', c400, 30)
         self.assertLess(abs(hx - 700), 20)
         self.assertIn(struct.pack('<BII', 0x0e, 5, match.SHOT_DELAY), [r[:9] for r in sent[match.REPORT]])
+
+    async def test_shoots_v584(self):
+        """Humano no v584: alvo à direita -> lado 1 no 0xc400 e no 0x8006 (trocado), força x5, impactos em 30."""
+        sent, c400 = await self.own_shot(0.0, version=584)
+        self.assertEqual(c400[4:6], b'\x01\x00')
+        self.assertEqual(sent[match.AIM][0][4:6], b'\x00\x01')
+        self.assertEqual(struct.unpack_from('<H', c400, 8)[0] % match.V584_POWER, 0)
+        self.assertEqual(c400[30], 1)
+        self.assertLess(abs(struct.unpack_from('<H', c400, 32)[0] - 700), 20)
 
     async def test_misses_by_skill(self):
         _, c400 = await self.own_shot(1.0)

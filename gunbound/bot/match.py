@@ -71,7 +71,7 @@ async def react(room, bot, sender, kind: int, body: bytes) -> None:
     elif kind == SYNC and from_master and body[:1] == b'\x02' and conn.whose == bot.slot:
         conn.whose = -1
         later(room, bot, TURN_WAIT, take_turn(room, bot, game))
-    elif kind == CHECK and from_master and body[:1] == bytes([bot.slot]) and bot.alive:
+    elif kind == CHECK and from_master and bot.alive:  # todo cliente responde (0x4e0425 não lê o slot)
         await send(room, bot, CHECK_ACK, b'')
     elif kind == KILL and from_master and body[:1] == bytes([bot.slot]) and bot.alive:
         await die(room, bot)
@@ -191,11 +191,12 @@ def shot_body(x: int, y: int, angle: int, power: int, wind_: tuple[int, int], hi
 
 async def shoot(room, bot, game, angle: int, power: int, hit) -> None:
     x, y = place(room, bot, bot.slot)
-    await send(room, bot, AIM, struct.pack('<HH', x, y) + b'\x00\x01')
+    body = shot_body(x, y, angle, power, wind(bot.conn), hit, getattr(bot.conn, 'v584', False))
+    # o 0x8006 leva os bytes 4/5 do 0xc400 trocados (todas as capturas); outro lado aqui viraria o tanque duas vezes
+    await send(room, bot, AIM, struct.pack('<HHBB', x, y, body[5], body[4]))
     await asyncio.sleep(AIM_WAIT)
     if room.game is not game or not bot.alive:
         return
-    body = shot_body(x, y, angle, power, wind(bot.conn), hit, getattr(bot.conn, 'v584', False))
     craters(bot.conn, body)
     await send(room, bot, SHOT, body)
     later(room, bot, SHOT_WAIT, report(room, bot, 0x0e, game, SHOT_DELAY))
