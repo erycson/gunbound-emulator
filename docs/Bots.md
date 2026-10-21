@@ -92,7 +92,8 @@ decifra e entrega a `match.on_frame`. O que o bot manda vai aos humanos e, como 
   (passes da captura: 7200..9100) e o estado do último 0xc300 (o vento não muda no passe do bot).
 - Diferença conhecida: o humano segura o 02 até os tanques assentarem (morte do mestre no fim do turno); o bot manda
   no 0xc300. O mestre só conta, então a ordem não importa.
-- O bot não manda 0x8402 (posição) nem anda; o x/y dele vai no 0xc40a e no 0xc400 (y do chão, ver 2).
+- O bot anda antes de mirar (ver Andar em 2): 0x8005 por quadro e 0x8402 ao cair de degrau; o x/y dele também vai
+  no 0xc40a e no 0xc400 (y do chão).
 - [INCERTO] a captura é 1x1; com mais jogadores o mestre pode esperar o 0xc309 ou o 02 de outro jeito.
 
 **Feito (1b): a morte.** Cada cliente calcula o HP de todos os tanques (tank+0x150, máximo em +0x14c, x em +0x8c,
@@ -166,6 +167,20 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
     o corpo, o que passa por eles. 0x1f7 é o raio do Lightning (tiro), não clima.
   - O bot simula a 4 px por subpasso (o cliente checa a cada 12 px). [INCERTO] o S1 tem outro bloco (3 slots, 0x422bf2
     do v440); o bot só atira no WCS2.
+- Cavar e passar: com o inimigo atrás de parede ou dentro de terra, fica o tiro que cai mais perto, e a cratera entra
+  na cópia do mapa, então o próximo turno parte do buraco aberto. Sem nenhum tiro seguro (todos caem perto dele ou de
+  aliado), passa a vez.
+- Andar (v584, análise estática do 0x47b900, 20 quadros/s): por quadro, gravidade (vy += 1; pousa no chão do tanque,
+  que sobe no máximo h/2 por quadro, 0x476c30/0x476f40), acc += 150 - 2·inclinação, x += acc // 100, acc %= 100, e
+  gasta 1 do limite do turno (100; dword 26 do characterdata). Para com subida >= 70° (dword 27), chão na frente a 30
+  px de altura (parede), borda do mapa ou fim do limite (~150 px no plano). Cada quadro manda 0x8005 (u16 x, u16 y);
+  quem recebe anda até o x com o próprio chão, só na vez daquele jogador e antes do tiro. Ao cair de degrau de mais de
+  15 px manda 0x8402 (x, y, lado). Sai do mapa por baixo: morre.
+  O bot anda quando daqui o erro do melhor tiro passa de 36 px (2 corpos) ou o lugar tem risco de cair (parte do
+  tanque sem chão, chão fino sobre o vazio, ou vazio até o fim do mapa a 40 px de um lado): testa a cada 15 quadros
+  para os dois lados (erro + 100·risco + 0,2 px por quadro) e vai até o melhor; cair para fora do mapa corta o lado.
+  shortcut: tanque 30x30, limite 100 e subida 70 para todos os mobiles (o characterdata tem o de cada um); o vazio
+  embaixo de um lado conta como 45° na inclinação (o limite de busca do 0x4765f0 não foi conferido).
 - Tiro 2: o 2º u8 do 0xc400 (+0x1a4); quem recebe escolhe a animação fire2 e o projétil do tiro 2 (0x4e09d0; o 0x8006
   leva o mesmo byte trocado). O bot usa o 2 (40%) só onde ele voa como o 1 (`profiles.py`, special=False): Nak (cava por
   baixo da terra), Trico (órbita), Raon (minas), Turtle (bolhas), Boomer, A.Sate, Grub, Aduka, J.Frog, Kalsiddon e os

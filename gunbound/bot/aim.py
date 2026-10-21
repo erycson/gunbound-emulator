@@ -128,6 +128,93 @@ class Terrain:
                 self.px[y * self.w + lo:y * self.w + hi] = bytes(hi - lo)
 
 
+# andar (docs/Bots.md; OCharacter 0x47ed90): um quadro a cada 50 ms. shortcut: tamanho, limite e inclinação são os
+# padrões; o cliente lê por mobile do characterdata (dword 0/1 x 0,75, 26, 27), falta ler
+TANK_W, TANK_H = 30, 30
+CLIFF = 40
+MOVE_BUDGET = 100   # 1 por quadro andando (0x47b900)
+MAX_SLOPE = 70      # graus (+0x178)
+WALL = 30           # parede na frente do tanque, de y - 30 para cima, barra o passo
+LEDGE = 15          # degrau maior que isso: o tanque cai e o cliente manda 0x8402 (0x47c70e)
+NO_GROUND = 10000
+
+
+def scan(t: Terrain, x: int, y: int) -> int:
+    g = t.ground(x, max(0, y))
+    return NO_GROUND if g is None else g
+
+
+def tank_ground(t: Terrain, x: int, y: int) -> int:
+    """Chão do tanque (0x476c30): sobe no máximo h/2 por quadro."""
+    h2 = TANK_H // 2
+    if not t.solid(x, y - h2):
+        return scan(t, x, y - h2)
+    if not t.solid(x, y - TANK_H):
+        return y - h2
+    return y if t.solid(x, y + 1) else scan(t, x, y + 1)
+
+
+def gravity(t: Terrain, x: int, y: int, vy: int) -> tuple[int, int]:
+    """Um quadro de queda (0x476f40): cai 1, 2, 3... px por quadro; pousa (quica 1 se vinha rápido)."""
+    g = tank_ground(t, x, y)
+    if y + vy >= g:
+        return (g, 0) if vy < 5 else (g - vy, 1)
+    return y + vy + 1, vy + 1
+
+
+def slope(t: Terrain, x: int, y: int, face: int) -> int:
+    """Inclinação em graus (0x4765f0), positiva = subida para o lado em que o tanque olha (face 1 = direita)."""
+    w2, h2 = TANK_W // 2, TANK_H // 2
+    # shortcut: vazio embaixo de um lado conta como queda de TANK_W (45°), senão o tanque na beira não volta; o limite
+    # de busca do 0x4765f0 não foi conferido
+    dy = min(scan(t, x + w2, y - h2), y + TANK_W) - min(scan(t, x - w2, y - h2), y + TANK_W)
+    angle = round(math.degrees(math.atan2(dy, TANK_W)))
+    return -angle if face else angle
+
+
+def settle(t: Terrain, x: int, y: int, frames: int = 400) -> tuple[int, int] | None:
+    """Onde o tanque para depois de cair; None se cai para fora do mapa (morre)."""
+    vy = 0
+    for _ in range(frames):
+        if y >= t.h:
+            return None
+        ny, vy = gravity(t, x, y, vy)
+        if ny == y and vy == 0:
+            return x, y
+        y = ny
+    return (x, y) if y < t.h else None
+
+
+def walk(t: Terrain, x: int, y: int, face: int, budget: int = MOVE_BUDGET):
+    """Quadros de andar para um lado (0x47b900, passo 0x487a30): (x, y, caiu do degrau) em cada um, como no 0x8005.
+    Para sem limite, com subida >= MAX_SLOPE, parede de WALL px na frente, na borda do mapa ou se cai fora do mapa."""
+    acc, vy, step, falling = 0, 0, 1 if face else -1, False
+    while budget > 0:
+        y, vy = gravity(t, x, y, vy)
+        if y >= t.h:
+            return
+        if slope(t, x, y, face) >= MAX_SLOPE or t.solid(x + step * (TANK_W // 2), y - WALL):
+            return
+        if (face and x >= t.w - 2) or (not face and x <= 0):
+            return
+        acc += 150 - 2 * slope(t, x, y, face)
+        x, acc, budget = x + step * (acc // 100), acc % 100, budget - 1
+        drop = scan(t, x, y) - y > LEDGE
+        yield x, y, drop and not falling  # o 0x8402 sai uma vez, no quadro em que começa a cair
+        falling = drop
+
+
+def risk(t: Terrain, x: int, y: int) -> float:
+    """0..2: parte do tanque sem chão até LEDGE px abaixo, + 0,5 se o chão embaixo é fino (< 40 px) sobre o vazio
+    (um tiro abre e ele cai para fora do mapa), + 0,5 se há vazio até o fim do mapa a CLIFF px de um lado (beira:
+    uma cratera ou um empurrão o derruba)."""
+    cols = range(x - TANK_W // 2, x + TANK_W // 2 + 1)
+    loose = sum(1 for c in cols if not any(t.solid(c, yy) for yy in range(y, y + LEDGE + 1))) / len(cols)
+    thick = next((d for d in range(40) if not t.solid(x, y + d)), 40)
+    cliff = any(t.ground(c, y) is None for c in (x - CLIFF, x + CLIFF) if 0 <= c < t.w)
+    return loose + (0.5 if thick < 40 and t.ground(x, y + thick) is None else 0) + (0.5 if cliff else 0)
+
+
 def muzzle(angle: int) -> tuple[int, int]:
     """(bx, by) do C400: y para cima; muzzle = (x + bx, y - by)."""
     return cos_times(angle, BARREL), sin_times(angle, BARREL)

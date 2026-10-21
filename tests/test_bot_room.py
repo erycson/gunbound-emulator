@@ -402,6 +402,61 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         bot, room = room_with(t, (300, 470))
         self.assertIsNone(match.aim_at(room, bot, rng))
 
+    def test_walk_like_client(self):
+        """Plano: 100 quadros, 1,5 px por quadro. Parede de 40 px barra antes dela. Degrau: 0x8402 uma vez e cai."""
+        t = self.flat(w=1400)
+        frames = list(aim.walk(t, 600, 500, 1))
+        self.assertEqual((len(frames), frames[-1]), (100, (750, 500, False)))
+        wall = self.flat(w=1400)
+        for y in range(460, 500):
+            for x in range(700, 720):
+                wall.px[y * wall.w + x] = 1
+        self.assertLessEqual(list(aim.walk(wall, 600, 500, 1))[-1][0], 700 - aim.TANK_W // 2)
+        step = self.flat(w=1400)
+        for y in range(500, 540):
+            for x in range(650, 1400):
+                step.px[y * step.w + x] = 0
+        frames = list(aim.walk(step, 600, 500, 1))
+        self.assertEqual(sum(f[2] for f in frames), 1)
+        self.assertEqual(frames[-1][1], 540)
+
+    def test_walks_for_aim_and_away_from_edge(self):
+        """Debaixo de um teto baixo não há tiro: anda para fora. Na beira de um penhasco: anda para longe dela."""
+        from types import SimpleNamespace as NS
+
+        def room_with(t, me, enemy):
+            bot = NS(slot=0, team=0, alive=True, conn=NS(terrain=t, seen={}, tail=b'', layout='WCS2', shots=0,
+                                                         last=None, n=1.0, server=NS(config=CONFIG), pos=None))
+            return bot, NS(players={0: bot, 1: NS(slot=1, team=1, alive=True)}, is_team_mode=lambda: True,
+                           game=NS(tanks={}, spawns={0: me, 1: enemy}))
+        cave = self.flat(w=1400)
+        for y in range(458, 466):
+            for x in range(150, 420):
+                cave.px[y * cave.w + x] = 1
+        bot, room = room_with(cave, (300, 500), (1100, 400))
+        path = match.route(room, bot)
+        self.assertGreater(match.spot_error(room, bot, (300, 500)), match.MOVE_ERR)
+        self.assertLessEqual(match.spot_error(room, bot, path[-1][:2]), match.MOVE_ERR)
+        edge = self.flat(w=1400)
+        for y in range(500, 600):
+            for x in range(620, 1000):
+                edge.px[y * edge.w + x] = 0
+        bot, room = room_with(edge, (610, 500), (1300, 400))
+        path = match.route(room, bot)
+        self.assertEqual(path[-1][3], 0)
+        self.assertEqual(aim.risk(edge, *path[-1][:2]), 0)
+        bot, room = room_with(self.flat(w=1400), (300, 500), (1100, 400))
+        self.assertEqual(match.route(room, bot), [])  # já tem tiro: fica
+
+    async def test_walk_frames_before_shot(self):
+        """Um 0x8005 por quadro, 0x8402 no degrau, e o tiro sai de onde ele parou."""
+        path = [(201, 500, False, 1), (203, 500, True, 1)]
+        with mock.patch.object(match, 'route', return_value=path), mock.patch.object(match, 'STEP_TIME', 0):
+            sent, c400 = await self.own_shot(0.0)
+        self.assertEqual([w[:4] for w in sent[match.WALK]], [struct.pack('<HH', 201, 500), struct.pack('<HH', 203, 500)])
+        self.assertEqual([m[:5] for m in sent[match.MOVE]], [struct.pack('<HHB', 203, 500, 1)])
+        self.assertEqual(struct.unpack_from('<H', c400)[0], 203)
+
     def test_weather_from_next(self):
         """0xc300 do admin (v584, 4 jogadores): o evento da rodada vem no u8 5 do 0xc300 anterior; coluna nova entra no
         1º turno da rodada; o coringa (slot 6) traz o tipo no 1º byte."""

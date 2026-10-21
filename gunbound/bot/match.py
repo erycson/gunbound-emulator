@@ -24,10 +24,10 @@ from gunbound.game import phase
 
 START, NEXT, PASS, REPORT, SYNC, DEATH, POS, DEATH_ACK = 0x8600, 0xC300, 0xC301, 0xC302, 0xC303, 0xC304, 0xC40A, 0xC309
 CHECK, CHECK_ACK, KILL = 0xC312, 0xC314, 0xC315
-AIM, SHOT, MOVE = 0x8006, 0xC400, 0x8402
+AIM, SHOT, MOVE, WALK = 0x8006, 0xC400, 0x8402, 0x8005
 SHOTS = (0xC400, 0xC409)
 SS = 0xC409         # SS: o mesmo corpo do 0xc400 (0x4e0cc9 pula o byte do tiro 2 e liga +0x1a8/+0x1ac)
-PLACES = {POS: '<II', MOVE: '<HH', SHOT: '<HH', AIM: '<HH'}  # onde cada humano está
+PLACES = {POS: '<II', MOVE: '<HH', WALK: '<HH', SHOT: '<HH', AIM: '<HH'}  # onde cada humano está
 PASS_DELAY = 9000   # u16 do C301, soma no delay do slot (0x41c3b0); 0xffff/0xea60 não somam e o bot ganharia todo turno
 SHOT_DELAY = 8900   # shortcut: delay do 0e do atirador como o da captura (8400..8900); o real vem do mobile e do tempo
 SHOT_WAIT = 3.0     # humanos mandam o 0e 1,3..3,3 s depois do tiro; atrasado é seguro, o mestre só espera
@@ -40,6 +40,11 @@ SS_EVERY = 5        # shortcut: o SS fica pronto a cada 5 tiros do bot; o do cli
 EVENTS = {0: 'force', 1: 'tornado', 2: 'electric', 7: 'blackforce', 8: 'mirror'}  # 9 = coringa
 SLOTS = ('force', 'tornado', 'electric', 'blackforce', 'mirror', 'joker')
 JOKER = ('force', 'tornado', 'electric', 'blackforce', 'mirror')  # tipo do coringa (0x44a8c4)
+STEP_TIME = 0.05    # um quadro de andar (o cliente roda a 20 Hz e manda um 0x8005 por quadro)
+MOVE_ERR = 36       # px: com erro de mira maior que isso (2 corpos) o bot procura outro lugar andando
+SPOT_EVERY = 15     # quadros de andar entre os lugares que ele testa (cada teste simula a mira em todos os inimigos)
+RISK_W = 100        # px de erro que valem o risco 1 de cair (aim.risk)
+WALK_COST = 0.2     # px de erro por quadro andado: com empate, anda menos
 TIEBREAK = 0.02     # px de erro da mira que valem 1 px de distância na escolha do alvo
 REPEAT = 5          # px: o último tiro que acertou se repete se nem o bot nem o alvo andaram mais que isso
 V584_POWER = 5      # força do 0xc400 do v584 = 5x a do antigo (tiros do admin, até 2200); aim.py usa a escala antiga
@@ -123,7 +128,8 @@ def place(room, bot, slot: int) -> tuple[int, int]:
     conn = bot.conn
     if slot != bot.slot and slot in conn.seen:
         return conn.seen[slot]
-    x, y = room.game.spawns.get(slot, (0, 0)) if room.game else (0, 0)
+    x, y = (getattr(conn, 'pos', None) if slot == bot.slot else None) or (
+        room.game.spawns.get(slot, (0, 0)) if room.game else (0, 0))
     ground = conn.terrain.ground(x, y) if conn.terrain else None
     return x, ground if ground is not None else y
 
@@ -151,7 +157,12 @@ async def take_turn(room, bot, game) -> None:
     if room.game is not game:
         return
     try:
-        plan = aim_at(room, bot)
+        path = await asyncio.to_thread(route, room, bot)
+        if path:
+            await stroll(room, bot, game, path)
+        if room.game is not game or not bot.alive:
+            return
+        plan = await asyncio.to_thread(aim_at, room, bot)
         if plan is not None:
             return await shoot(room, bot, game, *plan)
     except Exception as e:  # o turno tem que terminar, senão o mestre espera para sempre
@@ -204,6 +215,60 @@ def update_weather(conn, block: bytes) -> None:
 def wind(conn) -> tuple[int, int]:
     """Vento do turno no C300: u8 força, u16 ângulo (o 0xc400 leva o mesmo; quem recebe grava em G+0x283dc/e0)."""
     return (conn.tail[0], struct.unpack_from('<H', conn.tail, 1)[0]) if len(conn.tail) >= 3 else (0, 0)
+
+
+def spot_error(room, bot, me: tuple[int, int]) -> float:
+    """Erro do melhor tiro a partir de me no inimigo mais fácil (como o aim_at escolhe); 0 sem inimigo."""
+    conn, t = bot.conn, bot.conn.terrain
+    others = [p for p in room.players.values() if p is not bot and p.alive]
+    enemies = [p for p in others if p.team != bot.team or not room.is_team_mode()]
+    tank = room.game.tanks.get(bot.slot, (0, 0))[0]
+    bodies = [(x, y - aim.BODY // 2) for x, y in (place(room, bot, p.slot) for p in others)]
+    friends = [place(room, bot, p.slot) for p in others if p not in enemies]
+    return min((aim.best_shot(t, me, place(room, bot, p.slot), aim.GRAVITY.get(tank, 98), wind(conn), bodies, friends,
+                              getattr(conn, 'weather', ()))[3] + TIEBREAK * math.dist(me, place(room, bot, p.slot))
+                for p in enemies), default=0)
+
+
+def route(room, bot) -> list[tuple[int, int, bool, int]]:
+    """Quadros de andar (x, y, caiu do degrau, lado) até o lugar de onde a mira fica melhor, ou [] para ficar.
+    Anda se daqui o erro passa de MOVE_ERR ou o lugar é de risco (aim.risk: beira, chão fino sobre o vazio); testa a
+    cada SPOT_EVERY quadros para os dois lados, até acabar o limite do turno ou bater em parede/subida."""
+    t = getattr(bot.conn, 'terrain', None)
+    if t is None or room.game is None:
+        return []
+    me = place(room, bot, bot.slot)
+    best = spot_error(room, bot, me) + RISK_W * aim.risk(t, *me)
+    if best <= MOVE_ERR:
+        return []
+    path = []
+    for face in (0, 1):
+        frames = []
+        for x, y, ledge in aim.walk(t, *me, face):
+            frames.append((x, y, ledge, face))
+            if len(frames) % SPOT_EVERY:
+                continue
+            spot = aim.settle(t, x, y)
+            if spot is None:  # cai para fora do mapa
+                break
+            score = spot_error(room, bot, spot) + RISK_W * aim.risk(t, *spot) + WALK_COST * len(frames)
+            if score < best:
+                best, path = score, list(frames)
+    return path
+
+
+async def stroll(room, bot, game, path) -> None:
+    """Anda como o cliente (0x47b900): um 0x8005 (x, y) por quadro de 50 ms e um 0x8402 (x, y, lado) antes do quadro
+    que cai de degrau. Quem recebe anda até o x com o próprio chão (o y do 0x8005 é ignorado em tanque de chão)."""
+    for x, y, ledge, face in path:
+        if room.game is not game or not bot.alive:
+            return
+        if ledge:
+            await send(room, bot, MOVE, struct.pack('<HHB', x, y, face))
+        await send(room, bot, WALK, struct.pack('<HH', x, y))
+        await asyncio.sleep(STEP_TIME)
+    x, y = path[-1][:2]
+    bot.conn.pos = aim.settle(bot.conn.terrain, x, y) or (x, y)
 
 
 def pick_kind(conn, tank: int, rng=random):
