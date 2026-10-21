@@ -86,13 +86,13 @@ class LoginRecv(BasePackageRecv):
 
         profile, is_ip_blocked = await self.find_profile(username, client_ip)
         if not profile:
-            print(f"[LoginStrategy] Usuário não encontrado: {username}")
+            print(f"[Login] Usuário não encontrado: {username}")
             return
         elif is_ip_blocked:
-            print(f"[LoginStrategy] Login bloqueado para IP do cliente: {is_ip_blocked} ->  {client_ip}")
+            print(f"[Login] Login bloqueado para IP do cliente: {is_ip_blocked} ->  {client_ip}")
             return
         elif profile.get('RestrictTime') and profile['RestrictTime'] > datetime.now():
-            print(f"[LoginStrategy] Usuário banido até {profile['RestrictTime']}: {username}")
+            print(f"[Login] Usuário banido até {profile['RestrictTime']}: {username}")
             return
 
         # Senha em campo fixo de 20 bytes (block_1[4:16] + block_2[4:12]): pura no cliente direto, md5(senha) em hex [12:32]
@@ -100,14 +100,14 @@ class LoginRecv(BasePackageRecv):
         raw_1, raw_2 = self.buf.read_bytes(16), self.buf.read_bytes(16)
         checked = check_password(self.crypto_manager, username, profile['Password'], session_bytes, raw_1, raw_2)
         if checked is None:
-            print(f"[LoginStrategy] Senha incorreta para usuário {username}")
+            print(f"[Login] Senha incorreta para usuário {username}")
             return
         user_key, block_2 = checked
 
         # Valida a versão do cliente
         is_invalid, client_version = self.is_invalid_version(block_2, 12)
         if is_invalid:
-            print(f"[LoginStrategy] Recv Version({client_version})")
+            print(f"[Login] Recv Version({client_version})")
             await self.conn.on_send(LoginResp.wrong_version())
             return
 
@@ -120,7 +120,7 @@ class LoginRecv(BasePackageRecv):
         print(f"[LoginRecv] UDP informado pelo cliente: {socket.inet_ntoa(block_3[4:8])}:{conn_port}")
         product_version = conn_reader.read_uint32(10)
         if product_version != self.conn.server.config['product_version'] and product_version not in phase.of(self.conn).product_versions:
-            print(f"[LoginStrategy] Recv ProductVersion({product_version} = 0x{product_version:08X})")
+            print(f"[Login] Recv ProductVersion({product_version} = 0x{product_version:08X})")
             await self.conn.on_send(LoginResp.wrong_version())
             return
 
@@ -128,7 +128,7 @@ class LoginRecv(BasePackageRecv):
         game = await self.user_repository.get_game(username)
         refused = login_limit(game, int(profile.get('Authority') or 0), self.conn.server.config)
         if refused is not None:
-            print(f"[LoginStrategy] {username} recusado pelos limites de patente/guild (RTC 0x{refused:04X})")
+            print(f"[Login] {username} recusado pelos limites de patente/guild (RTC 0x{refused:04X})")
             await self.conn.on_send(LoginResp.refused(refused))
             return
 
@@ -138,7 +138,7 @@ class LoginRecv(BasePackageRecv):
         # Insere o usuário na tabela CurrentUser, e verifica se ele já está logado em outro GameServer
         is_inserted = await self.server_repository.insert_current_user(username, self.conn.id, self.conn.server.config['host'], self.conn.server.config['port'])
         if not is_inserted:
-            print(f"[LoginStrategy] Usuário já está logado em outro servidor: {username}")
+            print(f"[Login] Usuário já está logado em outro servidor: {username}")
             self.conn.client_manager.release_session(username, self.conn)
             await self.conn.close()
             return

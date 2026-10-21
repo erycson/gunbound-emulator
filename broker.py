@@ -18,7 +18,6 @@ async def main():
 
     # Servidores dump
     # await asyncio.start_server(dump_handler(8352), '0.0.0.0', 8352)  # BuddyServ
-    # await asyncio.start_server(dump_handler(8382), '0.0.0.0', 8382)  # BuddyCenter
 
     broker = container.broker()
     await broker.start()

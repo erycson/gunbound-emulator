@@ -56,17 +56,11 @@ broker:
   port: 8372
   # th_port: 8373 # opcional: porta só do TH (ele lê a lista 0x1102 com 13 bytes no fim; aponte Port= do GunBound.ini do TH para ela)
   product_version: *product_version
-  strategies:
-    login: "gunbound.broker.strategy.login_strategy.GBWC_v440_LoginStrategy"
 
 buddy_server:
   host: "127.0.0.1"
   port: 8352 # TCP e UDP; o cliente acha pelo BuddyIP/BuddyPort do GunBound.ini (sem BuddyIP ele não conecta)
   # notice: [["Título", "Texto"]] # opcional: aviso 0x1FFE mandado depois do login no buddy (até 10)
-
-buddy_center:
-  host: "127.0.0.1"
-  port: 8382
 
 gameservers:
   - name: "Gunbound WC" # Max, 32 bytes

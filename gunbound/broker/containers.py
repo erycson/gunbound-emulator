@@ -14,12 +14,6 @@ class Container(containers.DeclarativeContainer):
     database = providers.Singleton(Database, url=config.database.uri())
 
     server_repository = providers.Factory(ServerRepository, db=database)
-    
-    login_strategy = providers.Singleton(
-        config.broker.strategies.login(),
-        db=database,
-        crypto_manager=crypto
-    )
 
     broker = providers.Singleton(BrokerServer, config=config.broker, server_repository=server_repository)
     monitor = providers.Singleton(MonitorManager, config=config, server_repository=server_repository)
