@@ -1,5 +1,6 @@
 """Bot na sala: /bot add e remove, mestre e prêmio. python -m unittest tests.test_bot_room"""
 import math
+import os
 import random
 import unittest
 from gunbound.base.enums import RoomOptions, RoomMode
@@ -221,6 +222,46 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         angle, power, hit, _ = aim.best_shot(t, (300, 500), (600, 500), 98, (0, 0))
         self.assertLess(abs(hit[0] - 600), 20)
         self.assertGreaterEqual(math.dist(hit, (300, 500)), aim.SAFE)
+
+    @staticmethod
+    def fake_xfs(files: dict) -> bytes:
+        """XFS2 mínimo que tools/xfs_sync/xfs_reader.py lê: um bloco zlib final por arquivo, cabeçalho e tabela."""
+        import zlib
+        body, table = bytearray(4), bytearray()
+        for name, data in files.items():
+            z = zlib.compress(data)
+            table += name.encode().ljust(112, b'\x00') + struct.pack('<IIII', len(body), 1, len(data), len(z))
+            body += struct.pack('<HBH3x', len(data), 0, len(z)) + z
+        ptr = len(body)
+        body += b'\x00' + zlib.compress(b'XFS2' + struct.pack('<II', 0, len(files)).ljust(60, b'\x00'))
+        body += bytes(3) + zlib.compress(bytes(table))
+        body[:4] = struct.pack('<I', ptr)
+        return bytes(body)
+
+    def test_s2_terrain_from_solfs(self):
+        """v584: stage.dat do graphics.xfs de dentro do GunBound.xfs dá o .lnd de mapa + lado * 18 (lado C também)."""
+        lzhuf, solfs = aim._gbedit()
+        stage = bytearray(aim.S2_STAGE_SIZE)
+        at = (2 + 2 * 18) * aim.S2_STAGE_RECORD
+        stage[at:at + 5] = b'MineC'
+        lnd = struct.pack('<II', 4, 2) + bytes([0, 0, 0, 0, 1, 1, 1, 1])
+        inner = self.fake_xfs({'stage.dat': b'vers' + lzhuf.encode(bytes(stage)), 'minec.lnd': lnd})
+        self.assertEqual(aim.s2_stage_name(bytes(stage), 2, 2), 'minec')
+        self.assertIsNone(aim.s2_stage_name(bytes(stage), 2, 3))  # registro vazio
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / 'GunBound.xfs'  # só as 2 páginas que o looks_like confere
+            path.write_bytes(solfs.SIGNATURE.ljust(solfs.PAGE_SIZE, b'\x00')
+                             + (solfs.BOOT_PAGE_TAG + solfs.BANNER.encode('utf-16-le')).ljust(solfs.PAGE_SIZE, b'\x00'))
+            aim._lnd.cache_clear()
+            with mock.patch.object(aim, '_s2_graphics', return_value=inner) as opened:
+                t = aim.Terrain.load(path, 2, 2)
+                self.assertIsNone(aim.Terrain.load(path, 2, 3))
+            self.assertEqual((t.w, t.h, t.ground(1)), (4, 2, 1))
+            self.assertEqual(opened.call_count, 2)
+            aim._lnd.cache_clear()
+            with mock.patch.dict(os.environ, {'GB_SOLFS_PASSWORD': ''}), self.assertRaises(solfs.SolfsError):
+                aim.Terrain.load(path, 2, 2)  # sem senha: erro antes de ler o arquivo (o bot passa a vez)
 
     async def own_shot(self, roll, shot=True, version=0):
         """Turno do bot num mapa plano: (corpos dos frames que ele mandou por tipo, corpo do 0xc400)."""

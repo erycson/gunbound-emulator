@@ -6,22 +6,31 @@ Cada cliente simula o tiro do C400 (fábrica 0x443310 do v584): a lista de impac
 Projétil (0x445426..0x445671): pos = (x, y) << 8; v = power * 512 * (cos, -sin) / 100;
 a = (vento_x, gravidade - vento_y) << 8 / 100, seno da tabela 0x5fd6b0 (5 casas). Gravidade por mobile (characterdata).
 
-.lnd = u32 w, u32 h, w*h bytes (0 = ar), lido em tempo de execução do graphics.xfs do S1 (bots.graphics_xfs); nada
-de mapa vai para o repositório.
+.lnd = u32 w, u32 h, w*h bytes (0 = ar), lido em tempo de execução do graphics.xfs do S1 (bots.graphics_xfs) ou do
+graphics.xfs de dentro do GunBound.xfs SolFS do v584 (bots.s2_xfs, senha só em GB_SOLFS_PASSWORD no ambiente do
+servidor); nada de mapa vai para o repositório.
 """
 from __future__ import annotations
 import importlib.util
+import io
 import math
+import os
 import random
 import struct
+import sys
+import threading
 from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_XFS = ROOT.parent / 'clientes' / 'WC-S1-v495' / 'graphics.xfs'
-# stage.dat do S1 (índice = mapa + 11 no lado B); o 0 (Cave) não tem B. Os lados 2/3 (C/D) do 2007/S2 não estão no
-# graphics.xfs do S1 (o v584 indexa mapa + lado * 18, no GunBound.xfs cifrado): sem mapa, o bot passa a vez
+DEFAULT_S2_XFS = ROOT.parent / 'clientes' / 'WC-S2-v584' / 'GunBound.xfs'
+# stage.dat do S1 (índice = mapa + 11 no lado B); o 0 (Cave) não tem B. Os lados 2/3 (C/D) não estão no S1
 STAGES = ('cave', 'mos', 'hok', 'metro', 'candy', 'babo', 'last', 'brick', 'kettle', 'star', 'facky')
+# stage.dat do v584 (0x423cdf): LZHUF depois de 4 bytes de versão, abre em 0x9c00 = 64 registros de 0x270 com o prefixo
+# do .lnd em +0 (o nome do mapa vem da tabela de textos); índice = mapa + lado * 18 (G+0x2799c + G+0x279a0 * 0x12)
+S2_STAGE_SIZE, S2_STAGE_RECORD, S2_SIDE_MAPS = 0x9C00, 0x270, 18
+_LOAD = threading.Lock()  # um bot por vez: abrir o SolFS lê os 300 MB do GunBound.xfs
 # characterdata.dat (coluna 40) do v495, por índice de tanque do WC (Mage, Lightning, Aduka, J.Frog, Dragon); o resto 98
 GRAVITY = {0x01: 90, 0x07: 90, 0x0D: 94, 0x0F: 92, 0x11: 90}
 # shortcut: velocidade x5 ajustada aos 36 tiros da captura v584 (mediana ~25 px); falta achar no cliente o passo por
@@ -54,13 +63,52 @@ def stage_name(game_map: int, side: int) -> str | None:
     return name + 'b' if side == 1 and game_map else name
 
 
+def s2_stage_name(stage: bytes, game_map: int, side: int) -> str | None:
+    """Prefixo do .lnd no stage.dat aberto do v584 (vazio = mapa que não existe)."""
+    if not 0 <= game_map < S2_SIDE_MAPS or not 0 <= side < 4:
+        return None
+    i = (game_map + side * S2_SIDE_MAPS) * S2_STAGE_RECORD
+    return stage[i:i + S2_STAGE_RECORD].split(b'\x00')[0].decode('latin-1').lower() or None
+
+
+def _gbedit():
+    """gbedit (SolFS, LZHUF) é outro projeto: GBEDIT_PATH ou ../tools/gbedit, como tools/xfs_sync/xfs_reader.py."""
+    path = os.environ.get('GBEDIT_PATH') or str(ROOT.parent / 'tools' / 'gbedit')
+    if path not in sys.path:
+        sys.path.insert(0, path)
+    from gbedit import lzhuf, solfs
+    return lzhuf, solfs
+
+
+def _s2_graphics(path: str) -> bytes:
+    _, solfs = _gbedit()
+    if not solfs.resolve_password():
+        raise solfs.SolfsError('o GunBound.xfs do S2 é cifrado: defina GB_SOLFS_PASSWORD no ambiente do servidor')
+    sf = solfs.Solfs.open(path)
+    inner = next((n for n in sf.entries() if n.lower() == 'graphics.xfs'), None)
+    if inner is None:
+        raise solfs.SolfsError(f'graphics.xfs não está dentro de {path}')
+    return sf.read_file(inner)
+
+
 @lru_cache(maxsize=4)
-def _lnd(path: str, name: str) -> bytes | None:
+def _lnd(path: str, game_map: int, side: int) -> bytes | None:
     spec = importlib.util.spec_from_file_location('_xfs_reader', ROOT / 'tools' / 'xfs_sync' / 'xfs_reader.py')
     xr = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(xr)
-    with open(path, 'rb') as f:
-        entry = next((e for e in xr.read_trailer(f)[1] if e.name.lower() == name + '.lnd'), None)
+    with open(path, 'rb') as raw:  # assinatura do SolFS (gbedit/solfs.py); o S1 não precisa do gbedit
+        s2 = raw.read(4) == b'\x0c\x00NW' and _gbedit()[1].looks_like_file(path)
+    if s2:
+        f = io.BytesIO(_s2_graphics(path))
+        entries = {e.name.lower(): e for e in xr.read_trailer(f)[1]}
+        stage = entries.get('stage.dat')
+        name = stage and s2_stage_name(_gbedit()[0].decode(xr.read_entry(f, stage)[4:], S2_STAGE_SIZE), game_map, side)
+    else:
+        f = open(path, 'rb')
+        entries = {e.name.lower(): e for e in xr.read_trailer(f)[1]}
+        name = stage_name(game_map, side)
+    with f:
+        entry = name and entries.get(name + '.lnd')
         return xr.read_entry(f, entry) if entry else None
 
 
@@ -71,10 +119,10 @@ class Terrain:
 
     @classmethod
     def load(cls, path, game_map: int, side: int) -> Terrain | None:
-        name = stage_name(game_map, side)
-        if not name or not Path(path).is_file():
+        if not Path(path).is_file():
             return None
-        data = _lnd(str(path), name)
+        with _LOAD:
+            data = _lnd(str(path), game_map, side)
         return cls(data) if data else None
 
     def solid(self, x: int, y: int) -> bool:

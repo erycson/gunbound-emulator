@@ -127,17 +127,21 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
 - Sequência do humano e do bot: 0x8006 (u16 x, u16 y, 00 01), ~1 s depois o 0xc400, e quando o tiro termina o 0xc40a
   + 0xc302 0e com o delay do turno em +5 (captura 7900..8900; o bot manda 8900).
 - O vento é o do 0xc300 do turno (u8 força, u16 ângulo no começo do estado). O terreno é o .lnd (u32 w, u32 h, w*h
-  bytes, 0 = ar) do graphics.xfs do S1 (`bots.graphics_xfs`, padrão `../clientes/WC-S1-v495/graphics.xfs`; o
-  GunBound.xfs do S2 é cifrado): mapa = stage.dat[mapa], lado B = mapa + 11 (cave não tem B). O y do bot é o primeiro
-  chão abaixo do spawn; os impactos de cada 0xc400 cavam crateras de raio fixo 30 na cópia do bot. Os lados C/D
-  (2/3, settings >> 16) não estão no xfs do S1: o bot passa a vez em vez de atirar com o mapa errado (o 0xc400 põe o
-  tanque no x/y do pacote, e com o chão errado ele caía de novo a cada turno).
+  bytes, 0 = ar). S1: graphics.xfs do S1 (`bots.graphics_xfs`, padrão `../clientes/WC-S1-v495/graphics.xfs`), mapa =
+  stage.dat[mapa], lado B = mapa + 11 (cave não tem B), sem lados C/D. v584 (algum humano no v584): graphics.xfs de
+  dentro do GunBound.xfs SolFS (`bots.s2_xfs`, padrão `../clientes/WC-S2-v584/GunBound.xfs`; senha só por
+  GB_SOLFS_PASSWORD no ambiente do servidor). O stage.dat dele (carga em 0x423cdf: LZHUF depois de 4 bytes, 0x9c00
+  abertos = 64 registros de 0x270, prefixo do .lnd em +0) é indexado por mapa + lado * 18 (G+0x2799c + G+0x279a0 *
+  0x12, 0x458dd7), então tem os lados C/D. Abrir o SolFS lê o arquivo inteiro (~300 MB): um bot por vez, os últimos
+  4 mapas ficam em cache.
+- O y do bot é o primeiro chão abaixo do spawn; os impactos de cada 0xc400 cavam crateras de raio fixo 30 na cópia do
+  bot. Sem o mapa (lado C/D no S1, registro vazio, sem senha) o bot passa a vez em vez de atirar com o mapa errado (o
+  0xc400 põe o tanque no x/y do pacote, e com o chão errado ele caía de novo a cada turno).
 - Mira: inimigo vivo mais perto (último x/y que ele mandou), elevações 25..85 de 5 em 5, força 40..400; fica o tiro
   que cai mais perto (chão ou corpo de tanque), checando a colisão a cada 4 px (o tiro anda até ~40 px por passo e
   atravessaria barreiras) e descartando o que cai a menos de 60 px do próprio bot. Erra pela chance de `skill.py`:
   força 10..25% para mais ou menos, nunca em cima de si mesmo.
 - [INCERTO] tiros especiais (Nak cavando, Boomer curvando, Turtle dividindo...) seguem a trajetória normal na mira.
-  Mapas S2 acima de 10 (o v584 tem 18 por lado) não estão no xfs do S1: o bot passa a vez.
 
 ### Captura
 

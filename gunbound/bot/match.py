@@ -85,7 +85,8 @@ async def prepare(room, bot) -> None:
     conn.terrain = None
     conn.v584 = any(phase.is_v584(p.conn) for p in room.players.values() if not is_bot(p.conn))
     if getattr(conn, 'layout', None) in SHOOTS and room.game is not None:
-        path = cfg(conn.server.config).get('graphics_xfs') or aim.DEFAULT_XFS
+        c = cfg(conn.server.config)  # o v584 tem mapas e lados C/D próprios, no GunBound.xfs dele
+        path = (c.get('s2_xfs') or aim.DEFAULT_S2_XFS) if conn.v584 else (c.get('graphics_xfs') or aim.DEFAULT_XFS)
         side = (room.options.settings >> 16) & 3
         try:
             conn.terrain = await asyncio.to_thread(aim.Terrain.load, aim.ROOT / Path(path), room.game.map, side)
