@@ -100,7 +100,7 @@ y em +0x90); o servidor não calcula dano. O cliente se declara morto no fim do 
 y >= 9000 → 0xc304 + 0x4100). Para quem não se declarou, o mestre, ao escolher o próximo turno (0x4f5aa0, menor delay
 entre os vivos), manda 0xc312 (u8 slot); quem recebe responde 0xc314 (vazio, 0x4e0425); o mestre confere o HP/y do
 tanque de quem respondeu e manda 0xc315 (u8 slot, 0x4e04bb); o dono manda 0xc304 (u32 causa, u8 matador) e o 0x4100
-(0x4e0596). O bot faz esse caminho: 0xc312 com o slot dele → 0xc314; 0xc315 → 0xc304 + 0xc309 e a morte no servidor
+(0x4e0596). O bot faz esse caminho: 0xc312 do mestre → 0xc314; 0xc315 com o slot dele → 0xc304 + 0xc309 e a morte no servidor
 (`announce_death`, o mesmo do 0x4100). Causa como o cliente (0x47b156): 1 inimigo, 2 aliado, 3 o próprio; o matador
 é quem atirou por último (o cliente usa quem acertou por último). O bot manda causa | 0x10, como o dono que se vê
 morto (0x482955): com o bit, quem recebe tira o tanque na hora (0x4df66b, y = 10000, +0x224 = 1) e o mestre para de
