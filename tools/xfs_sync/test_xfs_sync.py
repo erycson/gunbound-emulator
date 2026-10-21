@@ -145,13 +145,13 @@ class SetSyncTest(unittest.TestCase):
         con.execute(f'CREATE TABLE Menu (No INT PRIMARY KEY, Name TEXT, {item_cols}, {price_cols})')
         plan = set_sync.plan_sets(con, sets)
         self.assertEqual(len(plan['insert']), 1)
-        sets[0]['gold'] = item_sync.PRICE_SENTINEL_GOLD
+        sets[0]['tiers'][-1] = (item_sync.PRICE_SENTINEL_GOLD, 63000)
         self.assertEqual(set_sync.plan_sets(con, sets)['insert'], [])  # sentinela = sem venda
-        sets[0]['gold'] = 630000
+        sets[0]['tiers'][-1] = (630000, 63000)
         set_sync.apply_sets(con, plan)
-        row = con.execute('SELECT Item1, Item2, Item3, Item4, Item5, Volume1, PriceByGoldForW, PriceByCashForI '
-                          'FROM Menu WHERE No=196609').fetchone()
-        self.assertEqual(row, (0x18029, 0x8027, 0x28001, None, None, 1, 630000, 63000))
+        row = con.execute('SELECT Item1, Item2, Item3, Item4, Item5, Volume1, PriceByGoldForW, PriceByGoldForI, '
+                          'PriceByCashForI FROM Menu WHERE No=196609').fetchone()
+        self.assertEqual(row, (0x18029, 0x8027, 0x28001, None, None, 1, None, 630000, 63000))  # só o ilimitado
         self.assertEqual(set_sync.plan_sets(con, sets)['insert'], [])  # idempotente
 
     def test_ex2_sellable_power_user_and_sentinel_skipped(self):
@@ -175,11 +175,11 @@ class SetSyncTest(unittest.TestCase):
         self.assertEqual([s['code'] for s in plan['insert']], [0x32002])
         self.assertEqual(len(plan['not_sellable']), 1)
 
-    def test_s2_ex3_own_item_cash_only(self):  # selo do v584 (menu 700124): sem itens, só cash
+    def test_s2_ex3_own_item_cash_only(self):  # selo do v584 (menu 700124): sem itens, só cash e só por semana
         r = bytearray(set_sync.SET_STRIDE)
         struct.pack_into('<I', r, 0, 700124)
         r[20:20 + 12] = b'Delay 3 Seal'
-        struct.pack_into('<II', r, 96, 0, 600)
+        struct.pack_into('<II', r, 48, 0, 7693)
         data = struct.pack('<I', 1) + bytes(r)
         self.assertEqual(set_sync.parse_sets(data), [])  # ex1: sem itens fica de fora
         sets = set_sync.parse_sets(data, own_item=True)
@@ -189,8 +189,8 @@ class SetSyncTest(unittest.TestCase):
         item_cols = ', '.join(f'Item{n} INT, Period{n} INT, Volume{n} INT' for n in range(1, 6))
         con.execute(f'CREATE TABLE Menu (No INT PRIMARY KEY, Name TEXT, {item_cols}, {price_cols})')
         set_sync.apply_sets(con, set_sync.plan_sets(con, sets))
-        self.assertEqual(con.execute('SELECT Item1, Volume1, PriceByGoldForW, PriceByCashForW FROM Menu '
-                                     'WHERE No=700124').fetchone(), (700124, 1, None, 600))
+        self.assertEqual(con.execute('SELECT Item1, Volume1, PriceByGoldForW, PriceByCashForW, PriceByCashForI '
+                                     'FROM Menu WHERE No=700124').fetchone(), (700124, 1, None, 7693, None))
 
 
 TH_AVATAR = r'D:\GBWCProject\clientes\TH-v404\avatar.xfs'

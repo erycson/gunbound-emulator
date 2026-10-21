@@ -8,7 +8,7 @@ Uso:
 Formato do registro de set (684 bytes, count = (len-4)/684; decodificado de ex1.dat):
   @0   u32 código do menu (= Menu.No), ex.: 0x30001 = 196609 = "Golden Armor Set(M)"
   @20  nome (cstring)
-  @96  u32 gold do tier 4 (mesmo tier usado por item_sync)   @100 u32 cash do tier 4
+  @48..103 (gold, cash) por período W,T,M,Y,I (gbedit PRICE_ROWS_684); @104/@105 u8 vende gold/cash
   @112 até 5 triplas u32 (código do item, volume, período); período 0xFFFFFFFF = não usado,
        código 0 ou 0xFFFFFFFF = slot vazio. Os códigos são as chaves dos itens únicos (mesmo formato de item_sync).
 
@@ -16,9 +16,11 @@ S2 (GunBound.xfs do v548/v584): também lê ex3.dat/ex4.dat quando existem (selo
 Fora do ex1, registro sem itens é o próprio item (Item1 = código, como os Power User do seed).
 
 Regras:
-  - Período dos itens do set segue as linhas de item existentes (Period 86400); o volume vem da tripla.
-  - Set já existente em Menu não é tocado. Preço sentinela (9999990 gold / 999999 cash) = sem venda: não entra.
-    Só cash (gold 0 ou sentinela): entra com o gold NULL, para a compra por gold ser recusada.
+  - Período dos itens do set segue as linhas de item existentes (Period 86400); o volume vem da tripla
+    (0 ou 0xFFFFFFFF vira 1).
+  - Preço por período e moeda, como o cliente mostra: o S2 vende selos só por semana e outros itens com W/M/I
+    diferentes. Período ou moeda com preço 0 fica NULL (a compra é recusada). O TH (188) tem preço único.
+  - Set já existente em Menu não é tocado. Sentinela no ilimitado (9999990 gold / 999999 cash) = sem venda: não entra.
 """
 import argparse
 import os
@@ -66,22 +68,23 @@ def parse_sets(data: bytes, own_item: bool = False):
         for k in range(SET_MAX_ITEMS):
             code, vol, _period = struct.unpack_from('<III', rec, items_off + k * 12)
             if code not in EMPTY_CODES:
-                items.append((code, vol))
+                items.append((code, vol if vol not in EMPTY_CODES else 1))
         code = struct.unpack_from('<I', rec, 0)[0]
         if not items:
             if not own_item:
                 continue  # ex.: registro "Standard" (sem itens)
             items = [(code, 1)]
+        gold, cash = struct.unpack_from('<I', rec, gold_off)[0], struct.unpack_from('<I', rec, cash_off)[0]
         sets.append({
             'code': code,
             'name': xfs_reader.read_cstring(rec, SET_NAME_OFF, SET_NAME_LEN)[:item_sync.MENU_NAME_MAX],
-            'gold': struct.unpack_from('<I', rec, gold_off)[0],
-            'cash': struct.unpack_from('<I', rec, cash_off)[0],
+            'gold': gold,
+            'cash': cash,
             'items': items,
-            # crus, só para o relatório: (gold, cash) de W,T,M,Y,I e vende gold/cash (@104/@105)
-            'tiers': [(struct.unpack_from('<I', rec, g)[0], struct.unpack_from('<I', rec, c)[0]) for g, c in TIERS_684]
-            + [tuple(rec[104:106])]
-            if stride == SET_STRIDE else [],
+            # (gold, cash) de W,T,M,Y,I; o TH tem um preço só
+            'tiers': [struct.unpack_from('<II', rec, g) for g, _ in TIERS_684] if stride == SET_STRIDE
+            else [(gold, cash)] * len(item_sync.PERIODS),
+            'sells': tuple(rec[104:106]) if stride == SET_STRIDE else (),  # vende gold/cash: só para o relatório
         })
     return sets
 
@@ -99,19 +102,19 @@ def load_sets(xfs_path: str):
     return out
 
 
-def sells_gold(s) -> bool:
-    return 0 < s['gold'] < item_sync.PRICE_SENTINEL_GOLD
-
-
-def sells_cash(s) -> bool:
-    return 0 < s['cash'] < PRICE_SENTINEL_CASH
+def prices(s) -> tuple:
+    """Gold W,T,M,Y,I + cash W,T,M,Y,I para o Menu; None = não vende naquele período/moeda.
+    Sentinela no ilimitado = registro sem venda (placeholders do S1/S2 têm preço nos outros períodos)."""
+    i_gold, i_cash = s['tiers'][-1]
+    if i_gold >= item_sync.PRICE_SENTINEL_GOLD or i_cash >= PRICE_SENTINEL_CASH:
+        return (None,) * 10
+    return (tuple(g if 0 < g < item_sync.PRICE_SENTINEL_GOLD else None for g, _ in s['tiers'])
+            + tuple(c if 0 < c < PRICE_SENTINEL_CASH else None for _, c in s['tiers']))
 
 
 def plan_sets(con, sets):
     existing = {row[0] for row in con.execute('SELECT No FROM Menu')}
-    # gold sentinela com cash válido também é "sem venda" no WC S1 (o cash acompanha o gold / 10); só cash vale
-    # quando o gold é 0 (itens do S2 vendidos só por cash)
-    sellable = [s for s in sets if sells_gold(s) or (s['gold'] == 0 and sells_cash(s))]
+    sellable = [s for s in sets if any(p is not None for p in prices(s))]
     return {'insert': [s for s in sellable if s['code'] not in existing],
             'skip_existing': [s for s in sellable if s['code'] in existing],
             'not_sellable': [s for s in sets if s not in sellable]}
@@ -128,12 +131,8 @@ def apply_sets(con, plan):
                 cols += [f'Item{n}', f'Period{n}', f'Volume{n}']
                 vals += [items[k][0], item_sync.DEFAULT_PERIOD_SECONDS, items[k][1]] if k < len(items) \
                     else [None, None, None]
-            for p in item_sync.PERIODS:
-                cols.append(f'PriceByGoldFor{p}')
-                vals.append(s['gold'] if sells_gold(s) else None)
-            for p in item_sync.PERIODS:
-                cols.append(f'PriceByCashFor{p}')
-                vals.append(s['cash'] if sells_cash(s) else None)
+            cols += [f'PriceByGoldFor{p}' for p in item_sync.PERIODS] + [f'PriceByCashFor{p}' for p in item_sync.PERIODS]
+            vals += prices(s)
             con.execute(f'INSERT INTO Menu ({", ".join(cols)}) VALUES ({", ".join("?" * len(vals))})', vals)
 
 
@@ -163,11 +162,9 @@ def main(argv=None):
           f'  sem venda (preço sentinela, ignorados): {len(plan["not_sellable"])}')
     for s in plan['insert']:
         items = ','.join(f'{c:#x}x{v}' for c, v in s['items'])
-        tiers = f' tiers(W,T,M,Y,I; vende g/c)={s["tiers"]}' if s.get('tiers') else ''
-        print(f'  {s["code"]} ({s["code"]:#x}) {s["name"]!r} gold={s["gold"]} cash={s["cash"]} itens=[{items}]{tiers}')
-    for s in plan['not_sellable']:
-        if s['code'] >= 0x40000:  # S2: mostrar os recusados para conferir se o preço está em outro período
-            print(f'  sem venda: {s["code"]} {s["name"]!r} tiers(W,T,M,Y,I; vende g/c)={s.get("tiers")}')
+        p = prices(s)
+        print(f'  {s["code"]} ({s["code"]:#x}) {s["name"]!r} gold(W,T,M,Y,I)={list(p[:5])} '
+              f'cash={list(p[5:])} itens=[{items}] vende g/c={s["sells"]}')
 
     if args.apply and plan['insert']:
         ts = time.strftime('%Y%m%d-%H%M%S')
