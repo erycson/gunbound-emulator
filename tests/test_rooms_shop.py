@@ -320,6 +320,30 @@ class HandlerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(b.last(ServerPacket.SRV_GAME_TUNNEL)[2:], b'\x00dados')
         self.assertEqual(a.last(ServerPacket.SRV_GAME_TUNNEL)[2:], b'\x00dados')  # remetente listado também recebe
 
+    def test_local_udp_fix(self):
+        from unittest import mock
+        from gunbound.game import room_packets as rp
+        a = FakeConn('a')
+        a.data['net'] = (0x0100007F, 8363)
+        self.assertEqual(rp.player_net(a)[1], 8363)  # desligado: a porta informada no login
+        a.server = type('S', (FakeServer,), {'config': {**FakeServer.config, 'local_udp_fix': True}})()
+        with mock.patch.object(rp, 'real_udp_port', return_value=50000):
+            self.assertEqual(rp.player_net(a)[1], 50000)
+
+    async def test_tunnel_log(self):
+        import json, os, tempfile
+        from gunbound.game.protocol.game_play import GameTunnelRecv
+        rooms = manager()
+        a, b = FakeConn('a'), FakeConn('b')
+        room = await rooms.create(a, RoomOptions('t', RoomMode.SOLO, 2, None))
+        await room.join(b)
+        path = os.path.join(tempfile.mkdtemp(), 'tunnel.jsonl')
+        a.server = type('S', (FakeServer,), {'config': {**FakeServer.config, 'tunnel_log': path}})()
+        await GameTunnelRecv(a, BinaryReader(b'\x01\x00\x01dados')).process()
+        with open(path, encoding='utf-8') as f:
+            line = json.loads(f.readline())
+        self.assertEqual((line['from'], line['to'], line['hex'], line['nick']), (0, [1], b'dados'.hex(), 'a'))
+
 
 class SessionTest(unittest.IsolatedAsyncioTestCase):
     async def test_duplicate_login_kicks_old_session(self):
@@ -496,7 +520,7 @@ class HiddenTankTest(unittest.TestCase):
         from gunbound.game.protocol.room_select_tank import valid_tank
         th, s1, s2 = (phase.load(n) for n in ('TH', 'WCS1', 'WCS2'))
         # 0x10 BigFoot MkII só do S1 em diante; 0x13..0x18 só no S2; 0x12 não existe fora do oculto de GM
-        self.assertEqual([valid_tank(0x10, 0, p.tanks) for p in (th, s1, s2)], [False, True, True])
+        self.assertEqual([valid_tank(0x10, 0, p.tanks) for p in (th, s1, s2)], [False, False, False])  # v584: -1
         self.assertEqual([valid_tank(0x18, 0, p.tanks) for p in (th, s1, s2)], [False, False, True])
         self.assertEqual((valid_tank(0x12, 0, s2.tanks), valid_tank(0x12, 98, s2.tanks)), (False, True))
         rng = random.Random(2)

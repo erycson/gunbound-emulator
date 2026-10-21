@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Awaitable, Callable
 from dependency_injector.wiring import Provide, inject
 from gunbound.base.enums import RoomMode
+from gunbound.bot import room as bots
 from gunbound.game import room_packets as rp
 from gunbound.game.protocol.base import GameRecv, Packet, decrypt_blocks, handler
 from gunbound.game.protocol.enums import ClientPacket, ServerPacket
@@ -220,7 +221,11 @@ async def start_game(room, master: 'ClientConnection', echo: bytes) -> None:
     from gunbound.game.protocol.wcs2.bonus import roll_bonus
     room.start()
     room.game.bonus_event = roll_bonus(master.server.config)
-    await room.broadcast(rp.game_start(room, echo))
+    print(f"[sala {room.id}] início: mapa {room.game.map}, settings {room.options.settings:08X}, "
+          f"spawns {room.game.spawns}, tanques {room.game.tanks}, ordem {room.game.turn_order}")
+    body = rp.game_start_body(room, echo)
+    print(f"[sala {room.id}] 0x3432 em claro: {body.hex(' ').upper()}")
+    await room.broadcast(rp.game_start(body))
 
 
 @handler(ClientPacket.CLI_COMMAND)
@@ -228,9 +233,13 @@ class CommandRecv(GameRecv):
     """0x5100 SVC_COMMAND: texto cru do comando. Não-GM é ignorado, como no original (checa autoridade antes)."""
 
     @inject
-    async def handle(self, rooms=Provide['rooms'], clients=Provide['clients'], user_repository=Provide['user_repository']):
+    async def handle(self, rooms=Provide['rooms'], clients=Provide['clients'], user_repository=Provide['user_repository'],
+                     inventory_repository=Provide['inventory_repository']):
         self.conn.last_activity = time.time()
         text = self.buf.read_bytes().split(b'\x00', 1)[0].decode('latin-1').strip()[:MAX_COMMAND]
+        if text.lower().split(' ', 1)[0] == '/bot' and bots.enabled(self.conn):  # bot: para todos (gunbound/bot)
+            await self.conn.on_send(text_packet(await bots.command(self.conn, text, inventory_repository)))
+            return
         if not text.startswith('/') or not is_gm(self.conn):
             return
         print(f"[{self.conn.addr}] GM {self.conn.data['profile']['Id']}: {text}")

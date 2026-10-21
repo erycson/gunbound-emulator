@@ -610,6 +610,15 @@ Não há opcode TCP de turno, tiro ou dano em nenhuma fonte (F1 a F4). Os client
 - F2 usa porta 8363 (`20 AB`, BE): "client listens there for UDP". F3 usa 19363 (`4B A3`, BE). **[INCERTO]** no WC.
 - O túnel 0x4500/0x4501 (6.5) é o fallback TCP.
 
+**Dois clientes no mesmo PC (`local_udp_fix` no game server, padrão `false`).** O cliente v584 abre a UDP 8363
+(o agente de RE achou o bind fixo em htons(8363)); o segundo cliente no mesmo PC não consegue essa porta e informa
+no login (0x1010) uma porta que não é a dele. Desligado, o servidor repassa no 0x2111/0x3010 a porta informada, o
+UDP entre os dois falha e, depois de 5 s sem resposta (v584; 20 s no v440), cada cliente passa a usar o túnel
+0x4500 para aquele colega. Ligado, para quem logou de 127.0.0.1 o servidor pergunta ao Windows a porta UDP real do
+processo dono da conexão TCP (`gunbound/util/local_udp.py`) e anuncia essa, para o UDP direto funcionar. Já foi
+visto, ligado, o P2P não se estabelecer (ping de 250 ms e o mestre ignorando o "pronto"): se isso acontecer, volte a
+desligar. Só faz diferença em teste local; jogadores em PCs diferentes não usam.
+
 Consequência para o emulador: **não há o que implementar para turno/tiro em TCP**. Só falta o lobby, a partida (início, morte, fim, resultado) e o fallback.
 
 ### 6.7 Chat de sala

@@ -104,7 +104,15 @@ gameservers:
       8: {gold: 1000, avatar: body}
       9: {gold: 1500, avatar: flag}
     stats_interval: 300 # Intervalo em segundos que será inserido a quantidade de usuários na tabela UserCount
-    features: 
+    # local_udp_fix: true # teste com dois clientes no mesmo PC: anuncia a porta UDP real de cada um (docs/Protocolo-Salas.md 6.6)
+    # tunnel_log: tunnel-capture.jsonl # grava cada 0x4500 (hex) da sala/partida para mapear o P2P (docs/Bots.md); desligue depois
+    bots: &BOTS # bots de sala (docs/Bots.md): /bot add [patente] [mobile], /bot remove [nome|all] (mestre da sala)
+      enabled: false
+      gm_mobile: true  # GM escolhe o mobile no /bot add
+      max: 7           # bots por sala
+      reward: 0        # fator do gold/GP de quem joga com bot (0 = nada, 0.5 = metade)
+      # skill: {floor: 0.25, ceil: 0.95, k: 3, damping: 0.5} # curva de acerto e penalidades (gunbound/bot/skill.py)
+    features:
       - *AVATAR_ENABLED
       - *EFFECT_FORCE
       - *EFFECT_TORNADO
@@ -148,6 +156,9 @@ gameservers:
     # jackpot_bomb: {1: [700096, 1], 2: [700097, 1]} # WCS2: prêmio da bomba por carta (Rare 12 / Epic 15 cartas); padrão = carta seguinte
     # rena: [[700096, 1, 10], [700097, 1, 1]] # WCS2 Rena (0x7124, custa 100 Game.RenaPoints): [item, quantidade, peso]; sem chave = megafone e joias (shop.DEFAULT_RENA)
     stats_interval: 300
+    # local_udp_fix: true # teste com dois clientes no mesmo PC: anuncia a porta UDP real de cada um (docs/Protocolo-Salas.md 6.6)
+    # tunnel_log: tunnel-capture.jsonl # grava cada 0x4500 (hex) da sala/partida para mapear o P2P (docs/Bots.md); desligue depois
+    bots: *BOTS
     features:
       - *AVATAR_ENABLED
       - *EFFECT_FORCE

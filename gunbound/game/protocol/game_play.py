@@ -4,8 +4,11 @@ túnel (0x4500) e volta para a sala (0x3232). Turno, tiro e dano são UDP entre 
 """
 from __future__ import annotations
 import asyncio
+import json
+import time
 from dependency_injector.wiring import Provide, inject
 from gunbound.base.enums import RoomMode
+from gunbound.bot import room as bots
 from gunbound.game import phase, room_packets as rp
 from gunbound.game.protocol.gm_commands import start_game
 from gunbound.game.protocol.base import GameRecv, Packet, EncryptedPacket, decrypt_blocks, handler
@@ -30,6 +33,14 @@ def anu_verdict(gold: int, gp: int, config) -> str:
     if gp < a['drop_gp_neg'] or gold < a['drop_gold_neg']:
         return 'drop'
     return 'ok'
+
+
+def log_tunnel(path: str, room, me, slots: bytes, data: bytes) -> None:
+    """`tunnel_log` do game server: uma linha JSON por 0x4500 para mapear o P2P da partida (docs/Bots.md)."""
+    line = {'t': round(time.time(), 3), 'room': room.id, 'playing': room.game is not None, 'from': me.slot,
+            'nick': me.conn.data['profile']['Nickname'], 'to': list(slots), 'len': len(data), 'hex': data.hex()}
+    with open(path, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(line) + '\n')
 
 
 async def announce_winner(room, team: int, delay: float = WINNER_DELAY):
@@ -131,8 +142,8 @@ class GameResultRecv(GameRecv):
             slot, gold, _event, gp = body.read_uint8(), body.read_int32(), body.read_int16(), body.read_int16()
             body.read_bytes(RESULT_BLOCK - 9)
             player = room.player_by_slot(slot)
-            if player is not None:
-                rewards.append((player, gold, gp))
+            if player is not None and (paid := bots.reward(room, player, gold, gp, self.conn.server.config)):
+                rewards.append((player, *paid))
         if not await self.anu(rewards, user_repository):
             return
         await asyncio.gather(*(self.credit(p.conn, g, s, inventory_repository, user_repository) for p, g, s in rewards))
@@ -167,7 +178,10 @@ class GameResultRecv(GameRecv):
             player = room.player_by_slot(row['slot'])
             if player is None:
                 continue
-            gold, gp = result.reward(row, self.conn.server.config)
+            paid = bots.reward(room, player, *result.reward(row, self.conn.server.config), self.conn.server.config)
+            if paid is None:
+                continue
+            gold, gp = paid
             rewards.append((player, gold, gp))
             bonus = BONUS.get(room.game.bonus_event, (0, 0)) if player.slot in room.game.bonus_paid else (0, 0)
             shown.append((player.slot, gold, bonus[0], gp, bonus[1]))
@@ -231,6 +245,8 @@ class GameTunnelRecv(GameRecv):
         data = self.buf.read_bytes()
         if me is None or len(data) > MAX_TUNNEL:
             return
+        if path := self.conn.server.config.get('tunnel_log'):
+            log_tunnel(path, room, me, slots, data)
         packet = rp.tunnel(me.slot, data)
         for dest in filter(None, (room.player_by_slot(s) for s in slots)):
             await dest.conn.on_send(packet.clone())  # on_send altera o buffer (tamanho/checksum)

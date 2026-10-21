@@ -165,7 +165,9 @@ class WCS1(TH):
     # 0x1010: o v440 manda config['product_version']; o v495 manda o mesmo u32 do v584 com chave Brasil
     product_versions = frozenset({0x04FCCB1C})
     kick_ack = 0x315F  # v440 0x4ec9c3
-    tanks = frozenset(range(0x11))  # v440 0x42e5d0 / v495 0x430b80: + 0x10 BigFoot Mark II (0x11 Frog é oculto do original)
+    # o WC troca o byte do fio pela classe numa tabela (v440 0x5cec3c, v584 0x679160): 0x0D..0x0F -> 15..17,
+    # 0x11/0x12 (ocultos) -> 13/14 e 0x10 -> 18 (não existe; no v584, -1). Então 0x10 não é tanque, como no rand&0xF do 2007
+    tanks = frozenset(range(0x10))
     stage_pos = 'stage_pos_2007.txt'  # Rand_Stage_Pos.txt do servidor 2007 (WC S1); o S2 não tem servidor original
 
     def gp_group(self, rec: bytes, category: int) -> bytes:
@@ -207,7 +209,8 @@ class WCS2(WCS1):
     rank_rule, gm_grade, higher_grade_better = 'v584', 0, True
     parent = WCS1
     stage_pos = 'stage_pos_s2.txt'  # 2007 + mapas 11..16 (v584: mapa % 17) com posições inventadas
-    # v584 0x4427c0: + 0x13 Phoenix, 0x14 Maya, 0x15 Wolf, 0x16 Tiburon, 0x17 Blue Whale, 0x18 Frank (0x12 cai no Armor)
+    # v584 0x4427c0: + 0x13 Phoenix, 0x14 Maya, 0x15 Wolf, 0x16 Tiburon, 0x17 Blue Whale, 0x18 Frank; a tabela 0x679160
+    # passa 0x13 em diante sem troca (0x4198c0 a preenche no início)
     tanks = WCS1.tanks | frozenset(range(0x13, 0x19))
     # shortcut: o S2 não tem servidor original; o aleatório sorteia todos os tanques não ocultos. Rever se aparecer fonte
     random_tanks = tuple(sorted(tanks))

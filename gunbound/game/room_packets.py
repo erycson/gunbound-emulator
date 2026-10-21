@@ -15,7 +15,9 @@ if TYPE_CHECKING:
     from gunbound.game.client import ClientConnection
 
 DEFAULT_UDP_PORT = 8363     # F2; o cliente informa a porta real no login (bloco 3), que tem preferência
-# Desligado: com a porta real o P2P UDP não se estabelece (ping fica 250ms e o mestre ignora o "pronto"); com a porta errada cai no túnel TCP e funciona
+# `local_udp_fix` do game server (padrão desligado): dois clientes no mesmo PC, anuncia a porta UDP real de cada um.
+# Já foi visto com ele ligado o P2P UDP não se estabelecer (ping 250 ms, mestre ignora o "pronto"); desligado, cai no
+# túnel TCP. docs/Protocolo-Salas.md 6.6
 LOCAL_UDP_FIX = False
 
 
@@ -28,7 +30,7 @@ def player_net(conn: 'ClientConnection') -> tuple[bytes, int]:
     """IP (ordem de rede) e porta UDP do jogador. Usa o informado no login; senão, o IP do socket."""
     net = conn.data.get('net')
     if net and net[0]:
-        if LOCAL_UDP_FIX and int(net[0]) == 0x0100007F:  # 127.0.0.1: dois clientes no mesmo PC, a porta informada pode estar errada
+        if conn.server.config.get('local_udp_fix', LOCAL_UDP_FIX) and int(net[0]) == 0x0100007F:  # 127.0.0.1: dois clientes no mesmo PC, a porta informada pode estar errada
             conn.data['local_udp'] = conn.data.get('local_udp') or real_udp_port(int(conn.addr.rsplit(':', 1)[1]))
         return int(net[0]).to_bytes(4, 'little'), conn.data.get('local_udp') or int(net[1]) or DEFAULT_UDP_PORT
     ip = conn.addr.rsplit(':', 1)[0]
@@ -160,8 +162,12 @@ def ack(cmd: int) -> Packet:
 
 
 # ---------- partida ----------
-def game_start(room: 'Room', echo: bytes) -> EncryptedPacket:
-    """0x3432 (cifrado): settings, mapa em jogo, jogadores (22 bytes cada), marcador de evento e eco do 0x3430."""
+def game_start(body: bytes) -> EncryptedPacket:
+    return EncryptedPacket.build(ServerPacket.SRV_START_GAME, body)
+
+
+def game_start_body(room: 'Room', echo: bytes) -> bytes:
+    """0x3432 em claro: settings, mapa em jogo, jogadores (22 bytes cada), marcador de evento e eco do 0x3430."""
     from gunbound.util.binary_buffer import BinaryWriter
     w = BinaryWriter()
     w.write_uint32(settings_of(room))
@@ -179,7 +185,7 @@ def game_start(room: 'Room', echo: bytes) -> EncryptedPacket:
         w.write_uint16(y)
         w.write_uint16(room.game.turn_order.index(p.slot))
     w.write_bytes(phase.of(room.owner).game_start_tail(echo, room.game.bonus_event))
-    return EncryptedPacket.build(ServerPacket.SRV_START_GAME, w.getvalue())
+    return w.getvalue()
 
 
 def player_dead(slot: int, team: int) -> EncryptedPacket:

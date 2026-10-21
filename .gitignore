@@ -52,3 +52,6 @@ db/users.sql
 
 # Saída do anticheat mode capture (pares pergunta/resposta do GameGuard)
 gg-capture*.jsonl
+
+# Captura do túnel 0x4500 (tunnel_log)
+tunnel-capture*.jsonl

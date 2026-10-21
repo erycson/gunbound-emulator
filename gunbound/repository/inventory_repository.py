@@ -166,6 +166,13 @@ class InventoryRepository:
             "ORDER BY PriceByGoldForI, No LIMIT :limit", {'lo': lo, 'hi': hi, 'limit': limit})
         return [int(r['No']) for r in rows]
 
+    async def avatar_prices(self, lo: int, hi: int) -> List[tuple[int, int, int]]:
+        """(item, gold, cash) eternos dos menus de 1 item só com código em [lo, hi): equipamento dos bots."""
+        rows = await self.db.fetch_all(
+            "SELECT Item1, PriceByGoldForI AS g, PriceByCashForI AS c FROM Menu WHERE Item1>=:lo AND Item1<:hi "
+            "AND Item2 IS NULL AND (PriceByGoldForI>0 OR PriceByCashForI>0)", {'lo': lo, 'hi': hi})
+        return [(int(r['Item1']), int(r['g'] or 0), int(r['c'] or 0)) for r in rows]
+
     async def insert_buy_info(self, product_version: str, menu_id: int,  price: int, asset: int, buy_type: AcquisitionType) -> None:
         """
         Insere um registro de compra na tabela BuyInfo.

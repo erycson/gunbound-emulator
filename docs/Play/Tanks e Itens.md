@@ -4,8 +4,16 @@
 
 Escolha na sala: 0x3200 = u8 primário + u8 secundário (o secundário só vale no Tag; `0xFF` = aleatório). O servidor
 grava os dois em `Game.ClientData[0:2]` e usa como escolha inicial na próxima sala (`room_select_tank.py`).
+No 0x3432 os dois saem sorteados, mesmo fora do Tag: o v440 e o v584 indexam a tabela de tanques com o secundário, e
+`0xFF` lê fora dela.
 Índices aceitos: os que a fábrica de personagens do cliente da fase desenha (`Phase.tanks` em `gunbound/game/phase.py`)
 e `0xFF`. Os ocultos `0x11`/`0x12` (`HIDDEN_TANKS`) só para Authority ≥ 98, como o servidor 2007 (0x42d048).
+
+**No WC o byte do fio não é a classe.** O cliente troca o byte por uma tabela antes da fábrica (v440 `0x5cec3c`, v495
+igual, v584 `0x679160`): 0..12 iguais, 0x0D → 15, 0x0E → 16, 0x0F → 17, 0x11 → 13 (Dragon), 0x12 → 14 (Knight) e
+0x10 → 18 no S1 (não existe, cai no Armor) ou −1 no v584. O v584 passa 0x13 em diante sem troca (`0x4198c0`). O TH não
+tem tabela. Por isso o 0x10 não é aceito em nenhuma fase, e os ocultos do WC (0x11/0x12) são o Dragon e o Knight.
+A tabela abaixo é o índice **da fábrica**; no WC, a linha que vale para o byte do fio é a de `tabela[byte]`.
 
 Índices conferidos no switch da fábrica de cada cliente (leitura estática; classe = nome RTTI do cliente):
 

@@ -47,3 +47,14 @@ A WCS1 manda o grupo como `[Category, Pontos, Rank, Rank-RankOld, Win, Lose]` e 
 como nome) e a pessoa mostra o nome do grupo 0. A ordem provável no v495 é
 `[Rank, Rank-RankOld, Category, Pontos, Win, Lose]`, igual à do v584 sem o nome de 20 bytes. A WCS1 manda assim.
 A pessoa agora leva a Category em +8, em todas as fases (antes ia 0). Falta conferir na tela do jogo.
+
+## Cliente do projeto: snapshot com heap antigo
+O `GunBound.gme` de `clientes\WC-S1-v495` é um snapshot de processo (`tools\unpack\v495`): as seções `.a00`…`.a43`
+trazem também o heap da época do dump. Liberar um objeto de antes do dump derrubava o cliente no `/startgame` e ao
+fechar (x64dbg: destrutor `0x28B8147` → `operator delete(0x2C5F098)` → ntdll `0x7705E728`). Não é bug do servidor.
+`tools\unpack\v495\patch_snapshot_free.py` acrescenta a seção `.heapfx`: delete/free do MSVCRT e HeapFree/
+RtlReAllocateHeap do CRT ignoram (ou copiam, no realloc) ponteiros dentro da imagem. RtlSizeHeap não foi desviado.
+Backup do original: `tools\backup\GunBound.gme.v495-antes-heapfx`.
+O log de depuração `0x4475B0` abre `C:\debug.txt` ("a+") sem checar o retorno. Sem permissão em `C:\`, o fwrite caía
+no lock do FILE nulo (ntdll `0x77062600`) no início da partida. `tools\unpack\v495\patch_debugtxt.py` desvia
+`0x4475DD` para um stub na `.heapfx` que sai da função quando o fopen falha. Aplicar depois do `patch_snapshot_free.py`.

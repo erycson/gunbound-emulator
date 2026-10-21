@@ -75,6 +75,16 @@ O v584 tem outro sorteio, separado do `EventActProp`: o **último byte** do 0x34
 tipo 0..9 e o cliente manda 0x4300 ao ganhá-lo. Chave `bonus_event` (% por partida) no game server WCS2;
 implementado em `gunbound/game/protocol/wcs2/bonus.py`. Ver [README-WCS2.md](../README-WCS2.md).
 
+## Tela de carregamento da partida (v584, 0x554930)
+- `portal.img`: sempre, sem condição. É a arte fixa do carregamento; o servidor não liga nem desliga.
+- `event14-<n>.img`: só se o u16 de evento do 0x3432 != 0xFFFF.
+- `eventbullet.img`: evento != 0xFFFF **e** a opção local `EventWordDisplay` do cliente (lida em 0x40a05a da seção
+  `Gunbound`, junto de `Event`, `EventBullet`, `PumpkinEvent`, `Brazil`; não vem do servidor). Com ela, o cliente também
+  troca o nome `bullet`/`bulletitem` por `eventbullet` (0x402e6f).
+- `mission.img`: só se o byte de bônus do 0x3432 != 0xFF.
+
+Este servidor manda 0xFFFF e, com `bonus_event: 0`, 0xFF: nenhuma das condicionais aparece.
+
 ## Situação neste servidor Python
 - Item 1 pronto (`event` / Grand Prix).
 - Item 2: `function_restrict` e `events` podem ir no item de `gameservers` (o console 0x5124/0x5128 também muda), mas o

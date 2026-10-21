@@ -237,10 +237,12 @@ class Room:
         if player is None:
             return None
         conn.room = None
-        if not self.players:
+        humans = [p for p in self.sorted_players() if not getattr(p.conn, 'bot', False)]
+        if not humans:  # bot não fica sozinho nem vira mestre (gunbound/bot)
+            self.players.clear()
             self.status = RoomStatus.DESTROYING
         elif self.owner is conn:
-            self.owner = self.sorted_players()[0].conn
+            self.owner = humans[0].conn
             self.players[self.owner.id].ready = False  # mestre não usa "pronto"
         return player
 
@@ -291,8 +293,9 @@ class Room:
         positions = phase.of(players[0].conn).stage_pos
         game_map = self.options.map if self.options.map != RANDOM_MAP else self._random_stage(positions)
         pool = phase.of(players[0].conn).random_tanks
-        tanks = {p.slot: (roll_tank(p.tank1, self.rng, pool=pool), roll_tank(p.tank2, self.rng, pool=pool) if self.options.mode == RoomMode.TAG else TANK_RANDOM)
-                 for p in players}
+        # secundário sorteado também fora do Tag: o v440 (0x4ed2d4) e o v584 (0x509915) usam o byte como índice da
+        # tabela de tanques, e 0xFF lê fora dela (v440: 50, v584: 2200)
+        tanks = {p.slot: (roll_tank(p.tank1, self.rng, pool=pool), roll_tank(p.tank2, self.rng, pool=pool)) for p in players}
         slots = stage_pos.initial_slots([(p.slot, p.team) for p in players], self.options.settings, self.rng)
         spawns = {s: stage_pos.spawn(game_map, self.options.side, m, self.rng, positions) for s, m in slots.items()}
         self.game = GameState(game_map, order, tanks, spawns)
