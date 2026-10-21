@@ -16,13 +16,14 @@ if TYPE_CHECKING:
     from gunbound.game.client import ClientConnection
 
 def check_password(crypto, username: str, password: str, session_bytes: bytes, raw_1: bytes, raw_2: bytes):
-    """Senha nos 20 bytes block_1[4:16] + block_2[4:12]; tenta a pura e o md5[12:32]. Devolve (chave, block_2) ou None."""
+    """Senha nos 20 bytes block_1[4:16] + block_2[4:12]; tenta a pura e o md5[12:32].
+    Devolve (chave, block_2, senha que bateu) ou None: o cliente deriva a chave da sessão da mesma senha."""
     md5_pw = hashlib.md5(password.encode('latin-1')).hexdigest()[12:32]
     for expected in (password, md5_pw):
         user_key = crypto.derive_key(username, expected, session_bytes)
         block_1, block_2 = crypto.decrypt(raw_1, user_key), crypto.decrypt(raw_2, user_key)
         if (block_1[4:16] + block_2[4:12]).decode('latin-1').rstrip('\x00') == expected:
-            return user_key, block_2
+            return user_key, block_2, expected
     return None
 
 
@@ -102,7 +103,7 @@ class LoginRecv(BasePackageRecv):
         if checked is None:
             print(f"[Login] Senha incorreta para usuário {username}")
             return
-        user_key, block_2 = checked
+        user_key, block_2, key_password = checked
 
         # Valida a versão do cliente
         is_invalid, client_version = self.is_invalid_version(block_2, 12)
@@ -150,6 +151,9 @@ class LoginRecv(BasePackageRecv):
             'profile': profile,
             'net': (conn_ip, conn_port),  # IP/porta UDP informados pelo cliente, repassados aos outros da sala
             'client_version': client_version,  # v548 manda 548, v584 manda 4 (logs de 2026-10-19); muda o 0x6001 (phase.chest_tail)
+            # via NyxLauncher o cliente usa o md5[12:32] também na chave da sessão (x64dbg no v584, 2026-10-21):
+            # com a senha pura os pacotes cifrados S->C (0x3432, 0x4410...) chegavam zerados
+            'key_password': key_password,
         }
 
         self.conn.set_token(self.conn.client_manager.rand.current_value)
@@ -248,7 +252,7 @@ class LoginResp(BasePackageSend):
 
         # Criptografa os dados
         server_salt = conn.client_manager.rand.current_value.to_bytes(4, byteorder='little')
-        server_derived_key = crypto_manager.derive_key(conn.data['profile']['User'], conn.data['profile']['Password'], server_salt)
+        server_derived_key = crypto_manager.derive_key(conn.data['profile']['User'], conn.data.get('key_password', conn.data['profile']['Password']), server_salt)
         server_crypted = crypto_manager.encrypt(server_buf.getvalue(), server_derived_key)
         buf.write_bytes(server_crypted)
 

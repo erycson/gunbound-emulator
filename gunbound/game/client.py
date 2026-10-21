@@ -57,7 +57,7 @@ class ClientConnection:
         self.data['token'] = token
         self.data['derived_key'] = self.crypto_manager.derive_key(
             self.data['profile']['Id'],
-            self.data['profile']['Password'],
+            self.data.get('key_password', self.data['profile']['Password']),
             token.to_bytes(4, 'little', signed=False)
         )
 

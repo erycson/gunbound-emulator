@@ -32,6 +32,7 @@ class LoginBlocksTest(unittest.TestCase):
         md5 = hashlib.md5(b'abc').hexdigest()[12:32]
         checked = check_password(CRYPTO, 'jogador', 'abc', SESSION, *blocks('jogador', md5, 4))
         self.assertEqual(self.version(checked), 4)
+        self.assertEqual(checked[2], md5)  # a chave da sessão sai dessa senha, não da pura
 
     def test_wrong_password(self):
         self.assertIsNone(check_password(CRYPTO, 'jogador', 'certa', SESSION, *blocks('jogador', 'errada', 440)))
