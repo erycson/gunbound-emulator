@@ -26,6 +26,7 @@ START, NEXT, PASS, REPORT, SYNC, DEATH, POS, DEATH_ACK = 0x8600, 0xC300, 0xC301,
 CHECK, CHECK_ACK, KILL = 0xC312, 0xC314, 0xC315
 AIM, SHOT, MOVE = 0x8006, 0xC400, 0x8402
 SHOTS = (0xC400, 0xC409)
+SS = 0xC409         # SS: o mesmo corpo do 0xc400 (0x4e0cc9 pula o byte do tiro 2 e liga +0x1a8/+0x1ac)
 PLACES = {POS: '<II', MOVE: '<HH', SHOT: '<HH', AIM: '<HH'}  # onde cada humano está
 PASS_DELAY = 9000   # u16 do C301, soma no delay do slot (0x41c3b0); 0xffff/0xea60 não somam e o bot ganharia todo turno
 SHOT_DELAY = 8900   # shortcut: delay do 0e do atirador como o da captura (8400..8900); o real vem do mobile e do tempo
@@ -33,6 +34,9 @@ SHOT_WAIT = 3.0     # humanos mandam o 0e 1,3..3,3 s depois do tiro; atrasado é
 TURN_WAIT = 3.0     # o bot "pensa" antes de agir
 AIM_WAIT = 1.0      # 0x8006 -> 0xc400, como os humanos
 SHOOTS = {'WCS2'}   # tiro estudado no v584; nas outras fases o bot passa a vez
+SHOT2 = 0.4         # chance do tiro 2 quando ele voa como o 1 (profiles: special=False)
+SS_EVERY = 5        # shortcut: o SS fica pronto a cada 5 tiros do bot; o do cliente enche pelo dano, falta mapear
+REPEAT = 5          # px: o último tiro que acertou se repete se nem o bot nem o alvo andaram mais que isso
 V584_POWER = 5      # força do 0xc400 do v584 = 5x a do antigo (tiros do admin, até 2200); aim.py usa a escala antiga
 DIES_NOW = 0x10     # 0xc304: com o bit, quem recebe tira o tanque na hora (0x4df66b, y = 10000); o dono que se vê morto
                     # manda causa | 0x10 (0x482955). Sem o bit o mestre ainda o acha vivo e manda outro 0xc312
@@ -61,8 +65,7 @@ async def react(room, bot, sender, kind: int, body: bytes) -> None:
         await report(room, bot, 0x0f)
     elif kind in SHOTS:
         conn.last_hit = sender.slot  # o cliente guarda quem acertou por último (+0x2a4); aqui, quem atirou por último
-        if kind == SHOT:
-            craters(conn, body)
+        craters(conn, body)
         later(room, bot, SHOT_WAIT, report(room, bot, 0x0e, game))
     elif kind == PASS:
         await report(room, bot, 0x0f)
@@ -162,8 +165,18 @@ def wind(conn) -> tuple[int, int]:
     return (conn.tail[0], struct.unpack_from('<H', conn.tail, 1)[0]) if len(conn.tail) >= 3 else (0, 0)
 
 
-def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None] | None:
-    """(ângulo, força, impacto) no inimigo mais perto; erra a força pela chance de acerto (gunbound/bot/skill.py)."""
+def pick_kind(conn, tank: int, rng=random):
+    """Tiro 1, 2 ou 'ss'. O 2 só quando voa como o 1 (Nak cava, Trico orbita... a mira não simula esses)."""
+    conn.shots = getattr(conn, 'shots', 0) + 1
+    if conn.shots % SS_EVERY == 0:
+        return 'ss'
+    return 2 if not profiles.shot(conn.layout, tank, 2).special and rng.random() < SHOT2 else 1
+
+
+def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None, object] | None:
+    """(ângulo, força, impacto, tiro) no inimigo mais perto; erra a força pela chance de acerto (gunbound/bot/skill.py).
+    Se o último tiro acertou e ninguém andou, repete: com o mesmo vento, o mesmo ângulo e a força 1..2% diferente; com
+    outro vento, a mira nova, sem sortear erro."""
     conn, t = bot.conn, getattr(bot.conn, 'terrain', None)
     if t is None:
         return None
@@ -178,42 +191,56 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None] | N
     gravity, w = aim.GRAVITY.get(tank, 98), wind(conn)
     bodies = [(x, y - aim.BODY // 2) for x, y in (place(room, bot, p.slot) for p in others)]
     friends = [me] + [place(room, bot, p.slot) for p in others if p not in enemies]
-    angle, power, hit, _ = aim.best_shot(t, me, (tx, ty), gravity, w, bodies, friends[1:])
+    kind = pick_kind(conn, tank, rng)
+    last = getattr(conn, 'last', None)
+    steady = (last is not None and last[0] == target.slot and math.dist(last[1], me) <= REPEAT
+              and math.dist(last[2], (tx, ty)) <= REPEAT)
+    if steady and last[3] == w:
+        angle, power = last[4], last[5] * (1 + rng.choice((-1, 1)) * rng.uniform(0.01, 0.02))
+        power = max(aim.POWER[0], min(aim.POWER[1], round(power)))
+        hit = aim.fly(t, *me, angle, power, gravity, w, bodies)
+    else:
+        angle, power, hit, _ = aim.best_shot(t, me, (tx, ty), gravity, w, bodies, friends[1:])
     situation = skill.ShotSituation(angle=angle if angle <= 90 else 180 - angle, distance=abs(tx - me[0]),
-                                    max_distance=t.w, wind=w[0] / 26)
-    shot = profiles.shot(conn.layout, tank, 1)
-    if rng.random() > skill.hit_chance(conn.n, situation, shot, skill.config(conn.server.config)):
+                                    max_distance=t.w, wind=w[0] / 26, ss=kind == 'ss')
+    shot = profiles.shot(conn.layout, tank, kind)
+    missed = False
+    if not steady and rng.random() > skill.hit_chance(conn.n, situation, shot, skill.config(conn.server.config)):
         for _ in range(3):  # erra, mas não em cima de si mesmo nem de um aliado
             wrong = aim.miss(rng, power)
             miss = aim.fly(t, *me, angle, wrong, gravity, w, bodies)
             if miss is None or aim.safe(miss, (tx, ty), friends):
-                power, hit = wrong, miss
+                power, hit, missed = wrong, miss, True
                 break
-    return angle, power, hit or (max(0, min(t.w - 1, tx)), ty)  # saiu do mapa: a câmera mira o alvo (n >= 1 sempre)
+    good = not missed and hit is not None and math.dist(hit, (tx, ty - aim.BODY // 2)) <= 2 * aim.BODY
+    conn.last = (target.slot, me, (tx, ty), w, angle, power) if good else None
+    return angle, power, hit or (max(0, min(t.w - 1, tx)), ty), kind  # saiu do mapa: a câmera mira o alvo (n >= 1 sempre)
 
 
-def shot_body(x: int, y: int, angle: int, power: int, wind_: tuple[int, int], hit, v584: bool = False) -> bytes:
-    """0xc400 como o da captura: x, y, 01, 00, ângulo, força, 01, 3x cano (bx, by), vento, 00, impactos.
+def shot_body(x: int, y: int, angle: int, power: int, wind_: tuple[int, int], hit, v584: bool = False,
+              shot2: bool = False) -> bytes:
+    """0xc400 como o da captura: x, y, 01, tiro 2, ângulo, força, 01, 3x cano (bx, by), vento, 00, impactos.
+    O 2º u8 (+0x1a4) é o tiro 2: quem recebe escolhe a animação fire2 e o projétil dele (0x4e09d0).
     v584 (tiros do admin): o 1º byte é o lado do tanque (+0xb0, o mesmo do 0x8402: 1 direita, 0 esquerda; com 1 e
     ângulo para a esquerda o tanque vira de costas para o tiro), força x5 e u16 + u8 a mais antes dos impactos."""
     bx, by = aim.muzzle(angle)
     impacts = [(8, *hit)] if hit else []
     face, extra = (int(angle <= 90), bytes(2)) if v584 else (1, b'')
     power = power * V584_POWER if v584 else power
-    return (struct.pack('<HHBBhHB6hhhB', x, y, face, 0, angle, power, 1, bx, by, bx, by, bx, by, *wind_, 0) + extra
+    return (struct.pack('<HHBBhHB6hhhB', x, y, face, int(shot2), angle, power, 1, bx, by, bx, by, bx, by, *wind_, 0) + extra
             + bytes([len(impacts)]) + b''.join(struct.pack('<BHH', *i) for i in impacts))
 
 
-async def shoot(room, bot, game, angle: int, power: int, hit) -> None:
+async def shoot(room, bot, game, angle: int, power: int, hit, kind=1) -> None:
     x, y = place(room, bot, bot.slot)
-    body = shot_body(x, y, angle, power, wind(bot.conn), hit, getattr(bot.conn, 'v584', False))
+    body = shot_body(x, y, angle, power, wind(bot.conn), hit, getattr(bot.conn, 'v584', False), kind == 2)
     # o 0x8006 leva os bytes 4/5 do 0xc400 trocados (todas as capturas); outro lado aqui viraria o tanque duas vezes
     await send(room, bot, AIM, struct.pack('<HHBB', x, y, body[5], body[4]))
     await asyncio.sleep(AIM_WAIT)
     if room.game is not game or not bot.alive:
         return
     craters(bot.conn, body)
-    await send(room, bot, SHOT, body)
+    await send(room, bot, SS if kind == 'ss' else SHOT, body)
     later(room, bot, SHOT_WAIT, report(room, bot, 0x0e, game, SHOT_DELAY))
 
 

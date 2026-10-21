@@ -110,7 +110,7 @@ gameservers:
       enabled: false
       gm_mobile: true  # GM escolhe o mobile no /bot add
       max: 7           # bots por sala
-      reward: 0        # fator do gold/GP de quem joga com bot (0 = nada, 0.5 = metade)
+      reward: 0.5      # fator do gold/GP de quem joga com bot (0 = nada, 0.5 = metade)
       # graphics_xfs: ../clientes/WC-S1-v495/graphics.xfs  # mapas (.lnd) para a mira; padrão este, relativo ao server
       # maps: maps  # mapas importados por tools/import_maps.py (S1 e v584); sem eles, o graphics_xfs acima
       # skill: {floor: 0.25, ceil: 0.95, k: 3, damping: 0.5} # curva de acerto e penalidades (gunbound/bot/skill.py)

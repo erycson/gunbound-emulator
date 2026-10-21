@@ -298,7 +298,7 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         b.conn.layout = 'WCS2'
         self.room.game.spawns = {me.slot: (700, 0), b.slot: (200, 0)}
         frame = bots.p2p_frame(bots.p2p_key(self.room, self.master.server), 0, match.START, bytes(14))
-        with mock.patch.object(aim.Terrain, 'load', return_value=self.flat()),                 mock.patch.object(match, 'TURN_WAIT', 0), mock.patch.object(match, 'AIM_WAIT', 0),                 mock.patch.object(match, 'SHOT_WAIT', 0), mock.patch.object(match.random, 'random', return_value=roll):
+        with mock.patch.object(aim.Terrain, 'load', return_value=self.flat()),                 mock.patch.object(match, 'TURN_WAIT', 0), mock.patch.object(match, 'AIM_WAIT', 0),                 mock.patch.object(match, 'SHOT_WAIT', 0), mock.patch.object(match.random, 'random', return_value=roll), mock.patch.object(match, 'SHOT2', 0):
             from gunbound.game.protocol.game_play import GameTunnelRecv
             from gunbound.util.binary_buffer import BinaryReader
             await GameTunnelRecv(self.master, BinaryReader(bytes([1, 0, b.slot]) + frame)).process()
@@ -336,6 +336,32 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(struct.unpack_from('<H', c400, 8)[0] % match.V584_POWER, 0)
         self.assertEqual(c400[30], 1)
         self.assertLess(abs(struct.unpack_from('<H', c400, 32)[0] - 700), 20)
+
+    async def test_shot2_ss_and_repeat(self):
+        """Tiro 2 só nos mobiles em que ele voa como o 1; SS (0xc409) a cada SS_EVERY tiros. O tiro que acertou se repete
+        sem sortear erro: com o mesmo vento, mesmo ângulo e força 1..2% diferente; com outro vento, mira nova."""
+        conn = mock.Mock(layout='WCS2', shots=0)
+        rng = mock.Mock(random=mock.Mock(return_value=0.0))
+        self.assertEqual([match.pick_kind(conn, 0x00, rng) for _ in range(5)], [2, 2, 2, 2, 'ss'])
+        self.assertEqual([match.pick_kind(conn, 0x02, rng) for _ in range(4)], [1, 1, 1, 1])  # Nak: o 2 cava
+        self.assertEqual(match.shot_body(1, 1, 65, 100, (0, 0), None, True, shot2=True)[4:6], bytes([1, 1]))
+        b, me = await self.start_match()
+        b.conn.layout, b.conn.terrain, b.conn.tail, b.conn.shots = 'WCS2', self.flat(), b'', 0
+        self.room.game.spawns = {me.slot: (700, 0), b.slot: (200, 0)}
+        rng = mock.Mock(random=mock.Mock(return_value=0.0), choice=lambda s: s[0], uniform=lambda lo, hi: hi)
+        angle, power, hit, _ = match.aim_at(self.room, b, rng)
+        self.assertLess(abs(hit[0] - 700), 20)
+        rng.random.return_value = 0.99  # erraria pela chance de acerto
+        again = match.aim_at(self.room, b, rng)
+        self.assertEqual(again[:2], (angle, round(power * 0.98)))
+        b.conn.tail = bytes([20]) + struct.pack('<H', 0)  # vento novo
+        self.assertLess(abs(match.aim_at(self.room, b, rng)[2][0] - 700), 20)
+
+    async def test_ss_goes_as_c409(self):
+        with mock.patch.object(match, 'SS_EVERY', 1):
+            sent, _ = await self.own_shot(0.0, shot=False)
+        self.assertIn(match.SS, sent)
+        self.assertNotIn(match.SHOT, sent)
 
     async def test_misses_by_skill(self):
         _, c400 = await self.own_shot(1.0)

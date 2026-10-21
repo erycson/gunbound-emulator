@@ -13,7 +13,7 @@ Falta validar jogando: física ajustada pela captura, mobiles com tiro especial 
   captura e envio em 0x50923a do v584; o 0x8100 é o ping). O bot manda 0x8102 03 ao entrar e 1 s depois de cada
   0x3232 (volta do resultado); quem entra depois vê pelo estado do 0x2111. No fim da partida o bot continua pronto.
 - O mestre nunca vira bot; sala só com bots fecha. O kick do mestre e o `/close` também tiram bots.
-- Prêmio (`bots.reward`, padrão 0): bot não recebe; com bot na sala, os outros recebem o fator.
+- Prêmio (`bots.reward`, padrão 0,5): bot não recebe; com bot na sala, os outros recebem o fator.
 - Só o mestre de uma sala comum aguardando usa `/bot` (não em Grand Prix, QuickStart nem Stage).
 - **[INCERTO]** se o cliente manda o 0x5100 de quem não é GM. Se não mandar, só GM consegue usar `/bot`.
 
@@ -142,9 +142,23 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
   0xc400 põe o tanque no x/y do pacote, e com o chão errado ele caía de novo a cada turno).
 - Mira: inimigo vivo mais perto (último x/y que ele mandou), elevações 25..85 de 5 em 5, força 40..400; fica o tiro
   que cai mais perto (chão ou corpo de tanque), checando a colisão a cada 4 px (o tiro anda até ~40 px por passo e
-  atravessaria barreiras) e descartando o que cai a menos de 60 px do próprio bot. Erra pela chance de `skill.py`:
-  força 10..25% para mais ou menos, nunca em cima de si mesmo.
-- [INCERTO] tiros especiais (Nak cavando, Boomer curvando, Turtle dividindo...) seguem a trajetória normal na mira.
+  atravessaria barreiras) e descartando o que cai a menos de 60 px do próprio bot ou de um aliado (salvo inimigo colado
+  neles). Erra pela chance de `skill.py`: força 10..25% para mais ou menos, nunca em cima de si mesmo nem de aliado.
+  Se o último tiro acertou (na conta do bot) e nem ele nem o alvo andaram mais de 5 px, repete: com o mesmo vento, o
+  mesmo ângulo e a força 1..2% diferente; com outro vento, a mira nova; nos dois casos sem sortear erro.
+- Tiro 2: o 2º u8 do 0xc400 (+0x1a4); quem recebe escolhe a animação fire2 e o projétil do tiro 2 (0x4e09d0; o 0x8006
+  leva o mesmo byte trocado). O bot usa o 2 (40%) só onde ele voa como o 1 (`profiles.py`, special=False): Nak (cava por
+  baixo da terra), Trico (órbita), Raon (minas), Turtle (bolhas), Boomer, A.Sate, Grub, Aduka, J.Frog, Kalsiddon e os
+  mobiles do S2 ficam no 1.
+- SS: 0xc409 com o mesmo corpo do 0xc400 (0x4e0cc9 pula o byte do tiro 2, liga +0x1a8/+0x1ac e G+0x3f2b0, animação
+  sfire). shortcut: o bot solta o SS a cada 5 tiros; no cliente a barra enche pelo dano causado (falta mapear).
+- Item: 0xc401 = u8 ?, u8 0xff, u16 código, u16 x, u16 y (0x4f6a70; o admin mandou o código 1 duas vezes). Falta o
+  código de cada item (captura com um item por vez, anotando a hora); o bot ainda não usa item.
+- Morte: o mestre manda o 0xc312 do slot quando, no cliente dele, o HP (+0x150) chega a 0 ou o y passa de 9000
+  (0x502fe6); o HP é a conta do cliente, o servidor não vê. Barra vazia com HP 1..2 não mata.
+- [INCERTO] o resto dos tiros especiais segue a trajetória normal na mira; o Frank e o Trico do bot não abriram cratera
+  no chão dos humanos (falta comparar com o tiro de um humano com o mesmo mobile). O 9º u8 do 0xc400 (+0x138, o bot
+  manda 01) escolhe entre dois valores globais (0x92eef0/0x92eee8) no projétil; o humano mandou 00 em alguns tiros.
 
 ### Captura
 

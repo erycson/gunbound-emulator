@@ -20,7 +20,7 @@ from gunbound.game.protocol.enums import ServerPacket
 _ids = itertools.count(1 << 32)  # fora da faixa dos ClientConnection (id(self) & 0xFFFFFFFF)
 SYLLABLES = ('ka', 'ro', 'mi', 'zu', 'te', 'na', 'lo', 'vi', 'ga', 're', 'xo', 'bu', 'ny', 'da', 'ki', 'po', 'se', 'ta')
 CASH_GOLD = 100     # 1 cash vale isso em gold na hora de medir o quanto o equipamento é "caro"
-REWARD = 0.0        # fator do gold/GP de quem joga com bot (0 = nada, contra farm)
+REWARD = 0.5        # fator do gold/GP de quem joga com bot (metade; 0 = nada, contra farm)
 SUFFIX = '[BOT]'    # no apelido (12 bytes no fio), para ninguém confundir com gente
 AUTO = ('auto', 'random')
 
@@ -119,7 +119,7 @@ async def load(room, delay: float = 0.3) -> None:
     for p in bots:
         p.conn.seq.clear()
         p.conn.counter, p.conn.whose, p.conn.tail, p.conn.last_hit = 0, -1, b'', -1
-        p.conn.seen, p.conn.terrain = {}, None
+        p.conn.seen, p.conn.terrain, p.conn.shots, p.conn.last = {}, None, 0, None
     for step in (1, 2, 3):
         await asyncio.sleep(delay)
         for p in bots:
@@ -251,7 +251,7 @@ async def command(conn, text: str, inventory_repository) -> str:
 
 
 def reward(room, player, gold: int, gp: int, server_config) -> tuple[int, int] | None:
-    """Prêmio de partida: bot não recebe (None); com bot na sala, os outros recebem `bots.reward` (padrão 0)."""
+    """Prêmio de partida: bot não recebe (None); com bot na sala, os outros recebem `bots.reward` (padrão 0,5)."""
     if is_bot(player.conn):
         return None
     if any(is_bot(p.conn) for p in room.players.values()):
