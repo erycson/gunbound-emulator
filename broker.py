@@ -26,17 +26,24 @@ async def main():
     async def shutdown():
         await monitor.stop()
         await broker.stop()
+        # tarefas de cliente presas numa consulta: terminar antes de fechar o banco, senão o aiosqlite responde
+        # com o loop já fechado ("Event loop is closed")
+        rest = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        for t in rest:
+            t.cancel()
+        await asyncio.gather(*rest, return_exceptions=True)
         await database.disconnect()
         print("BrokerServer parado")
 
+    loop = asyncio.get_running_loop()
     def signal_handler(signum, frame):
-        asyncio.get_running_loop().create_task(shutdown())
-        shutdown_event.set()
+        loop.call_soon_threadsafe(shutdown_event.set)
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
     await shutdown_event.wait()
+    await shutdown()  # aqui, e não numa task: o asyncio.run cancelaria a task no meio
 
 if __name__ == "__main__":
     asyncio.run(main())
