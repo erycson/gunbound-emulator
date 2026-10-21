@@ -8,7 +8,7 @@ import json
 import time
 from dependency_injector.wiring import Provide, inject
 from gunbound.base.enums import RoomMode
-from gunbound.bot import room as bots
+from gunbound.bot import match, room as bots
 from gunbound.game import phase, room_packets as rp
 from gunbound.game.protocol.gm_commands import start_game
 from gunbound.game.protocol.base import GameRecv, Packet, EncryptedPacket, decrypt_blocks, handler
@@ -249,4 +249,8 @@ class GameTunnelRecv(GameRecv):
             log_tunnel(path, room, me, slots, data)
         packet = rp.tunnel(me.slot, data)
         for dest in filter(None, (room.player_by_slot(s) for s in slots)):
+            if bots.is_bot(dest.conn):
+                if room.game is not None:
+                    await match.on_frame(room, dest, me, data)
+                continue
             await dest.conn.on_send(packet.clone())  # on_send altera o buffer (tamanho/checksum)

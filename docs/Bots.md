@@ -1,8 +1,9 @@
 # Bots de sala
 
 Status: **em construção**. Pronto: o bot entra e sai da sala (`gunbound/bot/room.py`), curva de acerto, penalidades
-e perfis de mobile, e o log do túnel. Falta: o bot **jogar** (turno, tiro, dano), que depende do protocolo P2P da
-partida. Hoje uma partida com bot começa, mas o bot não age: os clientes devem ficar esperando por ele.
+e perfis de mobile, o log do túnel, o carregamento e o ciclo de turno (`gunbound/bot/match.py`, estágio 1a: o bot
+passa a vez e a partida não trava). Falta: **1b** o bot morrer (dano) e **2** o bot atirar. Até a 1b ninguém vence o
+bot: ele não perde HP.
 
 ### Na sala (`gunbound/bot/room.py`)
 - `BotConn` imita o `ClientConnection` sem socket; tudo que a sala manda para ele é descartado.
@@ -67,11 +68,30 @@ Tipos principais (v584): 0xc400 tiro (posição, ângulo/força como vetores, ve
 posição, 0x4001/0x4005/0x4006 virar/trocar tiro/mira (só UDP, não passam pelo túnel), 0xc412 passa o turno,
 0xc302 relatório de fim de turno (todos mandam, o mestre espera todos), 0xc303 novo turno (só o mestre, com o
 vento), 0x4002/0x4003 chat, 0x8201 progresso do carregamento, 0x82FF carregou, 0xc304 morte (mesmo corpo do TCP
-0x4100). O bot precisa mandar 0xc302 a cada fim de turno (senão o mestre trava) e o próprio 0xc412 no turno dele.
+0x4100). O passe da captura é 0xc301 (o 0xc412 não apareceu). O bot precisa mandar 0xc302 a cada fim de turno
+(senão o mestre trava) e o 0xc301 no turno dele.
 
 **Feito:** o carregamento. Depois do 0x3432 cada bot manda pelo 0x4501, a cada humano, 0x8201 (u8 slot, u8 etapa
-1..3) e 0x82FF, com seq próprio por destino (`bots.load`). Falta o turno: sem o 0xc302 do bot o mestre trava no
-primeiro fim de turno.
+1..3) e 0x82FF, com seq próprio por destino (`bots.load`).
+
+**Feito (1a): o turno** (`gunbound/bot/match.py`). O `GameTunnelRecv` não repassa ao bot o que chega para o slot dele:
+decifra e entrega a `match.on_frame`. O que o bot manda vai aos humanos e, como se viesse pelo túnel, aos outros bots.
+- O mestre (0x42e798) conta um 0xc302 por (fase, slot) em G+0x66c64 e só fecha a fase quando todo slot do bitmask
+  0x92c320 reportou (0x425650); ao fechar, decrementa (0x432850). Não lê o contador. Corpo: u8 fase, u32 contador,
+  u32, u32 (no 0e, u32 delay em +5, só usado o do atirador).
+- Regras (iguais ao slot 1 da captura, `tests/fixtures/bot_turn_replay.txt`): 0x8600 do mestre → 0f; qualquer
+  0xc400/0xc409 → 0e 3 s depois; qualquer 0xc301 (inclusive o do bot) → 0f; 0xc300 do mestre (u8 vez, u16 turno,
+  estado) → contador = turno+1 e 02; 0xc303 02 com a vez do bot → 3 s depois, 0xc301; qualquer 0xc304 → 0xc309
+  (u8 vítima + corpo do 0xc304). Cada 0xc302 vai depois de um 0xc40a (x, y do spawn), como o cliente; o 0xc40a e o
+  0xc309 caem no default do despachante (0x4dd8a0).
+- 0xc301 = 01 + u16 delay + estado. O receptor (0x4df139) soma o delay no acumulador do slot (G+0x2956c, exceto
+  0xffff/0xea60) e copia 0x60 bytes do estado do próximo turno, que o mestre ecoa no 0xc300. O bot manda delay 9000
+  (passes da captura: 7200..9100) e o estado do último 0xc300 (o vento não muda no passe do bot).
+- Diferença conhecida: o humano segura o 02 até os tanques assentarem (morte do mestre no fim do turno); o bot manda
+  no 0xc300. O mestre só conta, então a ordem não importa.
+- O bot não manda 0x8402 (posição): o y do chão só o cliente sabe (spawn com y 0). O mesmo falta para dano (1b) e
+  mira (2).
+- [INCERTO] a captura é 1x1; com mais jogadores o mestre pode esperar o 0xc309 ou o 02 de outro jeito.
 
 ### Captura
 

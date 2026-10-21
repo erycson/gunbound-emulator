@@ -46,6 +46,7 @@ class BotConn:
     def __init__(self, server, nick: str, gender: int, game: dict, avatar: list[int], n: float):
         self.id, self.server, self.room, self.n = next(_ids), server, None, n
         self.seq: dict[int, int] = {}  # seq do frame P2P por slot de destino
+        self.counter, self.whose, self.tail = 0, -1, b''  # turno (gunbound/bot/match.py)
         self.addr = f"bot:{nick}"
         self.data = {'profile': {'Id': None, 'Nickname': nick, 'Gender': gender, 'Authority': 0},
                      'game': game, 'avatar': avatar}
@@ -81,8 +82,12 @@ def p2p_frame(key: bytes, seq: int, kind: int, body: bytes) -> bytes:
     return struct.pack('<HBB', 0x8000 | (4 + len(cipher)), seq & 0xFF, sum(cipher) & 0xFF) + cipher
 
 
+def p2p_key(room, server) -> bytes:
+    return struct.pack('<H', server.index) + b'comsik' + struct.pack('<H', room.id) + TAIL
+
+
 async def p2p_send(room, bot_player, kind: int, body: bytes) -> None:
-    key = struct.pack('<H', bot_player.conn.server.index) + b'comsik' + struct.pack('<H', room.id) + TAIL
+    key = p2p_key(room, bot_player.conn.server)
     for p in list(room.players.values()):
         if is_bot(p.conn):
             continue
@@ -93,10 +98,11 @@ async def p2p_send(room, bot_player, kind: int, body: bytes) -> None:
 
 async def load(room, delay: float = 0.3) -> None:
     """Depois do 0x3432: cada bot avisa as 3 etapas do carregamento e o fim, como um cliente (senão a tela trava em 0%).
-    shortcut: só o carregamento; o turno (0xc302/0xc412) ainda não existe e a partida trava no 1º fim de turno."""
+    O turno vem depois, pelos frames do mestre (gunbound/bot/match.py)."""
     bots = [p for p in room.players.values() if is_bot(p.conn)]
     for p in bots:
         p.conn.seq.clear()
+        p.conn.counter, p.conn.whose, p.conn.tail = 0, -1, b''
     for step in (1, 2, 3):
         await asyncio.sleep(delay)
         for p in bots:

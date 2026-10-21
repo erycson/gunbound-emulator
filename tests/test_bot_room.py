@@ -2,7 +2,12 @@
 import random
 import unittest
 from gunbound.base.enums import RoomOptions, RoomMode
-from gunbound.bot import room as bots, skill
+import asyncio
+import struct
+from pathlib import Path
+from unittest import mock
+from gunbound.bot import match, room as bots, skill
+from gunbound.game.room import GameState
 from gunbound.game.protocol.enums import ServerPacket
 from tests.test_rooms_shop import FakeConn, FakeServer, manager, settle
 
@@ -72,6 +77,79 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
                          [(0, bytes([1, 0x82, b.slot, 1])), (1, bytes([1, 0x82, b.slot, 2])),
                           (2, bytes([1, 0x82, b.slot, 3])), (3, bytes([0xFF, 0x82, 0, 0]))])
         self.assertTrue(all(f[3] == sum(f[4:]) & 0xFF and f[:2] == b'\x14\x80' for f in frames))
+
+    async def start_match(self):
+        await self.cmd('/bot add')
+        [b] = self.bots()
+        self.master.server.index = 0
+        self.room.game = GameState(1, [0, 1], {}, {0: (100, 0), 1: (b.slot * 100, 0)})
+        return b, self.room.player(self.master)
+
+    def turn_frames(self):
+        """(tipo, corpo) do que o bot mandou ao mestre pelo 0x4501, só C302 e C309."""
+        from tools.tunnel_decode import decode, key
+        plains = [decode(raw[3:], key(0, self.room.id))[2] for raw in self.master.sent if raw[:2] == b'\x01\x45']
+        return [(struct.unpack_from('<H', p)[0], p[2:]) for p in plains if p[:2] in (b'\x02\xc3', b'\x09\xc3')]
+
+    @staticmethod
+    async def settle():
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+    async def test_turn_replay_like_capture(self):
+        """Frames do mestre da captura 1x1; as ações do slot 1 (tiro, passe, morte) entram como do próprio bot.
+        O bot tem que reportar o mesmo (fase, contador) do C302 e o mesmo C309 que o humano."""
+        b, me = await self.start_match()
+        self.assertEqual(b.slot, 1)
+        rows = [line.split() for line in Path(__file__).with_name('fixtures').joinpath('bot_turn_replay.txt')
+                .read_text().splitlines() if line and not line.startswith('#')]
+        expected = []
+        own = (0xC400, 0xC409, match.PASS, match.DEATH)
+
+        async def nop(*_):
+            pass
+        with mock.patch.multiple(match, SHOT_WAIT=0, TURN_WAIT=0, pass_turn=nop):
+            for frm, kind, body in ((int(r[0]), int(r[1], 16), bytes.fromhex(r[2] if len(r) > 2 else '')) for r in rows):
+                if frm == 0:
+                    await match.react(self.room, b, me, kind, body)
+                elif kind in own:
+                    await match.react(self.room, b, b, kind, body)
+                if frm == 1 and kind == match.REPORT:
+                    expected.append((kind, body[:5]))
+                elif frm == 1 and kind == match.DEATH_ACK:
+                    expected.append((kind, body[:6]))
+                await self.settle()
+        got = [(k, body[:5] if k == match.REPORT else body[:6]) for k, body in self.turn_frames()]
+        self.assertGreater(len(expected), 90)
+        reports = [[f for f in frames if f[0] == match.REPORT] for frames in (got, expected)]
+        acks = [[f for f in frames if f[0] == match.DEATH_ACK] for frames in (got, expected)]
+        # o humano segura o 02 até os tanques assentarem (morte do mestre no fim do turno); o bot manda no C300.
+        # Na última morte a partida acabou antes, então o bot tem um 02 a mais.
+        self.assertEqual(reports[0][:-1], reports[1])
+        self.assertEqual(reports[0][-1][1][0], 0x02)
+        self.assertEqual(acks[0], acks[1])
+
+    async def test_pass_on_own_turn(self):
+        b, me = await self.start_match()
+        frame = bots.p2p_frame(bots.p2p_key(self.room, self.master.server), 0, match.START, bytes(14))
+        with mock.patch.object(match, 'TURN_WAIT', 0):
+            from gunbound.game.protocol.game_play import GameTunnelRecv
+            from gunbound.util.binary_buffer import BinaryReader
+            await GameTunnelRecv(self.master, BinaryReader(bytes([1, 0, b.slot]) + frame)).process()  # 0x4500 ao bot
+            tail = bytes.fromhex('0954001a8902ffffffff00')
+            await match.react(self.room, b, me, match.NEXT, bytes([b.slot]) + struct.pack('<H', 4) + tail)
+            await match.react(self.room, b, me, match.SYNC, b'\x02' + bytes(13))
+            await self.settle()
+        phases = [(body[0], body[1]) for k, body in self.turn_frames()]
+        self.assertEqual(phases, [(0x0f, 0), (0x02, 5), (0x0f, 5)])  # início, pronto, passe
+        from tools.tunnel_decode import decode, key
+        plains = [decode(raw[3:], key(0, self.room.id))[2] for raw in self.master.sent if raw[:2] == b'\x01\x45']
+        [c301] = [p for p in plains if p[:2] == b'\x01\xc3']
+        self.assertEqual(c301[2:5 + len(tail)], b'\x01' + struct.pack('<H', match.PASS_DELAY) + tail)
+        self.room.game = None  # fim da partida: nada mais sai
+        n = len(self.master.sent)
+        await match.react(self.room, b, me, match.PASS, bytes(14))
+        self.assertEqual(len(self.master.sent), n)
 
     async def test_only_master(self):
         other = player('outro')
