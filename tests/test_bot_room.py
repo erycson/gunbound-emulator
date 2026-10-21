@@ -352,7 +352,8 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
     async def test_item_before_shot(self):
         """Acerto previsto: Dual. 0xc401 (espaço 0, ff, código 1, x, y, lado) antes do tiro; o 0xc400 leva 01 ff nos bytes
         27..28 e os 2 impactos; o item sai da barra."""
-        sent, c400 = await self.own_shot(0.0, version=584, bar=match.BAR)
+        with mock.patch.object(match, 'pick_item', return_value=match.DUAL):  # escolha: test_item_choice_and_change_wind
+            sent, c400 = await self.own_shot(0.0, version=584, bar=match.BAR)
         self.assertEqual(sent[match.ITEM][0][:9], struct.pack('<BBHHHB', 0, 0xFF, 1, 200, 500, 1))
         self.assertEqual(c400[27:29], b'\x01\xff')
         self.assertEqual(c400[30], 2)
@@ -361,7 +362,9 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
 
     def test_item_choice_and_change_wind(self):
         from types import SimpleNamespace as NS
-        conn = NS(v584=True, items=None, last=('alvo',), tail=bytes([20]) + struct.pack('<H', 300))
+        conn = NS(v584=True, items=None, last=('alvo',), steady=False, tail=bytes([20]) + struct.pack('<H', 300))
+        self.assertIsNone(match.pick_item(conn, (45, 100, (1, 1), 1)))  # acerto sem ter acertado antes: sem item
+        conn.steady = True
         self.assertEqual(match.pick_item(conn, (45, 100, (1, 1), 1)), match.DUAL)
         self.assertIsNone(match.pick_item(conn, (45, 100, (1, 1), 'ss')))
         conn.items.remove(match.DUAL)
@@ -387,8 +390,9 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         sem sortear erro: com o mesmo vento, mesmo ângulo e força 1..2% diferente; com outro vento, mira nova."""
         conn = mock.Mock(layout='WCS2', shots=0)
         rng = mock.Mock(random=mock.Mock(return_value=0.0))
-        self.assertEqual([match.pick_kind(conn, 0x00, rng) for _ in range(5)], [2, 2, 2, 2, 'ss'])
-        self.assertEqual([match.pick_kind(conn, 0x02, rng) for _ in range(4)], [1, 1, 1, 1])  # Nak: o 2 cava
+        self.assertEqual([match.pick_kind(conn, 0x00, rng) for _ in range(6)], [1] * 6)  # sem acerto ainda: tiro 1
+        self.assertEqual([match.pick_kind(conn, 0x00, rng, True) for _ in range(3)], ['ss', 2, 2])  # SS guardado
+        self.assertEqual([match.pick_kind(conn, 0x02, rng, True) for _ in range(3)], [1, 1, 'ss'])  # Nak: o 2 cava
         self.assertEqual(match.shot_body(1, 1, 65, 100, (0, 0), None, True, shot2=True)[4:6], bytes([1, 1]))
         b, me = await self.start_match()
         b.conn.layout, b.conn.terrain, b.conn.tail, b.conn.shots = 'WCS2', self.flat(), b'', 0
@@ -558,7 +562,7 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertLessEqual(err, 0)  # acerto que passa pela força conta melhor
 
     async def test_ss_goes_as_c409(self):
-        with mock.patch.object(match, 'SS_EVERY', 1):
+        with mock.patch.object(match, 'pick_kind', return_value='ss'):
             sent, _ = await self.own_shot(0.0, shot=False)
         self.assertIn(match.SS, sent)
         self.assertNotIn(match.SHOT, sent)
@@ -584,6 +588,16 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.room.finish()
         self.assertTrue(b.ready)
         self.assertFalse(self.room.player(self.master).ready)
+
+    async def test_confirms_result_screen(self):
+        """Na tela de resultado o bot manda o 0x8103 (OK), senão o humano fica esperando os outros usuários."""
+        await self.cmd('/bot add')
+        self.master.sent.clear()
+        await bots.confirm_result(self.room, 0)
+        from tools.tunnel_decode import decode, key
+        plains = [decode(raw[3:], key(self.master.server.index, self.room.id))[2]
+                  for raw in self.master.sent if raw[:2] == bytes([0x01, 0x45])]
+        self.assertEqual([p[:2] for p in plains], [struct.pack('<H', bots.RESULT_OK)])
 
     async def test_remove_and_room_closes_without_humans(self):
         await self.cmd('/bot add')

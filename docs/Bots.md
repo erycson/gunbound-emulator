@@ -12,6 +12,9 @@ Falta validar jogando: física ajustada pela captura, mobiles com tiro especial 
 - "Pronto" não passa pelo servidor: quem não é mestre avisa os outros pelo túnel com 0x8102 u8 (3 pronto, 1 presente;
   captura e envio em 0x50923a do v584; o 0x8100 é o ping). O bot manda 0x8102 03 ao entrar e 1 s depois de cada
   0x3232 (volta do resultado); quem entra depois vê pelo estado do 0x2111. No fim da partida o bot continua pronto.
+- Tela de resultado: cada cliente manda 0x8103 (vazio) pelo túnel ao clicar OK; quem clicou fica em "espere até os
+  outros usuários clicarem" até ter o de todos (captura de 2 humanos e do v584). O 0xc30c do mestre chega ao bot com
+  a partida já fechada, então o servidor manda o 0x8103 de cada bot 3 s depois do 0x4413.
 - O mestre nunca vira bot; sala só com bots fecha. O kick do mestre e o `/close` também tiram bots.
 - Prêmio (`bots.reward`, padrão 0,5): bot não recebe; com bot na sala, os outros recebem o fator.
 - Só o mestre de uma sala comum aguardando usa `/bot` (não em Grand Prix, QuickStart nem Stage).
@@ -190,7 +193,9 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
   baixo da terra), Trico (órbita), Raon (minas), Turtle (bolhas), Boomer, A.Sate, Grub, Aduka, J.Frog, Kalsiddon e os
   mobiles do S2 ficam no 1.
 - SS: 0xc409 com o mesmo corpo do 0xc400 (0x4e0cc9 pula o byte do tiro 2, liga +0x1a8/+0x1ac e G+0x3f2b0, animação
-  sfire). shortcut: o bot solta o SS a cada 5 tiros; no cliente a barra enche pelo dano causado (falta mapear).
+  sfire). shortcut: o SS fica pronto a cada 5 tiros; no cliente a barra enche pelo dano causado (falta mapear).
+- Tiro forte só depois de achar a mira: tiro 1 até o último tiro ter acertado o mesmo alvo sem ninguém andar (o
+  repetir); aí SS se pronto, senão o 2 (40%). Dual e Power Up seguem a mesma regra.
 - Item (v584, análise estática + captura de 21/10): 0xc401 = u8 espaço da barra, u8 0xff (item de 2 espaços) ou 00,
   u16 código, u16 x, u16 y, u8 lado (montado em 0x4f60b2). Quem recebe (despachante 0x4e11b3, só do tanque da vez;
   0x4f6a70) põe o tanque no x/y/lado, grava o código em +0x2c4 e aplica o efeito (0x4f6e90) **sem conferir a barra** de
@@ -217,7 +222,7 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
   depois do 0xc401; os 5 da captura não têm.
   O bot (só v584) leva a barra fixa Dual, Power Up, Bunge, Change Wind, um por partida e um por turno, nunca no SS:
   Change Wind antes de mirar se daqui o vento impede o acerto (erro > 36 px) e virado ele acerta; com acerto direto
-  previsto, Dual e depois Power Up; sem acerto (cavando), Bunge. Manda o 0xc401, espera 2 s, mira e atira com o código
+  previsto e repetindo um acerto, Dual e depois Power Up; sem acerto (cavando), Bunge. Manda o 0xc401, espera 2 s, mira e atira com o código
   nos bytes 27..28 e soma 6000 (Dual) ou 1500 ao delay do 0e. shortcut: sem Energy (o HP é conta do cliente), Blood e
   Teleport.
 - Morte: o mestre manda o 0xc312 do slot quando, no cliente dele, o HP (+0x150) chega a 0 ou o y passa de 9000

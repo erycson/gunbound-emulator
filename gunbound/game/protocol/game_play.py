@@ -158,6 +158,7 @@ class GameResultRecv(GameRecv):
             await hook(room, room.game.winner)
         room.finish()
         await room.broadcast(Packet.new(ServerPacket.SRV_GAME_RESULT))
+        match.later(room, None, 0, bots.confirm_result(room))
 
     async def anu(self, rewards, user_repository) -> bool:
         """ANU_* do original: registra os excessos; um DROP derruba o mestre (quem mandou o 0x4412) e descarta tudo."""

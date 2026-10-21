@@ -78,6 +78,11 @@ LOAD_STEP, LOAD_DONE = 0x8201, 0x82FF  # progresso (u8 slot, u8 etapa 1..3) e ca
 # Sala de espera: o "pronto" não passa pelo servidor; quem não é mestre manda 0x8102 u8 (3 pronto, 1 presente) pelo
 # túnel (captura; envio em 0x50923a, ReadyMode do v584). 0x8100 é o ping ("250ms").
 READY = 0x8102
+# Tela de resultado: cada cliente manda 0x8103 (vazio) pelo túnel ao clicar OK, e quem já clicou fica em "espere os
+# outros usuários" até receber o de todos (captura de 2 humanos e do v584). O 0xc30c do mestre chega ao bot com a
+# partida já fechada (room.game None), então o servidor manda o OK dos bots depois do 0x4413.
+RESULT_OK = 0x8103
+RESULT_OK_WAIT = 3.0
 
 
 def p2p_frame(key: bytes, seq: int, kind: int, body: bytes) -> bytes:
@@ -110,6 +115,13 @@ async def announce_ready(room, delay: float = 0.0) -> None:
     for p in [p for p in room.players.values() if is_bot(p.conn)]:
         p.conn.seq.clear()  # sala nova para o P2P, como no começo da partida
         await p2p_send(room, p, READY, bytes([3]).ljust(14, b'\x00'))
+
+
+async def confirm_result(room, delay: float = RESULT_OK_WAIT) -> None:
+    """Todo bot da sala "clica OK" na tela de resultado."""
+    await asyncio.sleep(delay)
+    for p in [p for p in room.players.values() if is_bot(p.conn)]:
+        await p2p_send(room, p, RESULT_OK, bytes(14))
 
 
 async def load(room, delay: float = 0.3) -> None:

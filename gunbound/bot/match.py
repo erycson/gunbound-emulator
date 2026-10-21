@@ -328,19 +328,25 @@ def flip_helps(room, bot) -> bool:
 
 
 def pick_item(conn, plan):
-    """Com acerto direto previsto (aim_at grava conn.last): Dual, depois Power Up; sem acerto (cavando): Bunge.
-    Um por turno (0x484ad0); o SS fica sem item."""
+    """Repetindo um acerto (aim_at: steady) com acerto previsto (conn.last): Dual, depois Power Up; sem acerto
+    (cavando): Bunge. Um por turno (0x484ad0); o SS fica sem item."""
     items = bar(conn)
     if plan[3] == 'ss' or not items:
         return None
-    wanted = (DUAL, POWER_UP) if getattr(conn, 'last', None) else (BUNGE,)
+    hits = getattr(conn, 'last', None)
+    wanted = (DUAL, POWER_UP) if hits and getattr(conn, 'steady', False) else () if hits else (BUNGE,)
     return next((i for i in wanted if i in items), None)
 
 
-def pick_kind(conn, tank: int, rng=random):
-    """Tiro 1, 2 ou 'ss'. O 2 só quando voa como o 1 (Nak cava, Trico orbita... a mira não simula esses)."""
+def pick_kind(conn, tank: int, rng=random, steady: bool = False):
+    """Tiro 1, 2 ou 'ss'. Primeiro acerta com o 1; o tiro forte só repetindo um acerto (steady, como o humano que acha
+    a mira e depois solta o SS). O SS fica guardado desde SS_EVERY tiros; o 2 só quando voa como o 1 (Nak cava, Trico
+    orbita... a mira não simula esses)."""
     conn.shots = getattr(conn, 'shots', 0) + 1
-    if conn.shots % SS_EVERY == 0:
+    if not steady:
+        return 1
+    if conn.shots >= SS_EVERY:
+        conn.shots = 0
         return 'ss'
     return 2 if not profiles.shot(conn.layout, tank, 2).special and rng.random() < SHOT2 else 1
 
@@ -362,12 +368,12 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None, obj
     gravity, w = aim.GRAVITY.get(tank, 98), wind(conn)
     bodies = [(x, y - aim.BODY // 2) for x, y in (place(room, bot, p.slot) for p in others)]
     friends = [me] + [place(room, bot, p.slot) for p in others if p not in enemies]
-    kind = pick_kind(conn, tank, rng)
     cols = getattr(conn, 'weather', ())
     last = getattr(conn, 'last', None)
     target = next((p for p in enemies if last is not None and last[0] == p.slot and math.dist(last[1], me) <= REPEAT
                    and math.dist(last[2], place(room, bot, p.slot)) <= REPEAT), None)
-    steady = target is not None
+    steady = conn.steady = target is not None
+    kind = pick_kind(conn, tank, rng, steady)
     if steady and last[3] == w:
         angle, power = last[4], last[5] * (1 + rng.choice((-1, 1)) * rng.uniform(0.01, 0.02))
         power = max(aim.POWER[0], min(aim.POWER[1], round(power)))
