@@ -1,4 +1,5 @@
 """Bot na sala: /bot add e remove, mestre e prêmio. python -m unittest tests.test_bot_room"""
+import math
 import random
 import unittest
 from gunbound.base.enums import RoomOptions, RoomMode
@@ -153,7 +154,7 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.master.sent), n)
 
     async def test_dies_when_master_confirms(self):
-        """0xc312 do mestre -> 0xc314; 0xc315 -> 0xc304 (causa 1, matador = quem atirou) + 0xc309 + morte no servidor."""
+        """0xc312 do mestre -> 0xc314; 0xc315 -> 0xc304 (causa 1 | 0x10, matador = quem atirou) + 0xc309 + morte."""
         b, me = await self.start_match()
         with mock.patch.object(match, 'SHOT_WAIT', 0):
             await match.react(self.room, b, me, 0xC400, bytes(40))
@@ -167,7 +168,7 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         kinds = [struct.unpack_from('<H', p)[0] for p in plains]
         self.assertEqual(kinds.count(match.CHECK_ACK), 1)
         [death] = [p[2:7] for p in plains if p[:2] == struct.pack('<H', match.DEATH)]
-        self.assertEqual(death, struct.pack('<IB', 1, me.slot))
+        self.assertEqual(death, struct.pack('<IB', 1 | match.DIES_NOW, me.slot))
         self.assertIn(match.DEATH_ACK, kinds)
         self.assertFalse(b.alive)
         await settle()
@@ -197,6 +198,28 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
             body = match.shot_body(1480, 1410, 145, 184, (10, 84), (1087, 1388))
         self.assertEqual(body.hex(' '), 'c8 05 82 05 01 00 91 00 b8 00 01 ef ff 15 00 ef ff 15 00 ef ff 15 00 0a 00 54 00 '
                                         '00 01 08 3f 04 6c 05')
+
+    def test_shot_body_v584(self):
+        """Tiro do admin no v584 (para a esquerda): lado 0, força x5, impactos em 30; para a direita, lado 1."""
+        with mock.patch.object(aim, 'muzzle', return_value=(-31, 13)):
+            body = match.shot_body(1052, 1093, 200, 238, (0, 204), (762, 1227), True)
+        self.assertEqual(body.hex(' '), '1c 04 45 04 00 00 c8 00 a6 04 01 e1 ff 0d 00 e1 ff 0d 00 e1 ff 0d 00 00 00 cc 00 '
+                                        '00 00 00 01 08 fa 02 cb 04')
+        self.assertEqual(match.shot_body(1, 1, 65, 100, (0, 0), None, True)[4], 1)
+        t = self.flat()
+        conn = mock.Mock(terrain=t, v584=True)
+        match.craters(conn, match.shot_body(1052, 400, 200, 238, (0, 204), (762, 500), True))
+        self.assertGreater(t.ground(762), 500 + 10)
+
+    def test_aim_avoids_self_and_walls(self):
+        self.assertIsNone(aim.stage_name(1, 2))  # lado C: o mapa não está no xfs do S1
+        t = self.flat()
+        for y in range(300, 500):  # parede de 6 px entre os dois (o tiro anda 17 px por passo)
+            t.px[y * t.w + 400:y * t.w + 406] = bytes([1]) * 6
+        self.assertLess(aim.fly(t, 300, 500, 30, 200, 98, (0, 0))[0], 406)  # não atravessa
+        angle, power, hit, _ = aim.best_shot(t, (300, 500), (600, 500), 98, (0, 0))
+        self.assertLess(abs(hit[0] - 600), 20)
+        self.assertGreaterEqual(math.dist(hit, (300, 500)), aim.SAFE)
 
     async def own_shot(self, roll, shot=True):
         """Turno do bot num mapa plano: (corpos dos frames que ele mandou por tipo, corpo do 0xc400)."""

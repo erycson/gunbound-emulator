@@ -19,7 +19,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_XFS = ROOT.parent / 'clientes' / 'WC-S1-v495' / 'graphics.xfs'
-# stage.dat do S1 (índice = mapa + 11 no lado B); o 0 (Cave) não tem B
+# stage.dat do S1 (índice = mapa + 11 no lado B); o 0 (Cave) não tem B. Os lados 2/3 (C/D) do 2007/S2 não estão no
+# graphics.xfs do S1 (o v584 indexa mapa + lado * 18, no GunBound.xfs cifrado): sem mapa, o bot passa a vez
 STAGES = ('cave', 'mos', 'hok', 'metro', 'candy', 'babo', 'last', 'brick', 'kettle', 'star', 'facky')
 # characterdata.dat (coluna 40) do v495, por índice de tanque do WC (Mage, Lightning, Aduka, J.Frog, Dragon); o resto 98
 GRAVITY = {0x01: 90, 0x07: 90, 0x0D: 94, 0x0F: 92, 0x11: 90}
@@ -28,6 +29,8 @@ GRAVITY = {0x01: 90, 0x07: 90, 0x0D: 94, 0x0F: 92, 0x11: 90}
 SPEED = 5
 BARREL = 30          # px do pé até a boca do cano (os 6 s16 do C400 só mudam o início do tiro)
 BODY = 18            # raio de acerto direto num tanque
+SAFE = 60            # o tiro não pode cair tão perto do próprio bot (a explosão pega nele)
+STEP = 4             # px por subpasso na colisão (o passo do tiro chega a 40 px e atravessaria paredes finas)
 CRATER = 30          # shortcut: raio fixo da cratera; o real é por tiro (characterdata), só desloca o chão do alvo
 POWER = (40, 400)
 ELEVATIONS = range(25, 86, 5)
@@ -45,7 +48,7 @@ def cos_times(deg: int, f: int) -> int:
 
 
 def stage_name(game_map: int, side: int) -> str | None:
-    if not 0 <= game_map < len(STAGES):
+    if not 0 <= game_map < len(STAGES) or side not in (0, 1):
         return None
     name = STAGES[game_map]
     return name + 'b' if side == 1 and game_map else name
@@ -107,13 +110,17 @@ def fly(t: Terrain, x: int, y: int, angle: int, power: int, gravity: int, wind: 
     px, py = (x + bx) << 8, (y - by) << 8
     near = BODY * BODY
     for _ in range(steps):
+        n = max(abs(vx), abs(vy)) // (STEP << 8) + 1
+        for i in range(1, n + 1):
+            cx, cy = (px + vx * i // n) >> 8, (py + vy * i // n) >> 8
+            if cy >= t.h or cx < 0 or cx >= t.w:
+                return None
+            if t.solid(cx, cy):
+                return cx, cy
+        if any((cx - ox) ** 2 + (cy - oy) ** 2 <= near for ox, oy in bodies):
+            return cx, cy
         px += vx
         py += vy
-        cx, cy = px >> 8, py >> 8
-        if cy >= t.h or cx < 0 or cx >= t.w:
-            return None
-        if t.solid(cx, cy) or any((cx - ox) ** 2 + (cy - oy) ** 2 <= near for ox, oy in bodies):
-            return cx, cy
         vx += ax
         vy += ay
     return None
@@ -131,7 +138,9 @@ def best_shot(t: Terrain, me: tuple[int, int], target: tuple[int, int], gravity:
 
         def score(p):
             hit = fly(t, x, y, angle, p, gravity, wind, bodies)
-            return (math.dist(hit, aim) if hit else 1e9), hit
+            if hit is None or (math.dist(hit, me) < SAFE and math.dist(target, me) > 2 * SAFE):
+                return 1e9, hit  # fora do mapa ou em cima de si mesmo
+            return math.dist(hit, aim), hit
 
         coarse = min(range(POWER[0], POWER[1] + 1, 10), key=lambda p: score(p)[0])
         for p in range(max(POWER[0], coarse - 9), min(POWER[1], coarse + 9) + 1):

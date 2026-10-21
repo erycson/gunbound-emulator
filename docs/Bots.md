@@ -102,7 +102,10 @@ entre os vivos), manda 0xc312 (u8 slot); quem recebe responde 0xc314 (vazio, 0x4
 tanque de quem respondeu e manda 0xc315 (u8 slot, 0x4e04bb); o dono manda 0xc304 (u32 causa, u8 matador) e o 0x4100
 (0x4e0596). O bot faz esse caminho: 0xc312 com o slot dele → 0xc314; 0xc315 → 0xc304 + 0xc309 e a morte no servidor
 (`announce_death`, o mesmo do 0x4100). Causa como o cliente (0x47b156): 1 inimigo, 2 aliado, 3 o próprio; o matador
-é quem atirou por último (o cliente usa quem acertou por último).
+é quem atirou por último (o cliente usa quem acertou por último). O bot manda causa | 0x10, como o dono que se vê
+morto (0x482955): com o bit, quem recebe tira o tanque na hora (0x4df66b, y = 10000, +0x224 = 1) e o mestre para de
+perguntar (0x4f5d2c); sem ele (o 0xc304 do caminho do 0xc315) o tanque ficava no mapa e o mestre mandava outro 0xc312.
+Todo cliente responde 0xc314 a qualquer 0xc312 do mestre (o corpo não é lido), e o 0xc315 leva o slot de quem respondeu.
 - [INCERTO] o mestre só examina, a cada escolha de turno, os slots com delay menor que o melhor vivo até ali; o bot
   morto pode levar um turno a mais para ser confirmado.
 
@@ -112,19 +115,27 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
 ângulo e força.
 - Projétil (0x445426..0x445671): pos = (x, y) << 8; v = força * 512 * (cos, -sin) / 100 (seno da tabela 0x5fd6b0,
   5 casas); a = (vento_x, gravidade - vento_y) << 8 / 100; gravidade do mobile (characterdata coluna 40, por slot em
-  G+0x296bc + slot*0x104: 98, Mage/Lightning/Dragon 90, Aduka 94, J.Frog 92). [INCERTO] o alcance só bate com a
-  captura com velocidade x5 (36 tiros, erro mediano ~25 px); o passo por frame que dá esse fator não foi achado.
+  G+0x296bc + slot*0x104: 98, Mage/Lightning/Dragon 90, Aduka 94, J.Frog 92). [INCERTO] o alcance da captura antiga
+  (força até 480) só bate com velocidade x5; os tiros do admin no v584 (força até 2200) batem com x1. A mira usa a
+  escala antiga e o v584 recebe força x5.
 - 0xc400 (layout da captura, que diverge 2 bytes da leitura à mão do receptor; vale o da captura): u16 x, u16 y, 01, 00,
   s16 ângulo absoluto (0 direita, 90 cima, 180 esquerda), u16 força, 01, 3x (s16, s16) boca do cano em relação ao pé
   (y para cima), s16 força e s16 ângulo do vento, 00, u8 n + n x (u8 tipo, u16 x, u16 y) dos impactos.
+  v584 (tiros do admin): o 1º u8 é o lado do tanque (+0xb0, o mesmo do 0x8402: 1 direita, 0 esquerda), o 2º u8 vai
+  para +0x1a4, e depois do vento vêm u16 + u8 (+0xacc, G+0x283f0): os impactos começam no byte 30. Com lado 1 e
+  ângulo para a esquerda o tanque vira de costas e o tiro sai para trás (o "Frank atirando de costas").
 - Sequência do humano e do bot: 0x8006 (u16 x, u16 y, 00 01), ~1 s depois o 0xc400, e quando o tiro termina o 0xc40a
   + 0xc302 0e com o delay do turno em +5 (captura 7900..8900; o bot manda 8900).
 - O vento é o do 0xc300 do turno (u8 força, u16 ângulo no começo do estado). O terreno é o .lnd (u32 w, u32 h, w*h
   bytes, 0 = ar) do graphics.xfs do S1 (`bots.graphics_xfs`, padrão `../clientes/WC-S1-v495/graphics.xfs`; o
   GunBound.xfs do S2 é cifrado): mapa = stage.dat[mapa], lado B = mapa + 11 (cave não tem B). O y do bot é o primeiro
-  chão abaixo do spawn; os impactos de cada 0xc400 cavam crateras de raio fixo 30 na cópia do bot.
+  chão abaixo do spawn; os impactos de cada 0xc400 cavam crateras de raio fixo 30 na cópia do bot. Os lados C/D
+  (2/3, settings >> 16) não estão no xfs do S1: o bot passa a vez em vez de atirar com o mapa errado (o 0xc400 põe o
+  tanque no x/y do pacote, e com o chão errado ele caía de novo a cada turno).
 - Mira: inimigo vivo mais perto (último x/y que ele mandou), elevações 25..85 de 5 em 5, força 40..400; fica o tiro
-  que cai mais perto (chão ou corpo de tanque). Erra pela chance de `skill.py`: força 10..25% para mais ou menos.
+  que cai mais perto (chão ou corpo de tanque), checando a colisão a cada 4 px (o tiro anda até ~40 px por passo e
+  atravessaria barreiras) e descartando o que cai a menos de 60 px do próprio bot. Erra pela chance de `skill.py`:
+  força 10..25% para mais ou menos, nunca em cima de si mesmo.
 - [INCERTO] tiros especiais (Nak cavando, Boomer curvando, Turtle dividindo...) seguem a trajetória normal na mira.
   Mapas S2 acima de 10 (o v584 tem 18 por lado) não estão no xfs do S1: o bot passa a vez.
 

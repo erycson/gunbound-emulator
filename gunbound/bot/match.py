@@ -20,6 +20,7 @@ from pathlib import Path
 from Crypto.Cipher import AES
 from gunbound.bot import aim, profiles, skill
 from gunbound.bot.room import cfg, is_bot, p2p_key, p2p_send
+from gunbound.game import phase
 
 START, NEXT, PASS, REPORT, SYNC, DEATH, POS, DEATH_ACK = 0x8600, 0xC300, 0xC301, 0xC302, 0xC303, 0xC304, 0xC40A, 0xC309
 CHECK, CHECK_ACK, KILL = 0xC312, 0xC314, 0xC315
@@ -32,6 +33,9 @@ SHOT_WAIT = 3.0     # humanos mandam o 0e 1,3..3,3 s depois do tiro; atrasado é
 TURN_WAIT = 3.0     # o bot "pensa" antes de agir
 AIM_WAIT = 1.0      # 0x8006 -> 0xc400, como os humanos
 SHOOTS = {'WCS2'}   # tiro estudado no v584; nas outras fases o bot passa a vez
+V584_POWER = 5      # força do 0xc400 do v584 = 5x a do antigo (tiros do admin, até 2200); aim.py usa a escala antiga
+DIES_NOW = 0x10     # 0xc304: com o bit, quem recebe tira o tanque na hora (0x4df66b, y = 10000); o dono que se vê morto
+                    # manda causa | 0x10 (0x482955). Sem o bit o mestre ainda o acha vivo e manda outro 0xc312
 _tasks: set[asyncio.Task] = set()
 
 
@@ -79,6 +83,7 @@ async def prepare(room, bot) -> None:
     """Terreno da partida e o chão sob o spawn (o cliente solta o tanque até o chão)."""
     conn = bot.conn
     conn.terrain = None
+    conn.v584 = any(phase.is_v584(p.conn) for p in room.players.values() if not is_bot(p.conn))
     if getattr(conn, 'layout', None) in SHOOTS and room.game is not None:
         path = cfg(conn.server.config).get('graphics_xfs') or aim.DEFAULT_XFS
         side = (room.options.settings >> 16) & 3
@@ -100,11 +105,12 @@ def place(room, bot, slot: int) -> tuple[int, int]:
 
 
 def craters(conn, body: bytes) -> None:
-    """Impactos do 0xc400 (u8 n @28 + n x (u8 tipo, u16 x, u16 y)) cavam o terreno do bot."""
-    if conn.terrain is None or len(body) < 29:
+    """Impactos do 0xc400 (u8 n @28, @30 no v584, + n x (u8 tipo, u16 x, u16 y)) cavam o terreno do bot."""
+    at = 30 if getattr(conn, 'v584', False) else 28
+    if conn.terrain is None or len(body) <= at:
         return
-    for i in range(min(body[28], (len(body) - 29) // 5)):
-        _, x, y = struct.unpack_from('<BHH', body, 29 + 5 * i)
+    for i in range(min(body[at], (len(body) - at - 1) // 5)):
+        _, x, y = struct.unpack_from('<BHH', body, at + 1 + 5 * i)
         conn.terrain.carve(x, y)
 
 
@@ -162,16 +168,24 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None] | N
                                     max_distance=t.w, wind=w[0] / 26)
     shot = profiles.shot(conn.layout, tank, 1)
     if rng.random() > skill.hit_chance(conn.n, situation, shot, skill.config(conn.server.config)):
-        power = aim.miss(rng, power)
-        hit = aim.fly(t, *me, angle, power, gravity, w, bodies)
+        for _ in range(3):  # erra, mas não em cima de si mesmo
+            wrong = aim.miss(rng, power)
+            miss = aim.fly(t, *me, angle, wrong, gravity, w, bodies)
+            if miss is None or math.dist(miss, me) >= aim.SAFE:
+                power, hit = wrong, miss
+                break
     return angle, power, hit or (max(0, min(t.w - 1, tx)), ty)  # saiu do mapa: a câmera mira o alvo (n >= 1 sempre)
 
 
-def shot_body(x: int, y: int, angle: int, power: int, wind_: tuple[int, int], hit) -> bytes:
-    """0xc400 como o da captura: x, y, 01, 00, ângulo, força, 01, 3x cano (bx, by), vento, 00, impactos."""
+def shot_body(x: int, y: int, angle: int, power: int, wind_: tuple[int, int], hit, v584: bool = False) -> bytes:
+    """0xc400 como o da captura: x, y, 01, 00, ângulo, força, 01, 3x cano (bx, by), vento, 00, impactos.
+    v584 (tiros do admin): o 1º byte é o lado do tanque (+0xb0, o mesmo do 0x8402: 1 direita, 0 esquerda; com 1 e
+    ângulo para a esquerda o tanque vira de costas para o tiro), força x5 e u16 + u8 a mais antes dos impactos."""
     bx, by = aim.muzzle(angle)
     impacts = [(8, *hit)] if hit else []
-    return (struct.pack('<HHBBhHB6hhhB', x, y, 1, 0, angle, power, 1, bx, by, bx, by, bx, by, *wind_, 0)
+    face, extra = (int(angle <= 90), bytes(2)) if v584 else (1, b'')
+    power = power * V584_POWER if v584 else power
+    return (struct.pack('<HHBBhHB6hhhB', x, y, face, 0, angle, power, 1, bx, by, bx, by, bx, by, *wind_, 0) + extra
             + bytes([len(impacts)]) + b''.join(struct.pack('<BHH', *i) for i in impacts))
 
 
@@ -181,7 +195,7 @@ async def shoot(room, bot, game, angle: int, power: int, hit) -> None:
     await asyncio.sleep(AIM_WAIT)
     if room.game is not game or not bot.alive:
         return
-    body = shot_body(x, y, angle, power, wind(bot.conn), hit)
+    body = shot_body(x, y, angle, power, wind(bot.conn), hit, getattr(bot.conn, 'v584', False))
     craters(bot.conn, body)
     await send(room, bot, SHOT, body)
     later(room, bot, SHOT_WAIT, report(room, bot, 0x0e, game, SHOT_DELAY))
@@ -192,7 +206,7 @@ async def die(room, bot) -> None:
     from gunbound.game.protocol.game_play import announce_death
     killer = room.player_by_slot(bot.conn.last_hit)
     cause = 3 if killer in (None, bot) else 2 if killer.team == bot.team else 1
-    body = struct.pack('<IB', cause, killer.slot if killer else bot.slot)
+    body = struct.pack('<IB', cause | DIES_NOW, killer.slot if killer else bot.slot)
     await send(room, bot, DEATH, body)
     await send(room, bot, DEATH_ACK, bytes([bot.slot]) + body)
     await announce_death(room, bot, room.on_dead(bot.conn))

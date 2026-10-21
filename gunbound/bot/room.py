@@ -97,7 +97,11 @@ async def p2p_send(room, bot_player, kind: int, body: bytes) -> None:
             continue
         seq = bot_player.conn.seq.get(p.slot, 0)
         bot_player.conn.seq[p.slot] = seq + 1
-        await p.conn.on_send(rp.tunnel(bot_player.slot, p2p_frame(key, seq, kind, body)))
+        frame = p2p_frame(key, seq, kind, body)
+        if path := bot_player.conn.server.config.get('tunnel_log'):
+            from gunbound.game.protocol.game_play import log_tunnel  # import tardio: game_play importa este módulo
+            log_tunnel(path, room, bot_player, bytes([p.slot]), frame)
+        await p.conn.on_send(rp.tunnel(bot_player.slot, frame))
 
 
 async def announce_ready(room, delay: float = 0.0) -> None:
