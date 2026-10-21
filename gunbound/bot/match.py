@@ -26,6 +26,14 @@ START, NEXT, PASS, REPORT, SYNC, DEATH, POS, DEATH_ACK = 0x8600, 0xC300, 0xC301,
 CHECK, CHECK_ACK, KILL = 0xC312, 0xC314, 0xC315
 AIM, SHOT, MOVE, WALK = 0x8006, 0xC400, 0x8402, 0x8005
 SHOTS = (0xC400, 0xC409)
+ITEM = 0xC401       # u8 espaço da barra, u8 ff (item de 2 espaços) ou 00, u16 código, u16 x, u16 y, u8 lado (0x4f60b2)
+# item: (código, 2 espaços); efeito em quem recebe 0x4f6e90, que não confere a barra de quem mandou (só o 0xc401 vale)
+DUAL, POWER_UP, BUNGE, CHANGE_WIND = (1, True), (2, False), (1, False), (0x0F, False)
+# shortcut: barra fixa (Energy cura % do HP, que só o cliente conta; Teleport muda o lugar depois do tiro): sem eles
+BAR = (DUAL, POWER_UP, BUNGE, CHANGE_WIND)
+ITEM_WAIT = 2.0     # 0xc401 -> 0x8006: o humano usou o item 2..3 s antes do tiro
+ITEM_DELAY = {DUAL: 6000}  # shortcut: atraso a mais no 0e com item, medido na captura de 21/10 (Dual ~6700, outros 900..2000)
+ITEM_DELAY_ANY = 1500
 SS = 0xC409         # SS: o mesmo corpo do 0xc400 (0x4e0cc9 pula o byte do tiro 2 e liga +0x1a8/+0x1ac)
 PLACES = {POS: '<II', MOVE: '<HH', WALK: '<HH', SHOT: '<HH', AIM: '<HH'}  # onde cada humano está
 PASS_DELAY = 9000   # u16 do C301, soma no delay do slot (0x41c3b0); 0xffff/0xea60 não somam e o bot ganharia todo turno
@@ -176,9 +184,12 @@ async def take_turn(room, bot, game) -> None:
             await stroll(room, bot, game, path)
         if room.game is not game or not bot.alive:
             return
+        item = CHANGE_WIND if await asyncio.to_thread(flip_helps, room, bot) else None
+        if item:
+            flip_wind(bot.conn)
         plan = await asyncio.to_thread(aim_at, room, bot)
         if plan is not None:
-            return await shoot(room, bot, game, *plan)
+            return await shoot(room, bot, game, *plan, item=item or pick_item(bot.conn, plan))
     except Exception as e:  # o turno tem que terminar, senão o mestre espera para sempre
         print(f"[BOT] tiro de {bot.conn.data['profile']['Nickname']}: {e!r}")
     await pass_turn(room, bot, game)
@@ -285,6 +296,47 @@ async def stroll(room, bot, game, path) -> None:
     bot.conn.pos = aim.settle(bot.conn.terrain, x, y) or (x, y)
 
 
+def bar(conn) -> list:
+    """Itens da barra ainda não usados nesta partida (só v584: o 0xc401 foi estudado nele)."""
+    if not getattr(conn, 'v584', False):
+        return []
+    if getattr(conn, 'items', None) is None:
+        conn.items = list(BAR)
+    return conn.items
+
+
+def flip_wind(conn) -> None:
+    """Change Wind (0x4f75ad): ângulo do vento + 180; o 0xc400 leva o vento já virado (quem recebe sobrescreve)."""
+    angle = (struct.unpack_from('<H', conn.tail, 1)[0] + 180) % 360
+    conn.tail = conn.tail[:1] + struct.pack('<H', angle) + conn.tail[3:]
+
+
+def flip_helps(room, bot) -> bool:
+    """Change Wind quando daqui o vento atrapalha (erro > MOVE_ERR) e virado ele deixa acertar."""
+    conn = bot.conn
+    if CHANGE_WIND not in bar(conn) or len(conn.tail) < 3 or not conn.tail[0] or conn.terrain is None:
+        return False
+    me = place(room, bot, bot.slot)
+    if spot_error(room, bot, me) <= MOVE_ERR:
+        return False
+    tail = conn.tail
+    flip_wind(conn)
+    try:
+        return spot_error(room, bot, me) <= MOVE_ERR
+    finally:
+        conn.tail = tail
+
+
+def pick_item(conn, plan):
+    """Com acerto direto previsto (aim_at grava conn.last): Dual, depois Power Up; sem acerto (cavando): Bunge.
+    Um por turno (0x484ad0); o SS fica sem item."""
+    items = bar(conn)
+    if plan[3] == 'ss' or not items:
+        return None
+    wanted = (DUAL, POWER_UP) if getattr(conn, 'last', None) else (BUNGE,)
+    return next((i for i in wanted if i in items), None)
+
+
 def pick_kind(conn, tank: int, rng=random):
     """Tiro 1, 2 ou 'ss'. O 2 só quando voa como o 1 (Nak cava, Trico orbita... a mira não simula esses)."""
     conn.shots = getattr(conn, 'shots', 0) + 1
@@ -349,22 +401,33 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None, obj
 
 
 def shot_body(x: int, y: int, angle: int, power: int, wind_: tuple[int, int], hit, v584: bool = False,
-              shot2: bool = False) -> bytes:
+              shot2: bool = False, item=None) -> bytes:
     """0xc400 como o da captura: x, y, 01, tiro 2, ângulo, força, 01, 3x cano (bx, by), vento, 00, impactos.
     O 2º u8 (+0x1a4) é o tiro 2: quem recebe escolhe a animação fire2 e o projétil dele (0x4e09d0).
     v584 (tiros do admin): o 1º byte é o lado do tanque (+0xb0, o mesmo do 0x8402: 1 direita, 0 esquerda; com 1 e
-    ângulo para a esquerda o tanque vira de costas para o tiro), força x5 e u16 + u8 a mais antes dos impactos."""
+    ângulo para a esquerda o tanque vira de costas para o tiro), força x5 e u16 + u8 a mais antes dos impactos: o u16
+    (bytes 27..28, 0x4e0928) é o código do item do turno com 0xff no alto se de 2 espaços (só informativo: o efeito vem
+    do 0xc401). Com Dual, os 2 tiros iguais saem do mesmo 0xc400 e a lista traz os 2 impactos."""
     bx, by = aim.muzzle(angle)
-    impacts = [(8, *hit)] if hit else []
+    impacts = [(8, *hit)] * (2 if item == DUAL else 1) if hit else []
     face, extra = (int(angle <= 90), bytes(2)) if v584 else (1, b'')
+    code = bytes([item[0], 0xFF if item[1] else 0]) if item and v584 else b'\x00'
+    extra = extra[1:] if item and v584 else extra
     power = power * V584_POWER if v584 else power
-    return (struct.pack('<HHBBhHB6hhhB', x, y, face, int(shot2), angle, power, 1, bx, by, bx, by, bx, by, *wind_, 0) + extra
+    return (struct.pack('<HHBBhHB6hhh', x, y, face, int(shot2), angle, power, 1, bx, by, bx, by, bx, by, *wind_) + code + extra
             + bytes([len(impacts)]) + b''.join(struct.pack('<BHH', *i) for i in impacts))
 
 
-async def shoot(room, bot, game, angle: int, power: int, hit, kind=1) -> None:
+async def shoot(room, bot, game, angle: int, power: int, hit, kind=1, item=None) -> None:
     x, y = place(room, bot, bot.slot)
-    body = shot_body(x, y, angle, power, wind(bot.conn), hit, getattr(bot.conn, 'v584', False), kind == 2)
+    if item:  # o espaço é o do item na barra do cliente; quem recebe não confere (0x4f6a70)
+        slot = sum(2 if i[1] else 1 for i in BAR[:BAR.index(item)])
+        await send(room, bot, ITEM, struct.pack('<BBHHHB', slot, 0xFF if item[1] else 0, item[0], x, y, int(angle <= 90)))
+        bot.conn.items.remove(item)
+        await asyncio.sleep(ITEM_WAIT)
+        if room.game is not game or not bot.alive:
+            return
+    body = shot_body(x, y, angle, power, wind(bot.conn), hit, getattr(bot.conn, 'v584', False), kind == 2, item)
     # o 0x8006 leva os bytes 4/5 do 0xc400 trocados (todas as capturas); outro lado aqui viraria o tanque duas vezes
     await send(room, bot, AIM, struct.pack('<HHBB', x, y, body[5], body[4]))
     await asyncio.sleep(AIM_WAIT)
@@ -373,7 +436,8 @@ async def shoot(room, bot, game, angle: int, power: int, hit, kind=1) -> None:
     if digs(room, bot, SS if kind == 'ss' else SHOT, body):
         craters(bot.conn, body)
     await send(room, bot, SS if kind == 'ss' else SHOT, body)
-    later(room, bot, SHOT_WAIT, report(room, bot, 0x0e, game, SHOT_DELAY))
+    delay = SHOT_DELAY + (ITEM_DELAY.get(item, ITEM_DELAY_ANY) if item else 0)
+    later(room, bot, SHOT_WAIT, report(room, bot, 0x0e, game, delay))
 
 
 async def die(room, bot) -> None:

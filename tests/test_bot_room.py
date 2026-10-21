@@ -303,14 +303,14 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(b.conn.terrain)
         self.assertEqual(said.call_count, 1)
 
-    async def own_shot(self, roll, shot=True, version=0):
+    async def own_shot(self, roll, shot=True, version=0, bar=()):
         """Turno do bot num mapa plano: (corpos dos frames que ele mandou por tipo, corpo do 0xc400)."""
         self.master.data['client_version'] = version
         b, me = await self.start_match()
         b.conn.layout = 'WCS2'
         self.room.game.spawns = {me.slot: (700, 0), b.slot: (200, 0)}
         frame = bots.p2p_frame(bots.p2p_key(self.room, self.master.server), 0, match.START, bytes(14))
-        with mock.patch.object(aim.Terrain, 'load', return_value=self.flat()),                 mock.patch.object(match, 'TURN_WAIT', 0), mock.patch.object(match, 'AIM_WAIT', 0),                 mock.patch.object(match, 'SHOT_WAIT', 0), mock.patch.object(match.random, 'random', return_value=roll), mock.patch.object(match, 'SHOT2', 0):
+        with mock.patch.object(aim.Terrain, 'load', return_value=self.flat()),                 mock.patch.object(match, 'TURN_WAIT', 0), mock.patch.object(match, 'AIM_WAIT', 0),                 mock.patch.object(match, 'SHOT_WAIT', 0), mock.patch.object(match.random, 'random', return_value=roll), mock.patch.object(match, 'SHOT2', 0),                 mock.patch.object(match, 'BAR', bar), mock.patch.object(match, 'ITEM_WAIT', 0):
             from gunbound.game.protocol.game_play import GameTunnelRecv
             from gunbound.util.binary_buffer import BinaryReader
             await GameTunnelRecv(self.master, BinaryReader(bytes([1, 0, b.slot]) + frame)).process()
@@ -348,6 +348,39 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(struct.unpack_from('<H', c400, 8)[0] % match.V584_POWER, 0)
         self.assertEqual(c400[30], 1)
         self.assertLess(abs(struct.unpack_from('<H', c400, 32)[0] - 700), 20)
+
+    async def test_item_before_shot(self):
+        """Acerto previsto: Dual. 0xc401 (espaço 0, ff, código 1, x, y, lado) antes do tiro; o 0xc400 leva 01 ff nos bytes
+        27..28 e os 2 impactos; o item sai da barra."""
+        sent, c400 = await self.own_shot(0.0, version=584, bar=match.BAR)
+        self.assertEqual(sent[match.ITEM][0][:9], struct.pack('<BBHHHB', 0, 0xFF, 1, 200, 500, 1))
+        self.assertEqual(c400[27:29], b'\x01\xff')
+        self.assertEqual(c400[30], 2)
+        [b] = self.bots()
+        self.assertNotIn(match.DUAL, b.conn.items)
+
+    def test_item_choice_and_change_wind(self):
+        from types import SimpleNamespace as NS
+        conn = NS(v584=True, items=None, last=('alvo',), tail=bytes([20]) + struct.pack('<H', 300))
+        self.assertEqual(match.pick_item(conn, (45, 100, (1, 1), 1)), match.DUAL)
+        self.assertIsNone(match.pick_item(conn, (45, 100, (1, 1), 'ss')))
+        conn.items.remove(match.DUAL)
+        self.assertEqual(match.pick_item(conn, (45, 100, (1, 1), 2)), match.POWER_UP)
+        conn.last = None
+        self.assertEqual(match.pick_item(conn, (45, 100, (1, 1), 1)), match.BUNGE)  # cavando
+        self.assertIsNone(match.pick_item(NS(v584=False, items=None, last=('alvo',)), (45, 100, None, 1)))
+        match.flip_wind(conn)
+        self.assertEqual(match.wind(conn), (20, 120))
+        # vento forte contra: só o vento virado deixa acertar
+        t = self.flat(w=1400)
+        bot = NS(slot=0, team=0, alive=True, conn=NS(terrain=t, seen={}, layout='WCS2', v584=True, items=None,
+                                                     tail=bytes([26]) + struct.pack('<H', 180), pos=None))
+        room = NS(players={0: bot, 1: NS(slot=1, team=1, alive=True)}, game=NS(tanks={}, spawns={0: (100, 0), 1: (1300, 0)}))
+        with mock.patch.object(match, 'spot_error', side_effect=lambda r, b, me: 0 if match.wind(b.conn)[1] == 0 else 99):
+            self.assertTrue(match.flip_helps(room, bot))
+            self.assertEqual(match.wind(bot.conn), (26, 180))  # a conta não muda o vento de verdade
+            bot.conn.tail = bytes([26]) + struct.pack('<H', 0)
+            self.assertFalse(match.flip_helps(room, bot))
 
     async def test_shot2_ss_and_repeat(self):
         """Tiro 2 só nos mobiles em que ele voa como o 1; SS (0xc409) a cada SS_EVERY tiros. O tiro que acertou se repete

@@ -191,8 +191,35 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
   mobiles do S2 ficam no 1.
 - SS: 0xc409 com o mesmo corpo do 0xc400 (0x4e0cc9 pula o byte do tiro 2, liga +0x1a8/+0x1ac e G+0x3f2b0, animação
   sfire). shortcut: o bot solta o SS a cada 5 tiros; no cliente a barra enche pelo dano causado (falta mapear).
-- Item: 0xc401 = u8 ?, u8 0xff, u16 código, u16 x, u16 y (0x4f6a70; o admin mandou o código 1 duas vezes). Falta o
-  código de cada item (captura com um item por vez, anotando a hora); o bot ainda não usa item.
+- Item (v584, análise estática + captura de 21/10): 0xc401 = u8 espaço da barra, u8 0xff (item de 2 espaços) ou 00,
+  u16 código, u16 x, u16 y, u8 lado (montado em 0x4f60b2). Quem recebe (despachante 0x4e11b3, só do tanque da vez;
+  0x4f6a70) põe o tanque no x/y/lado, grava o código em +0x2c4 e aplica o efeito (0x4f6e90) **sem conferir a barra** de
+  quem mandou (a barra só existe em quem envia, G+0x1b984; o bot não precisa do 0x8400). Um item por turno, checado só
+  em quem envia (+0x19c, 0x484ad0). O 0xc400 seguinte leva o código nos bytes 27..28 (0xff no alto se de 2 espaços;
+  0x4e0928 grava em +0xacc, só lido para os códigos especiais 1000..2000): o efeito vem do 0xc401, que vai antes.
+
+  | Item | Código | Efeito (0x4f6e90) |
+  |---|---|---|
+  | Bunge Shot | 01 | +25% em proj+0xd0 ([INCERTO] cratera maior), 0x4f7347 |
+  | Power Up | 02 | dano x1,2 (+0x2ca), 0x4f73eb |
+  | Blood | 03 | perde 8% do HP máximo e dano x1,2, 0x4f7353 |
+  | Energy 1 | 07 | cura 15% do HP máximo, 0x4f73f7 |
+  | Change Wind | 0F | ângulo do vento + 180 (força igual), 0x4f75ad; o 0xc400 leva o vento já virado |
+  | Dual | FF 01 | o 2º tiro igual sai sozinho do mesmo 0xc400 (0x47af60), 0x4f6f7b; não expira no começo do turno |
+  | Dual+ | FF 02 | 2º tiro com o outro tiro (1 <-> 2), 0x4f6fb4 |
+  | Thunderbolt | FF 06 | raio na coluna do impacto (proj+0x308, 0x44ab00), 0x4f6fed |
+  | Energy 2 | FF 07 | cura 25% do HP máximo, 0x4f6ff9 |
+  | Teleport | FF 0A | o atirador vai para o impacto (0x497db0); o x/y do 0xc401 é o lugar atual |
+  | Team Teleport | FF 0B | troca de lugar na hora com o aliado vivo de menor HP, 0x4f7126 |
+
+  Na captura (barra do test `02 03 01 07 FF 01`) o 0e do turno com item subiu ~900..2000 e com Dual ~6700.
+  [INCERTO] item com o flag do itemdata.dat (cifrado; byte 9 do registro, 0x4282d0) faz o cliente passar a vez logo
+  depois do 0xc401; os 5 da captura não têm.
+  O bot (só v584) leva a barra fixa Dual, Power Up, Bunge, Change Wind, um por partida e um por turno, nunca no SS:
+  Change Wind antes de mirar se daqui o vento impede o acerto (erro > 36 px) e virado ele acerta; com acerto direto
+  previsto, Dual e depois Power Up; sem acerto (cavando), Bunge. Manda o 0xc401, espera 2 s, mira e atira com o código
+  nos bytes 27..28 e soma 6000 (Dual) ou 1500 ao delay do 0e. shortcut: sem Energy (o HP é conta do cliente), Blood e
+  Teleport.
 - Morte: o mestre manda o 0xc312 do slot quando, no cliente dele, o HP (+0x150) chega a 0 ou o y passa de 9000
   (0x502fe6); o HP é a conta do cliente, o servidor não vê. Barra vazia com HP 1..2 não mata.
 - [INCERTO] o resto dos tiros especiais segue a trajetória normal na mira; o Frank e o Trico do bot não abriram cratera
