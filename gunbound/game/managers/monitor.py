@@ -84,10 +84,11 @@ class MonitorManager:
         while True:
             start_time = time.time()
             
+            # este config é o do game server (não há chave 'broker'): mesma chave do insert_service_status
             await self.server_repository.insert_user_count(
-                self.config['broker']['version'],
-                int.from_bytes(socket.inet_aton(self.config['broker']['host']), 'little'),
-                self.config['broker']['port'],
+                self.config['product_version'],
+                int.from_bytes(socket.inet_aton(self.config['host']), 'little'),
+                self.config['port'],
                 self.client_manager.size()
             )
 
@@ -99,11 +100,8 @@ class MonitorManager:
         self.task_broker.cancel()
         self.task_user_count.cancel()
 
-        try:
-            await self.task_broker
-            await self.task_user_count
-        except CancelledError:
-            pass
+        # task que morreu com erro não pode impedir o desligamento
+        await asyncio.gather(self.task_broker, self.task_user_count, return_exceptions=True)
 
     def is_running(self):
         return self.task_broker and not self.task.done()
