@@ -36,6 +36,10 @@ AIM_WAIT = 1.0      # 0x8006 -> 0xc400, como os humanos
 SHOOTS = {'WCS2'}   # tiro estudado no v584; nas outras fases o bot passa a vez
 SHOT2 = 0.4         # chance do tiro 2 quando ele voa como o 1 (profiles: special=False)
 SS_EVERY = 5        # shortcut: o SS fica pronto a cada 5 tiros do bot; o do cliente enche pelo dano, falta mapear
+# clima do v584 (docs/Bots.md): código do evento do 0xc300 -> coluna; slots do bloco na ordem do 0x428410
+EVENTS = {0: 'force', 1: 'tornado', 2: 'electric', 7: 'blackforce', 8: 'mirror'}  # 9 = coringa
+SLOTS = ('force', 'tornado', 'electric', 'blackforce', 'mirror', 'joker')
+JOKER = ('force', 'tornado', 'electric', 'blackforce', 'mirror')  # tipo do coringa (0x44a8c4)
 TIEBREAK = 0.02     # px de erro da mira que valem 1 px de distância na escolha do alvo
 REPEAT = 5          # px: o último tiro que acertou se repete se nem o bot nem o alvo andaram mais que isso
 V584_POWER = 5      # força do 0xc400 do v584 = 5x a do antigo (tiros do admin, até 2200); aim.py usa a escala antiga
@@ -72,6 +76,8 @@ async def react(room, bot, sender, kind: int, body: bytes) -> None:
         await report(room, bot, 0x0f)
     elif kind == NEXT and from_master and len(body) >= 3:
         conn.whose, conn.counter, conn.tail = body[0], struct.unpack_from('<H', body, 1)[0] + 1, body[3:]
+        if getattr(conn, 'v584', False):
+            update_weather(conn, body[3:])
         await report(room, bot, 0x02)
     elif kind == SYNC and from_master and body[:1] == b'\x02' and conn.whose == bot.slot:
         conn.whose = -1
@@ -161,6 +167,40 @@ async def pass_turn(room, bot, game) -> None:
     await report(room, bot, 0x0f)
 
 
+def update_weather(conn, block: bytes) -> None:
+    """Bloco do 0xc300 do v584 (0x428410): vento (u8, s16), u8, u8, u8 evento da rodada do próximo turno, 6 slots ff ou
+    (00 | tipo do coringa, u8 largura, u16 x). No começo do turno o cliente apaga o clima que não é do evento atual
+    (0x451200); o evento deste turno veio no 0xc300 anterior. Coluna nova perto de outra igual (x +- w/4 + 5) funde:
+    largura max * 1,5 e x na média (o espelho fica onde estava)."""
+    if len(block) < 6:
+        return
+    cols, event = getattr(conn, 'weather', []), getattr(conn, 'event', None)
+    if event is not None:
+        now = getattr(conn, 'joker', None) if event == 9 else EVENTS.get(event)
+        cols = [c for c in cols if c[0] == now]
+    conn.event, i = block[5], 6
+    for slot in SLOTS:
+        if i >= len(block) or block[i] == 0xff:
+            i += 1
+            continue
+        if i + 4 > len(block):
+            break
+        kind, w, x = slot, block[i + 1], struct.unpack_from('<H', block, i + 2)[0]
+        if slot == 'joker':  # o cliente limpa tudo antes do coringa (0x4511b0)
+            kind = conn.joker = JOKER[block[i]] if block[i] < len(JOKER) else None
+            cols = []
+        i += 4
+        if kind is None:
+            continue
+        near = next((n for n, c in enumerate(cols) if c[0] == kind and x - w // 4 - 5 <= c[1] <= x + w // 4 + 5), None)
+        if near is None:
+            cols.append((kind, x, w))
+        else:
+            _, ox, ow = cols[near]
+            cols[near] = (kind, ox if kind == 'mirror' else (ox + x) // 2, max(ow, w) * 15 // 10)
+    conn.weather = cols
+
+
 def wind(conn) -> tuple[int, int]:
     """Vento do turno no C300: u8 força, u16 ângulo (o 0xc400 leva o mesmo; quem recebe grava em G+0x283dc/e0)."""
     return (conn.tail[0], struct.unpack_from('<H', conn.tail, 1)[0]) if len(conn.tail) >= 3 else (0, 0)
@@ -192,6 +232,7 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None, obj
     bodies = [(x, y - aim.BODY // 2) for x, y in (place(room, bot, p.slot) for p in others)]
     friends = [me] + [place(room, bot, p.slot) for p in others if p not in enemies]
     kind = pick_kind(conn, tank, rng)
+    cols = getattr(conn, 'weather', ())
     last = getattr(conn, 'last', None)
     target = next((p for p in enemies if last is not None and last[0] == p.slot and math.dist(last[1], me) <= REPEAT
                    and math.dist(last[2], place(room, bot, p.slot)) <= REPEAT), None)
@@ -199,22 +240,25 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None, obj
     if steady and last[3] == w:
         angle, power = last[4], last[5] * (1 + rng.choice((-1, 1)) * rng.uniform(0.01, 0.02))
         power = max(aim.POWER[0], min(aim.POWER[1], round(power)))
-        hit = aim.fly(t, *me, angle, power, gravity, w, bodies)
+        hit = aim.fly(t, *me, angle, power, gravity, w, bodies, weather=cols)
     else:
-        plans = {p.slot: aim.best_shot(t, me, place(room, bot, p.slot), gravity, w, bodies, friends[1:])
+        plans = {p.slot: aim.best_shot(t, me, place(room, bot, p.slot), gravity, w, bodies, friends[1:], cols)
                  for p in ([target] if steady else enemies)}
         target = target or min(enemies, key=lambda p: plans[p.slot][3]
                                + TIEBREAK * math.dist(me, place(room, bot, p.slot)))
         angle, power, hit, _ = plans[target.slot]
     tx, ty = place(room, bot, target.slot)
+    crossed = set()
+    aim.fly(t, *me, angle, power, gravity, w, bodies, weather=cols, crossed=crossed)
     situation = skill.ShotSituation(angle=angle if angle <= 90 else 180 - angle, distance=abs(tx - me[0]),
-                                    max_distance=t.w, wind=w[0] / 26, ss=kind == 'ss')
+                                    max_distance=t.w, wind=w[0] / 26, ss=kind == 'ss',
+                                    weather=bool(crossed & {'tornado', 'mirror'}))
     shot = profiles.shot(conn.layout, tank, kind)
     missed = False
     if not steady and rng.random() > skill.hit_chance(conn.n, situation, shot, skill.config(conn.server.config)):
         for _ in range(3):  # erra, mas não em cima de si mesmo nem de um aliado
             wrong = aim.miss(rng, power)
-            miss = aim.fly(t, *me, angle, wrong, gravity, w, bodies)
+            miss = aim.fly(t, *me, angle, wrong, gravity, w, bodies, weather=cols)
             if miss is None or aim.safe(miss, (tx, ty), friends):
                 power, hit, missed = wrong, miss, True
                 break

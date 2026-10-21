@@ -146,6 +146,26 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
   neles). Erra pela chance de `skill.py`: força 10..25% para mais ou menos, nunca em cima de si mesmo nem de aliado.
   Se o último tiro acertou (na conta do bot) e nem ele nem o alvo andaram mais de 5 px, repete: com o mesmo vento, o
   mesmo ângulo e a força 1..2% diferente; com outro vento, a mira nova; nos dois casos sem sortear erro.
+- Alvo: o bot simula o melhor tiro em cada inimigo vivo e fica com o de menor erro (a distância só desempata, 1 px de
+  erro = 50 px de distância); com o clima na simulação, escolhe quem o tornado/espelho ajuda a acertar.
+- Clima (v584; análise estática, conferida nos 0xc300 da captura do admin): o 0xc300 depois de u8 vez, u16 contador
+  traz o bloco (0x428410, codificador 0x428dd0): u8 força do vento, s16 ângulo, u8 + u8 (vento da próxima rodada), u8
+  evento da rodada do próximo turno, e 6 slots na ordem força, tornado, elétrico, blackforce, espelho, coringa: `ff`
+  ou `00|tipo do coringa, u8 largura (64..127), u16 x`. O 0xc308 do começo da partida é o mesmo bloco. Eventos: 0
+  força, 1 tornado, 2 elétrico, 3 troca de vento, 7 blackforce, 8 espelho, 9 coringa (tipo sorteado, 0..4 na ordem
+  força, tornado, elétrico, blackforce, espelho). A coluna entra no 1º turno da rodada (contador % jogadores == 0);
+  no começo de cada turno o cliente apaga o clima que não é do evento atual (0x451200), e o coringa apaga tudo antes
+  de entrar (0x4511b0). Coluna nova a até w/4 + 5 de outra igual funde: largura max x 1,5, x na média (o espelho fica).
+  Coluna: x - w/4 < X < x + w/4 (0x454eb0). Efeito no tiro (OBullet::Update 0x46f500):
+  - Tornado (0x1f4): prende o tiro (0x4715c0); preso, sem gravidade nem vento e |vx| >= 200 por quadro; nas 2
+    primeiras saídas da coluna o vx inverte, na 3ª solta (atravessa 3 vezes e sai para o lado em que ia).
+  - Espelho (0x1f9): uma vez por entrada, só com Y >= 640 (0x471f66, [INCERTO] não conferido jogando): vx = -vx e o
+    tiro vai para a borda da coluna do lado do novo vx.
+  - Força (0x1f5), blackforce (0x1f8) e elétrico (0x1f6) não mudam a trajetória: sobem campos que vão para a
+    explosão (+0x98/+0xa4 limitados a 20..100, +0x308 elétrico) = mais dano. A mira prefere, entre os tiros que acertam
+    o corpo, o que passa por eles. 0x1f7 é o raio do Lightning (tiro), não clima.
+  - O bot simula a 4 px por subpasso (o cliente checa a cada 12 px). [INCERTO] o S1 tem outro bloco (3 slots, 0x422bf2
+    do v440); o bot só atira no WCS2.
 - Tiro 2: o 2º u8 do 0xc400 (+0x1a4); quem recebe escolhe a animação fire2 e o projétil do tiro 2 (0x4e09d0; o 0x8006
   leva o mesmo byte trocado). O bot usa o 2 (40%) só onde ele voa como o 1 (`profiles.py`, special=False): Nak (cava por
   baixo da terra), Trico (órbita), Raon (minas), Turtle (bolhas), Boomer, A.Sate, Grub, Aduka, J.Frog, Kalsiddon e os

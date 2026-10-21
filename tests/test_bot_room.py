@@ -375,6 +375,46 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertLess(abs(hit[0] - 1100), 20)
         self.assertEqual(bot.conn.last[0], far.slot)
 
+    def test_weather_from_next(self):
+        """0xc300 do admin (v584, 4 jogadores): o evento da rodada vem no u8 5 do 0xc300 anterior; coluna nova entra no
+        1º turno da rodada; o coringa (slot 6) traz o tipo no 1º byte."""
+        from types import SimpleNamespace as NS
+        conn = NS()
+        frames = ['0c9b00f9f900 007b1202 ffffffffff', '0c9b00f9f908 ffffffffffff',  # c=0 força; c=3 avisa espelho
+                  '0c9b00f9f908 ffffffff 00725a03 ff', '0c9b00f9f901 ffffffffffff',  # c=4 espelho; c=7 tornado
+                  '0c9b00f9f901 ff 0051a403 ffffffff', '0c9b00f9f903 ffffffffffff',  # c=8 tornado; c=15 vento
+                  '0c9b00f9f909 ffffffffffff', '0c9b00f9f909 ffffffffff 034b2302']  # c=16 nada; c=20 coringa
+        seen = []
+        for f in frames:
+            match.update_weather(conn, bytes.fromhex(f.replace(' ', '')))
+            seen.append(list(conn.weather))
+        self.assertEqual(seen[0], [('force', 530, 123)])
+        self.assertEqual(seen[2], [('mirror', 858, 114)])
+        self.assertEqual(seen[4], [('tornado', 932, 81)])
+        self.assertEqual(seen[6], [])
+        self.assertEqual(seen[7], [('blackforce', 547, 75)])
+        conn = NS()
+        for f in ('0c9b00f9f900 007b1202 ffffffffff', '0c9b00f9f900 00641c02 ffffffffff'):  # força em 530 e em 540
+            match.update_weather(conn, bytes.fromhex(f.replace(' ', '')))
+        self.assertEqual(conn.weather, [('force', 535, 184)])  # perto de outra igual: funde, largura x1,5
+
+    def test_weather_bends_the_shot(self):
+        t = self.flat(w=1400, h=1000, ground=900)
+        crossed = set()
+        plain = aim.fly(t, 300, 900, 45, 200, 98, (0, 0))
+        spun = aim.fly(t, 300, 900, 45, 200, 98, (0, 0), weather=[('tornado', 500, 100)], crossed=crossed)
+        self.assertIn('tornado', crossed)
+        self.assertGreater(spun[0], plain[0])  # sem gravidade dentro do tornado: voa mais longe
+        low = aim.fly(t, 300, 900, 20, 150, 98, (0, 0))
+        self.assertGreater(low[0], 480)
+        back = aim.fly(t, 300, 900, 20, 150, 98, (0, 0), weather=[('mirror', 420, 60)])
+        self.assertLess(back[0], 400)  # o espelho rebate o vx (Y >= 640)
+        up = self.flat(w=1400)  # chão em 500: o tiro todo fica acima de Y 640 e o espelho não rebate
+        self.assertEqual(aim.fly(up, 300, 500, 20, 150, 98, (0, 0), weather=[('mirror', 420, 60)]),
+                         aim.fly(up, 300, 500, 20, 150, 98, (0, 0)))
+        err = aim.best_shot(t, (300, 900), (900, 900), 98, (0, 0), weather=[('force', 900, 120)])[3]
+        self.assertLessEqual(err, 0)  # acerto que passa pela força conta melhor
+
     async def test_ss_goes_as_c409(self):
         with mock.patch.object(match, 'SS_EVERY', 1):
             sent, _ = await self.own_shot(0.0, shot=False)

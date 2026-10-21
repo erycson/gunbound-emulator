@@ -34,6 +34,11 @@ SAFE = 60            # o tiro não pode cair tão perto do próprio bot (a explo
 STEP = 4             # px por subpasso na colisão (o passo do tiro chega a 40 px e atravessaria paredes finas)
 CRATER = 30          # shortcut: raio fixo da cratera; o real é por tiro (characterdata), só desloca o chão do alvo
 POWER = (40, 400)
+# clima (docs/Bots.md): coluna = x - w/4 < X < x + w/4 (0x454eb0). Tornado e espelho mudam o tiro; força,
+# blackforce e elétrico só aumentam o dano de quem passa (+0x98/+0xa4/+0x308 vão para a explosão)
+TORNADO_VX = 200 * SPEED  # piso do |vx| preso no tornado (0x470115), na escala do passo daqui
+MIRROR_Y = 640            # o espelho do 0xc300 só rebate com Y >= 640 (0x471f66)
+BOOSTS = {'force', 'blackforce', 'electric'}
 ELEVATIONS = range(25, 86, 5)
 _EXC = {37: 60181, 113: 92051, 132: 74315, 171: 15644, 216: -58778, 217: -60181, 240: -86602, 287: -95631,
         293: -92051, 310: -76605, 312: -74315, 351: -15644}  # onde a tabela do cliente difere do seno arredondado
@@ -127,9 +132,17 @@ def muzzle(angle: int) -> tuple[int, int]:
     return cos_times(angle, BARREL), sin_times(angle, BARREL)
 
 
+def inside(cx: int, col) -> bool:
+    _, x, w = col
+    return x - w // 4 < cx < x + w // 4
+
+
 def fly(t: Terrain, x: int, y: int, angle: int, power: int, gravity: int, wind: tuple[int, int],
-        bodies=(), steps: int = 6000) -> tuple[int, int] | None:
-    """Onde o tiro cai (chão ou corpo de um tanque), ou None se sai do mapa."""
+        bodies=(), steps: int = 6000, weather=(), crossed: set | None = None) -> tuple[int, int] | None:
+    """Onde o tiro cai (chão ou corpo de um tanque), ou None se sai do mapa. weather: colunas (tipo, x, w) do clima;
+    crossed recebe os tipos que o tiro atravessou. Tornado (0x4715c0, 0x470115): prende o tiro, que fica sem gravidade
+    e vento, com |vx| >= TORNADO_VX, e inverte o vx nas 2 primeiras saídas da coluna; solta na 3ª. Espelho
+    (0x471d50): uma vez por entrada, com Y >= MIRROR_Y, inverte o vx e põe o tiro na borda da coluna."""
     bx, by = muzzle(angle)
     speed = power * 512 * SPEED
     vx, vy = int(cos_times(angle, speed) / 100), -int(sin_times(angle, speed) / 100)
@@ -137,18 +150,48 @@ def fly(t: Terrain, x: int, y: int, angle: int, power: int, gravity: int, wind: 
     ax, ay = int(cos_times(wa, wp) * 256 / 100), int((gravity - sin_times(wa, wp)) * 256 / 100)
     px, py = (x + bx) << 8, (y - by) << 8
     near = BODY * BODY
+    spin, turns, latched = None, 0, set()
     for _ in range(steps):
         n = max(abs(vx), abs(vy)) // (STEP << 8) + 1
+        bounced = False
         for i in range(1, n + 1):
             cx, cy = (px + vx * i // n) >> 8, (py + vy * i // n) >> 8
             if cy >= t.h or cx < 0 or cx >= t.w:
                 return None
             if t.solid(cx, cy):
                 return cx, cy
+            for k, col in enumerate(weather):
+                if not inside(cx, col):
+                    latched.discard(k)
+                    continue
+                if crossed is not None:
+                    crossed.add(col[0])
+                if col[0] == 'tornado' and spin is None:
+                    spin, turns = col, 0
+                elif col[0] == 'mirror' and k not in latched and cy >= MIRROR_Y:
+                    latched.add(k)
+                    vx = -vx
+                    px, py = (col[1] + (col[2] // 4 if vx > 0 else -(col[2] // 4))) << 8, cy << 8
+                    bounced = True
+                    break
+            if bounced:
+                break
         if any((cx - ox) ** 2 + (cy - oy) ** 2 <= near for ox, oy in bodies):
             return cx, cy
-        px += vx
-        py += vy
+        if not bounced:
+            px += vx
+            py += vy
+        if spin is not None:
+            _, sx, sw = spin
+            if not sx - sw // 4 <= px >> 8 <= sx + sw // 4:
+                turns += 1
+                if turns <= 2:
+                    vx = -vx
+                else:
+                    spin = None
+            if spin is not None:
+                vx = (1 if vx >= 0 else -1) * max(abs(vx), TORNADO_VX)
+                continue
         vx += ax
         vy += ay
     return None
@@ -160,9 +203,10 @@ def safe(hit, target, friends) -> bool:
 
 
 def best_shot(t: Terrain, me: tuple[int, int], target: tuple[int, int], gravity: int, wind: tuple[int, int],
-              bodies=(), friends=()) -> tuple[int, int, tuple[int, int] | None, int]:
+              bodies=(), friends=(), weather=()) -> tuple[int, int, tuple[int, int] | None, int]:
     """(ângulo absoluto, força, impacto, erro em px) que leva o tiro mais perto do alvo sem cair em cima do bot nem
-    dos aliados (friends)."""
+    dos aliados (friends). Entre os que acertam o corpo, prefere o que passa por força/blackforce/elétrico (mais dano):
+    o erro deles conta BODY a menos."""
     x, y = me
     tx, ty = target
     aim = (tx, ty - BODY // 2)
@@ -171,10 +215,12 @@ def best_shot(t: Terrain, me: tuple[int, int], target: tuple[int, int], gravity:
         angle = e if tx >= x else 180 - e
 
         def score(p):
-            hit = fly(t, x, y, angle, p, gravity, wind, bodies)
+            crossed = set()
+            hit = fly(t, x, y, angle, p, gravity, wind, bodies, weather=weather, crossed=crossed)
             if not safe(hit, target, (me, *friends)):
                 return 1e9, hit  # fora do mapa ou em cima de si mesmo / de um aliado
-            return math.dist(hit, aim), hit
+            d = math.dist(hit, aim)
+            return d - (BODY if d <= BODY and crossed & BOOSTS else 0), hit
 
         coarse = min(range(POWER[0], POWER[1] + 1, 10), key=lambda p: score(p)[0])
         for p in range(max(POWER[0], coarse - 9), min(POWER[1], coarse + 9) + 1):
