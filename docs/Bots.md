@@ -37,9 +37,9 @@ Falta validar jogando: física ajustada pela captura, mobiles com tiro especial 
   sala, e o bot entra no time mais fraco. O kick do mestre também tira o bot.
 - **`auto`:** no lugar do `lvl` ou do mobile, o mesmo que omitir (`/bot add auto auto`). O apelido termina em `[BOT]`
   (até 7 letras + sufixo, 12 bytes no fio); o `/bot remove` aceita o nome com ou sem o sufixo.
-- **Escolher o mobile:** opção acoplável à parte, só para GM. `/bot mobile nome` troca o mobile do próprio GM na
-  próxima partida, inclusive os do S2 e os ocultos (Dragon, Knight) que a tela não oferece: vai no 0x3432 do início,
-  que o cliente usa no lugar da escolha da tela. Trocar na tela (0x3200) desfaz.
+- **Escolher o mobile:** opção acoplável à parte, só para GM. Para testar os mobiles que a tela não oferece (S2 e os
+  ocultos Dragon e Knight), o comando de GM `/mobile nome [slot|all]` (`gm_commands.py`) troca o mobile da próxima
+  partida: o do GM, o de um slot ou o de todos. Vai no 0x3432 do início; trocar na tela (0x3200) desfaz.
 - **Nível por versão:** a patente vira `n` de 0 (pintinho) a 1 (topo): TH/S1 19..-4, S2 1..41 (`skill.normalize`).
 - **Equipamento:** sorteado pela patente e pelo preço do item na `Menu`; nome aleatório. O bot pertence à sala,
   não existe no banco.
@@ -212,9 +212,18 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
   shortcut: tanque 30x30, limite 100 e subida 70 para todos os mobiles (o characterdata tem o de cada um); o vazio
   embaixo de um lado conta como 45° na inclinação (o limite de busca do 0x4765f0 não foi conferido).
 - Tiro 2: o 2º u8 do 0xc400 (+0x1a4); quem recebe escolhe a animação fire2 e o projétil do tiro 2 (0x4e09d0; o 0x8006
-  leva o mesmo byte trocado). O bot usa o 2 (40%) só onde ele voa como o 1 (`profiles.py`, special=False): Nak (cava por
-  baixo da terra), Trico (órbita), Raon (minas), Turtle (bolhas), Boomer, A.Sate, Grub, Aduka, J.Frog, Kalsiddon e os
-  mobiles do S2 ficam no 1.
+  leva o mesmo byte trocado). O bot usa o 2 (40%) e o SS só onde o pouso bate com a mira (`profiles.py`,
+  special=False). Captura v584 de 22/10 (humano atirando, impactos do próprio cliente no 0xc400/0xc409 contra o
+  aim.fly partindo do cano do pacote): liberados Mage SS (4 px), Lightning 2 e SS (9-20), Trico 2 e SS (21, 1),
+  Kalsiddon 2 e SS (28, 31; divide no ar), A.Sate 2 e Aduka 2 (pousam a 13-31 px; o dano vem do satélite), Turtle SS
+  (33), Raon 2 e SS (o robô pousa onde a mira diz e anda até o mobile mais perto). Seguem no 1: Nak 2 (cava), Turtle 2
+  (vai para o outro lado), J.Frog 2/SS (anda depois do pouso), Grub 2/SS (quica), Aduka SS (atravessa tudo), A.Sate SS
+  (sem dado), Boomer e os do S2 (sem captura).
+- Cano: os 2 primeiros s16 do 0xc400 são o deslocamento do cano a partir do pé, e o tiro começa ali. No cliente ele não
+  segue o ângulo do tiro (Lightning a 57°: (4, 35); Trico a 32°: (17, 33); comprimento 27..41 conforme o mobile). O
+  bot manda o dele (30 px na direção do tiro, `aim.muzzle`) e quem recebe começa o tiro ali, então a mira do bot fica
+  coerente; só o desenho não sai da ponta do cano. Comparar captura de humano sem usar o cano do pacote dá erro de
+  centenas de px quando o tanque está numa cratera.
 - SS: 0xc409 com o mesmo corpo do 0xc400 (0x4e0cc9 pula o byte do tiro 2, liga +0x1a8/+0x1ac e G+0x3f2b0, animação
   sfire). shortcut: o SS fica pronto a cada 5 tiros; no cliente a barra enche pelo dano causado (falta mapear).
 - Tiro forte só depois de achar a mira: tiro 1 até o último tiro ter acertado o mesmo alvo sem ninguém andar (o
