@@ -205,7 +205,9 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
 - SS: 0xc409 com o mesmo corpo do 0xc400 (0x4e0cc9 pula o byte do tiro 2, liga +0x1a8/+0x1ac e G+0x3f2b0, animação
   sfire). shortcut: o SS fica pronto a cada 5 tiros; no cliente a barra enche pelo dano causado (falta mapear).
 - Tiro forte só depois de achar a mira: tiro 1 até o último tiro ter acertado o mesmo alvo sem ninguém andar (o
-  repetir); aí SS se pronto, senão o 2 (40%). Dual e Power Up seguem a mesma regra.
+  repetir); aí SS se pronto, senão o 2 (40%). Dual e Power Up seguem a mesma regra. Tiro que a mira não simula
+  (special no profiles.py: Boomer, mobiles do S2...) nunca conta como acerto, e SS especial não sai (o SS do Boomer
+  voltava para ele na partida de 21/10).
 - Item (v584, análise estática + captura de 21/10): 0xc401 = u8 espaço da barra, u8 0xff (item de 2 espaços) ou 00,
   u16 código, u16 x, u16 y, u8 lado (montado em 0x4f60b2). Quem recebe (despachante 0x4e11b3, só do tanque da vez;
   0x4f6a70) põe o tanque no x/y/lado, grava o código em +0x2c4 e aplica o efeito (0x4f6e90) **sem conferir a barra** de

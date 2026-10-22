@@ -393,6 +393,8 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([match.pick_kind(conn, 0x00, rng) for _ in range(6)], [1] * 6)  # sem acerto ainda: tiro 1
         self.assertEqual([match.pick_kind(conn, 0x00, rng, True) for _ in range(3)], ['ss', 2, 2])  # SS guardado
         self.assertEqual([match.pick_kind(conn, 0x02, rng, True) for _ in range(3)], [1, 1, 'ss'])  # Nak: o 2 cava
+        conn.shots = 0
+        self.assertEqual([match.pick_kind(conn, 0x05, rng, True) for _ in range(6)], [1] * 6)  # Boomer: bumerangue
         self.assertEqual(match.shot_body(1, 1, 65, 100, (0, 0), None, True, shot2=True)[4:6], bytes([1, 1]))
         b, me = await self.start_match()
         b.conn.layout, b.conn.terrain, b.conn.tail, b.conn.shots = 'WCS2', self.flat(), b'', 0
@@ -405,6 +407,9 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(again[:2], (angle, round(power * 0.98)))
         b.conn.tail = bytes([20]) + struct.pack('<H', 0)  # vento novo
         self.assertLess(abs(match.aim_at(self.room, b, rng)[2][0] - 700), 20)
+        self.room.game.tanks[b.slot] = (0x05, 0x05)  # Boomer: a mira não simula o bumerangue, não conta como acerto
+        match.aim_at(self.room, b, rng)
+        self.assertIsNone(b.conn.last)
 
     def test_picks_easiest_enemy(self):
         """O inimigo mais perto está dentro de uma caixa: o bot mira no de longe, que o tiro alcança."""

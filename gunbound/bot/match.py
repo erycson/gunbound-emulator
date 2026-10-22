@@ -340,12 +340,12 @@ def pick_item(conn, plan):
 
 def pick_kind(conn, tank: int, rng=random, steady: bool = False):
     """Tiro 1, 2 ou 'ss'. Primeiro acerta com o 1; o tiro forte só repetindo um acerto (steady, como o humano que acha
-    a mira e depois solta o SS). O SS fica guardado desde SS_EVERY tiros; o 2 só quando voa como o 1 (Nak cava, Trico
+    a mira e depois solta o SS). O SS fica guardado desde SS_EVERY tiros; SS e 2 só quando voam como o 1 (Nak cava, Trico
     orbita... a mira não simula esses)."""
     conn.shots = getattr(conn, 'shots', 0) + 1
     if not steady:
         return 1
-    if conn.shots >= SS_EVERY:
+    if conn.shots >= SS_EVERY and not profiles.shot(conn.layout, tank, 'ss').special:
         conn.shots = 0
         return 'ss'
     return 2 if not profiles.shot(conn.layout, tank, 2).special and rng.random() < SHOT2 else 1
@@ -401,7 +401,8 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None, obj
             if miss is None or aim.safe(miss, (tx, ty), friends):
                 power, hit, missed = wrong, miss, True
                 break
-    good = not missed and hit is not None and math.dist(hit, (tx, ty - aim.BODY // 2)) <= 2 * aim.BODY
+    # tiro que a mira não simula (bumerangue, mobiles do S2...): o acerto previsto não vale, não sobe para SS/Dual
+    good = not shot.special and not missed and hit is not None and math.dist(hit, (tx, ty - aim.BODY // 2)) <= 2 * aim.BODY
     conn.last = (target.slot, me, (tx, ty), w, angle, power) if good else None
     return angle, power, hit or (max(0, min(t.w - 1, tx)), ty), kind  # saiu do mapa: a câmera mira o alvo (n >= 1 sempre)
 
