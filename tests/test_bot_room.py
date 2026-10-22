@@ -424,6 +424,9 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(max(a for a, f in armor if f == 1), 55)
         self.assertEqual({a for a, f in armor if f == 0}, {180 - a for a, f in armor if f == 1})
         self.assertEqual(sorted(a for a, f in aim.angles(t, 300, 500, 0x02) if f == 0), list(range(5, 56, 5)))
+        # o byte do fio 0x0D (Aduka) é a classe do CyberNaK no WC: mira para trás (bot atirava para frente); o TH não troca
+        self.assertEqual((aim.model('WCS2', 0x0D), aim.model('WCS1', 0x0E), aim.model('TH', 0x0D)), (0x0F, 0x10, 0x0D))
+        self.assertTrue(all(a > 90 for a, f in aim.angles(t, 300, 500, aim.model('WCS2', 0x0D)) if f == 1))
         with mock.patch.object(aim, 'slope', return_value=10):  # subida para o lado que olha: o cano levanta
             self.assertEqual(max(a for a, f in aim.angles(t, 300, 500, 0x00) if f == 1), 65)
         bot = NS(slot=0, team=0, alive=True, conn=NS(terrain=t, seen={}, tail=b'', layout='WCS2', shots=0, last=None,
@@ -517,7 +520,7 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
                                                          last=None, n=1.0, server=NS(config=CONFIG), pos=None,
                                                          v584=True))
             return bot, NS(players={0: bot, 1: NS(slot=1, team=1, alive=True)},
-                           game=NS(tanks={0: (0x0D, 0x0D)}, spawns={0: me, 1: enemy}))  # Aduka: mira de 30 a 60
+                           game=NS(tanks={0: (0x0C, 0x0C)}, spawns={0: me, 1: enemy}))  # Grub: mira de 25 a 65
         cave = self.flat(w=1400)
         for y in range(458, 466):
             for x in range(150, 420):

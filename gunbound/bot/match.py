@@ -250,8 +250,9 @@ def spot_error(room, bot, me: tuple[int, int]) -> float:
     tank = room.game.tanks.get(bot.slot, (0, 0))[0]
     bodies = [(x, y - aim.BODY // 2) for x, y in (place(room, bot, p.slot) for p in others)]
     friends = [place(room, bot, p.slot) for p in others if p not in enemies]
-    choices = aim.angles(t, *me, tank)
-    return min((aim.best_shot(t, me, place(room, bot, p.slot), aim.GRAVITY.get(tank, 98), wind(conn), bodies, friends,
+    cls = aim.model(conn.layout, tank)
+    choices = aim.angles(t, *me, cls)
+    return min((aim.best_shot(t, me, place(room, bot, p.slot), aim.GRAVITY.get(cls, 98), wind(conn), bodies, friends,
                               getattr(conn, 'weather', ()), choices)[3] + TIEBREAK * math.dist(me, place(room, bot, p.slot))
                 for p in enemies), default=0)
 
@@ -367,7 +368,8 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None, obj
     if not enemies:
         return None
     tank = room.game.tanks.get(bot.slot, (0, 0))[0]
-    gravity, w = aim.GRAVITY.get(tank, 98), wind(conn)
+    cls = aim.model(conn.layout, tank)  # mira e gravidade vão pela classe; o perfil, pelo byte do fio
+    gravity, w = aim.GRAVITY.get(cls, 98), wind(conn)
     bodies = [(x, y - aim.BODY // 2) for x, y in (place(room, bot, p.slot) for p in others)]
     friends = [me] + [place(room, bot, p.slot) for p in others if p not in enemies]
     cols = getattr(conn, 'weather', ())
@@ -377,7 +379,7 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None, obj
     steady = conn.steady = target is not None
     kind = pick_kind(conn, tank, rng, steady)
     faces = {}
-    for a, f in aim.angles(t, *me, tank, kind):  # só o que o mobile alcança daqui (faixa de mira + inclinação)
+    for a, f in aim.angles(t, *me, cls, kind):  # só o que o mobile alcança daqui (faixa de mira + inclinação)
         faces.setdefault(a, f)
     if steady and last[3] == w and last[4] in faces:
         angle, power = last[4], last[5] * (1 + rng.choice((-1, 1)) * rng.uniform(0.01, 0.02))
