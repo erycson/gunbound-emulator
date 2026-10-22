@@ -208,7 +208,7 @@ class WCS2(WCS1):
     # patentes do S2 (v548 e v584): escada de 47 ícones, 1..41, maior = melhor, admin 0 (docs/Níveis.md)
     rank_rule, gm_grade, higher_grade_better = 'v584', 0, True
     parent = WCS1
-    stage_pos = 'stage_pos_s2.txt'  # 2007 + mapas 11..16 (v584: mapa % 17) com posições inventadas
+    stage_pos = 'stage_pos_s2.txt'  # 2007 + mapas 11..17 (v584: sala nova sorteia % 17, as setas giram % 18) com posições inventadas
     # v584 0x4427c0: + 0x13 Phoenix, 0x14 Maya, 0x15 Wolf, 0x16 Tiburon, 0x17 Blue Whale, 0x18 Frank; a tabela 0x679160
     # passa 0x13 em diante sem troca (0x4198c0 a preenche no início)
     tanks = WCS1.tanks | frozenset(range(0x13, 0x19))

@@ -138,6 +138,11 @@ class RoomRulesTest(unittest.IsolatedAsyncioTestCase):
         ranges = {(469, 564), (829, 916), (1101, 1206), (634, 716), (920, 1017), (569, 630), (752, 824), (1021, 1097)}
         self.assertTrue(all(y > 0 and any(lo <= x <= hi for lo, hi in ranges) for x, y in spawns), spawns)
 
+    def test_s2_arrows_reach_every_map(self):
+        # v584: as setas da sala giram % 18 (0x551bb2, 0x55b0d6); faltar o 17 (myroom) deixa o cliente sem 0x3105
+        from gunbound.game.stage_pos import valid_settings
+        self.assertTrue(all(valid_settings(0x51B2 | side << 16, m, 'stage_pos_s2.txt') for m in range(18) for side in range(4)))
+
     async def test_score_lives_and_resurrect(self):
         room = await self.rooms.create(FakeConn('m2'), RoomOptions('s', RoomMode.SCORE, 2, None))
         b = FakeConn('b')
