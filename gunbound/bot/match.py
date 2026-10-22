@@ -330,9 +330,10 @@ def flip_helps(room, bot) -> bool:
 
 def pick_item(conn, plan):
     """Repetindo um acerto (aim_at: steady) com acerto previsto (conn.last): Dual, depois Power Up; sem acerto
-    (cavando): Bunge. Um por turno (0x484ad0); o SS fica sem item."""
+    (cavando): Bunge. Um por turno (0x484ad0); o SS fica sem item, e o tiro que a mira não simula (aim_at: blind)
+    também, porque sem acerto previsto ele não está cavando."""
     items = bar(conn)
-    if plan[3] == 'ss' or not items:
+    if plan[3] == 'ss' or not items or getattr(conn, 'blind', False):
         return None
     hits = getattr(conn, 'last', None)
     wanted = (DUAL, POWER_UP) if hits and getattr(conn, 'steady', False) else () if hits else (BUNGE,)
@@ -406,6 +407,7 @@ def aim_at(room, bot, rng=random) -> tuple[int, int, tuple[int, int] | None, obj
                 power, hit, missed = wrong, miss, True
                 break
     # tiro que a mira não simula (bumerangue, mobiles do S2...): o acerto previsto não vale, não sobe para SS/Dual
+    conn.blind = shot.special
     good = not shot.special and not missed and hit is not None and math.dist(hit, (tx, ty - aim.BODY // 2)) <= 2 * aim.BODY
     conn.last = (target.slot, me, (tx, ty), w, angle, power) if good else None
     # saiu do mapa: a câmera mira o alvo (n >= 1 sempre)

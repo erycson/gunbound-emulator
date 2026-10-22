@@ -371,6 +371,9 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(match.pick_item(conn, (45, 100, (1, 1), 2)), match.POWER_UP)
         conn.last = None
         self.assertEqual(match.pick_item(conn, (45, 100, (1, 1), 1)), match.BUNGE)  # cavando
+        conn.blind = True
+        self.assertIsNone(match.pick_item(conn, (45, 100, (1, 1), 1)))  # tiro não simulado: não está cavando
+        conn.blind = False
         self.assertIsNone(match.pick_item(NS(v584=False, items=None, last=('alvo',)), (45, 100, None, 1)))
         match.flip_wind(conn)
         self.assertEqual(match.wind(conn), (20, 120))
