@@ -3,7 +3,8 @@ Comandos de GM, como no servidor original (GunBoundServ3.exe FUN_00425a10, via R
 - Entrada: 0x5100 (SVC_COMMAND), texto cru (ex.: "/bcm -a oi"). Só para autoridade >= GM_AUTHORITY.
 - Resposta: 0x5101 com o texto cru. O /bcm usa o mesmo 0x5101 para cada destinatário (FUN_0042faa0).
 - Comandos do original: server, bcm, ban, disconnect, close, motd, room, version, limit, time, qsman, qsopt, toid.
-- Extra deste servidor: /startgame (GM inicia a partida sozinho ou com times desbalanceados).
+- Extra deste servidor: /startgame (GM inicia a partida sozinho ou com times desbalanceados) e /mobile nome [slot|all]
+  (mobile da próxima partida, inclusive os do S2 e os ocultos que a tela não oferece).
 """
 from __future__ import annotations
 import asyncio
@@ -192,6 +193,30 @@ class GmCommands:
         if target is None:
             return "ADMIN>> Failed to query matching user"
         return f"ID: {target.data['profile']['Id']} NICKNAME: {target.data['profile']['Nickname']}"
+
+    async def cmd_mobile(self, arg):
+        """Extra: /mobile nome [slot|all]. Sem slot, o do GM. O tank1 sai no 0x3432 do início (room.start), que o
+        cliente usa no lugar da escolha da tela; trocar na tela (0x3200) desfaz."""
+        from gunbound.game import phase
+        from gunbound.game.room import HIDDEN_TANKS
+        room = self.conn.room
+        words = arg.split()
+        if room is None or not room.is_waiting():
+            return "ADMIN>> Você precisa estar numa sala aguardando."
+        who = words.pop().lower() if len(words) > 1 and (words[-1].isdigit() or words[-1].lower() == 'all') else None
+        name = ' '.join(words)
+        layout = type(phase.of(self.conn)).__name__
+        tank = bots.find_mobile(layout, name, HIDDEN_TANKS) if name else None
+        if tank is None:
+            return f"ADMIN>> Mobile '{name}' não existe nesta versão."
+        targets = (list(room.players.values()) if who == 'all' else [room.player(self.conn)] if who is None
+                   else [p for p in room.players.values() if p.slot == int(who)])
+        if not targets:
+            return f"ADMIN>> Ninguém no slot {who}."
+        for p in targets:
+            room.set_tanks(p.conn, tank, p.tank2)
+        names = ', '.join(p.conn.data['profile']['Nickname'] for p in targets)
+        return f"ADMIN>> {bots.profiles.BY_PHASE[layout][tank].name} na próxima partida: {names}"
 
     async def cmd_startgame(self, arg):
         """Extra: o GM mestre da sala inicia sem as regras de prontos/times (jogo solo de GM/Adm)."""

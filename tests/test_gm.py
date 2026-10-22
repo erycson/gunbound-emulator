@@ -88,6 +88,22 @@ class GmTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(mode4), 4 + 9)
         self.assertTrue(all(b in (1, 2, 4, 8, 16) for b in mode4[6::3]))
 
+    async def test_mobile(self):
+        """/mobile nome [slot|all]: o próprio, o de um slot ou o de todos; os ocultos também (Dragon)."""
+        self.assertIn('sala aguardando', await self.cmd.run('/mobile ice'))
+        room = await self.rooms.create(self.gm, RoomOptions('gm', RoomMode.SOLO, 4, None))
+        self.gm.room = room
+        await room.join(self.a)
+        a = room.player(self.a)
+        self.assertIn('Dragon', await self.cmd.run('/mobile dragon'))
+        self.assertEqual((room.player(self.gm).tank1, a.tank1), (0x11, 0x00))
+        await self.cmd.run(f'/mobile ice {a.slot}')
+        self.assertEqual((room.player(self.gm).tank1, a.tank1), (0x11, 0x0A))
+        await self.cmd.run('/mobile j.d all')
+        self.assertEqual({p.tank1 for p in room.players.values()}, {0x08})
+        self.assertIn('não existe', await self.cmd.run('/mobile nada'))
+        self.assertIn('Ninguém', await self.cmd.run('/mobile ice 7'))
+
     async def test_startgame_needs_room(self):
         self.assertIn('mestre', await self.cmd.run('/startgame'))
 
