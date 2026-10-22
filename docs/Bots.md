@@ -128,8 +128,17 @@ pacote, grava o vento global (G+0x283dc força, G+0x283e0 ângulo) e cria o proj
 impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simula o tiro e o dano; o bot só escolhe
 ângulo e força.
 - Projétil (0x445426..0x445671): pos = (x, y) << 8; v = força * 512 * (cos, -sin) / 100 (seno da tabela 0x5fd6b0,
-  5 casas); a = (vento_x, gravidade - vento_y) << 8 / 100; gravidade do mobile (characterdata coluna 40, por slot em
-  G+0x296bc + slot*0x104: 98, Mage/Lightning/Dragon 90, Aduka 94, J.Frog 92). [INCERTO] o alcance da captura antiga
+  5 casas); a = (vento_x, gravidade - vento_y) << 8 / 100; gravidade do mobile (characterdata +160, por tanque em
+  G+0x296bc + tanque*0x104: 98, Mage/Lightning/Aduka/Knight/Phoenix/Tiburon 90, J.Frog 94, Dragon 92).
+- characterdata.dat do v584 (graphics.xfs do SolFS; carga 0x423781): o arquivo todo é LZHUF de 0x5300 bytes (64
+  registros de 332, registro = índice do tanque) mais 1 byte de soma (0x4d + soma dos bytes abertos). O do S1 tem o
+  mesmo formato. Por tiro 1/2/SS, 6 int32 em +12/+36/+60: mira máxima, mínima e a faixa "boa" do medidor (0x47adf0);
+  a cópia por tanque vai para +0xbc.. do objeto do tanque (0x425959). O 0x484bb0 prende o ângulo de mira (+0x104) na
+  faixa do tiro escolhido e o 0x476974 monta o ângulo do tiro: +0x110 = mira + inclinação (+0x114, com sinal trocado
+  olhando para a direita), e olhando para a esquerda 180 - isso. O bot só escolhe ângulos assim (`aim.angles`, tabela
+  `aim.MOBILES`) e manda o lado junto: o Nak e o J.Frog (mira 125..175) atiram para o lado contrário ao que olham.
+  Antes o bot mirava de 25 a 85 em qualquer mobile e o cano não acompanhava (partida de 21/10, Phoenix e um tiro para
+  cima com parede na frente). [INCERTO] o alcance da captura antiga
   (força até 480) só bate com velocidade x5; os tiros do admin no v584 (força até 2200) batem com x1. A mira usa a
   escala antiga e o v584 recebe força x5.
 - 0xc400 (layout da captura, que diverge 2 bytes da leitura à mão do receptor; vale o da captura): u16 x, u16 y, 01, 00,

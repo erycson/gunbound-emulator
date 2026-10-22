@@ -333,7 +333,7 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sent[match.AIM][0][:6], struct.pack('<HH', 200, 500) + b'\x00\x01')
         x, y, angle, power = *struct.unpack_from('<HH', c400), *struct.unpack_from('<hH', c400, 6)
         self.assertEqual((x, y), (200, 500))
-        self.assertTrue(25 <= angle <= 85 and 40 <= power <= 400)
+        self.assertTrue(10 <= angle <= 55 and 40 <= power <= 400)  # Armor no plano: a faixa de mira dele
         self.assertEqual(struct.unpack_from('<hh', c400, 23), (9, 84))
         self.assertEqual(c400[28], 1)
         hx, hy = struct.unpack_from('<HH', c400, 30)
@@ -400,7 +400,7 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         b.conn.layout, b.conn.terrain, b.conn.tail, b.conn.shots = 'WCS2', self.flat(), b'', 0
         self.room.game.spawns = {me.slot: (700, 0), b.slot: (200, 0)}
         rng = mock.Mock(random=mock.Mock(return_value=0.0), choice=lambda s: s[0], uniform=lambda lo, hi: hi)
-        angle, power, hit, _ = match.aim_at(self.room, b, rng)
+        angle, power, hit, _, _ = match.aim_at(self.room, b, rng)
         self.assertLess(abs(hit[0] - 700), 20)
         rng.random.return_value = 0.99  # erraria pela chance de acerto
         again = match.aim_at(self.room, b, rng)
@@ -410,6 +410,26 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.room.game.tanks[b.slot] = (0x05, 0x05)  # Boomer: a mira não simula o bumerangue, não conta como acerto
         match.aim_at(self.room, b, rng)
         self.assertIsNone(b.conn.last)
+
+    def test_angles_follow_mobile_range(self):
+        """Mira só na faixa do characterdata, somada à inclinação (partida de 21/10: Phoenix/Armor atiravam num ângulo
+        que o cano não mostrava). O Nak (125..175) atira para a direita olhando para a esquerda."""
+        from types import SimpleNamespace as NS
+        t = self.flat(w=1400)
+        armor = aim.angles(t, 300, 500, 0x00)
+        self.assertEqual(min(a for a, f in armor if f == 1), 10)
+        self.assertEqual(max(a for a, f in armor if f == 1), 55)
+        self.assertEqual({a for a, f in armor if f == 0}, {180 - a for a, f in armor if f == 1})
+        self.assertEqual(sorted(a for a, f in aim.angles(t, 300, 500, 0x02) if f == 0), list(range(5, 56, 5)))
+        with mock.patch.object(aim, 'slope', return_value=10):  # subida para o lado que olha: o cano levanta
+            self.assertEqual(max(a for a, f in aim.angles(t, 300, 500, 0x00) if f == 1), 65)
+        bot = NS(slot=0, team=0, alive=True, conn=NS(terrain=t, seen={}, tail=b'', layout='WCS2', shots=0, last=None,
+                                                     n=1.0, server=NS(config=CONFIG)))
+        room = NS(players={0: bot, 1: NS(slot=1, team=1, alive=True)},
+                  game=NS(tanks={0: (0x02, 0x02)}, spawns={0: (300, 0), 1: (900, 0)}))
+        angle, _, hit, _, face = match.aim_at(room, bot, mock.Mock(random=mock.Mock(return_value=0.0)))
+        self.assertEqual((face, angle <= 55), (0, True))
+        self.assertLess(abs(hit[0] - 900), 20)
 
     def test_picks_easiest_enemy(self):
         """O inimigo mais perto está dentro de uma caixa: o bot mira no de longe, que o tiro alcança."""
@@ -494,7 +514,7 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
                                                          last=None, n=1.0, server=NS(config=CONFIG), pos=None,
                                                          v584=True))
             return bot, NS(players={0: bot, 1: NS(slot=1, team=1, alive=True)},
-                           game=NS(tanks={}, spawns={0: me, 1: enemy}))
+                           game=NS(tanks={0: (0x0D, 0x0D)}, spawns={0: me, 1: enemy}))  # Aduka: mira de 30 a 60
         cave = self.flat(w=1400)
         for y in range(458, 466):
             for x in range(150, 420):

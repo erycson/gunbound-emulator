@@ -23,8 +23,22 @@ DEFAULT_XFS = ROOT.parent / 'clientes' / 'WC-S1-v495' / 'graphics.xfs'
 MAPS = ROOT / 'maps'  # tools/import_maps.py
 # stage.dat do S1 (índice = mapa + 11 no lado B); o 0 (Cave) não tem B. Os lados 2/3 (C/D) não estão no S1
 STAGES = ('cave', 'mos', 'hok', 'metro', 'candy', 'babo', 'last', 'brick', 'kettle', 'star', 'facky')
-# characterdata.dat (coluna 40) do v495, por índice de tanque do WC (Mage, Lightning, Aduka, J.Frog, Dragon); o resto 98
-GRAVITY = {0x01: 90, 0x07: 90, 0x0D: 94, 0x0F: 92, 0x11: 90}
+# characterdata.dat do v584 (graphics.xfs do SolFS: LZHUF de 64 x 332 bytes + u8 soma 0x4d + bytes, carga 0x423781),
+# registro = índice do tanque: gravidade (+160) e, por tiro 1/2/SS, o ângulo de mira máximo e mínimo (+12/+16, +36/+40,
+# +60/+64; 0x484bb0 prende a mira nessa faixa). O 16 não é tanque do servidor. O S1 (v495) tem os mesmos valores nos 18
+# primeiros, com pequenas diferenças de faixa.
+MOBILES = {
+    0x00: (98, ((55, 10), (55, 15), (55, 10))), 0x01: (90, ((50, 15),) * 3), 0x02: (98, ((175, 125),) * 3),
+    0x03: (98, ((50, 10), (50, 10), (45, 15))), 0x04: (98, ((50, 8),) * 3), 0x05: (98, ((90, 10),) * 3),
+    0x06: (98, ((50, 10),) * 3), 0x07: (90, ((50, 18),) * 3), 0x08: (98, ((45, 15),) * 3),
+    0x09: (98, ((60, 20), (60, 20), (55, 25))), 0x0A: (98, ((70, 20), (70, 20), (60, 30))), 0x0B: (98, ((55, 25),) * 3),
+    0x0C: (98, ((65, 25),) * 3), 0x0D: (90, ((60, 30),) * 3), 0x0E: (98, ((80, 10),) * 3), 0x0F: (94, ((170, 130),) * 3),
+    0x11: (92, ((55, 10),) * 3), 0x12: (90, ((90, 40), (100, 60), (100, 50))),
+    0x13: (90, ((90, 40), (100, 60), (100, 50))), 0x14: (98, ((50, 10), (50, 10), (45, 15))),
+    0x15: (98, ((50, 15), (50, 10), (45, 15))), 0x16: (90, ((90, 0), (80, 30), (90, 0))),
+    0x17: (98, ((140, 40), (120, 70), (140, 40))), 0x18: (98, ((55, 10), (55, 15), (55, 10))),
+}
+GRAVITY = {tank: g for tank, (g, _) in MOBILES.items() if g != 98}
 # shortcut: velocidade x5 ajustada aos 36 tiros da captura v584 (mediana ~25 px); falta achar no cliente o passo por
 # frame que dá esse fator. Basta para a mira, porque quem recebe recalcula o tiro.
 SPEED = 5
@@ -220,6 +234,21 @@ def muzzle(angle: int) -> tuple[int, int]:
     return cos_times(angle, BARREL), sin_times(angle, BARREL)
 
 
+def angles(t: Terrain, x: int, y: int, tank: int, kind=1) -> list[tuple[int, int]]:
+    """(ângulo absoluto, lado) que o mobile alcança daqui com o tiro `kind`: mira na faixa do characterdata e, como o
+    0x476974, absoluto = mira + inclinação olhando para a direita (lado 1) e 180 - (mira + inclinação) para a esquerda.
+    O Nak e o J.Frog miram de 125 a 175: atiram para o lado contrário ao que olham. Tanque sem tabela: ELEVATIONS.
+    shortcut: inclinação do aim.slope (o 0x4767c0 mede com a largura do characterdata e divide por +0x3d4)."""
+    if tank not in MOBILES:
+        return [(a, 1) for a in ELEVATIONS] + [(180 - a, 0) for a in ELEVATIONS]
+    hi, lo = MOBILES[tank][1][{1: 0, 2: 1, 'ss': 2}[kind]]
+    out = []
+    for face in (1, 0):
+        s = slope(t, x, y, face)
+        out += [(a + s if face else 180 - (a + s), face) for a in sorted({*range(lo, hi + 1, 5), hi})]
+    return out
+
+
 def inside(cx: int, col) -> bool:
     _, x, w = col
     return x - w // 4 < cx < x + w // 4
@@ -291,16 +320,18 @@ def safe(hit, target, friends) -> bool:
 
 
 def best_shot(t: Terrain, me: tuple[int, int], target: tuple[int, int], gravity: int, wind: tuple[int, int],
-              bodies=(), friends=(), weather=()) -> tuple[int, int, tuple[int, int] | None, int]:
+              bodies=(), friends=(), weather=(), choices=None) -> tuple[int, int, tuple[int, int] | None, int]:
     """(ângulo absoluto, força, impacto, erro em px) que leva o tiro mais perto do alvo sem cair em cima do bot nem
     dos aliados (friends). Entre os que acertam o corpo, prefere o que passa por força/blackforce/elétrico (mais dano):
-    o erro deles conta BODY a menos."""
+    o erro deles conta BODY a menos. choices: os (ângulo, lado) de angles(); só os que vão para o lado do alvo (ou
+    quase na vertical). Sem ângulo possível: erro UNSAFE."""
     x, y = me
     tx, ty = target
     aim = (tx, ty - BODY // 2)
     best = None
-    for e in ELEVATIONS:
-        angle = e if tx >= x else 180 - e
+    pool = choices if choices is not None else [(e if tx >= x else 180 - e, 0) for e in ELEVATIONS]
+    toward = sorted({a for a, _ in pool if (cos_times(a, 100) >= 0) == (tx >= x) or abs(cos_times(a, 100)) <= 18})
+    for angle in toward:
 
         def score(p):
             crossed = set()
@@ -315,7 +346,7 @@ def best_shot(t: Terrain, me: tuple[int, int], target: tuple[int, int], gravity:
             d, hit = score(p)
             if best is None or d < best[3]:
                 best = (angle, p, hit, d)
-    return best
+    return best or (90, POWER[0], None, UNSAFE)
 
 
 def miss(rng: random.Random, power: int) -> int:
