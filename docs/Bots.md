@@ -37,7 +37,9 @@ Falta validar jogando: física ajustada pela captura, mobiles com tiro especial 
   sala, e o bot entra no time mais fraco. O kick do mestre também tira o bot.
 - **`auto`:** no lugar do `lvl` ou do mobile, o mesmo que omitir (`/bot add auto auto`). O apelido termina em `[BOT]`
   (até 7 letras + sufixo, 12 bytes no fio); o `/bot remove` aceita o nome com ou sem o sufixo.
-- **Escolher o mobile:** opção acoplável à parte, só para GM.
+- **Escolher o mobile:** opção acoplável à parte, só para GM. `/bot mobile nome` troca o mobile do próprio GM na
+  próxima partida, inclusive os do S2 e os ocultos (Dragon, Knight) que a tela não oferece: vai no 0x3432 do início,
+  que o cliente usa no lugar da escolha da tela. Trocar na tela (0x3200) desfaz.
 - **Nível por versão:** a patente vira `n` de 0 (pintinho) a 1 (topo): TH/S1 19..-4, S2 1..41 (`skill.normalize`).
 - **Equipamento:** sorteado pela patente e pelo preço do item na `Menu`; nome aleatório. O bot pertence à sala,
   não existe no banco.

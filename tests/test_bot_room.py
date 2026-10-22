@@ -60,6 +60,10 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         [b] = [p for p in room.sorted_players() if bots.is_bot(p.conn)]
         self.assertEqual((b.tank1, b.conn.data['game']['TotalGrade']), (0x05, 5))
         self.assertIn('não existe', await bots.command(gm, '/bot add 5 Phoenix', Inventory()))  # só no S2
+        # /bot mobile: o próprio mobile do GM (o oculto Dragon, que a tela não oferece); só GM
+        self.assertIn('Dragon', await bots.command(gm, '/bot mobile dragon', Inventory()))
+        self.assertEqual(room.player(gm).tank1, 0x11)
+        self.assertIn('só para GM', await self.cmd('/bot mobile ice'))
 
     async def test_auto_and_suffix(self):
         self.assertIn('entrou', await self.cmd('/bot add auto auto'))  # antes: "Mobile 'auto' não existe"

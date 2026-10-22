@@ -4,6 +4,8 @@ Comandos (texto do 0x5100, para o mestre da sala; docs/Bots.md):
   /bot add [patente|auto] [mobile|auto]   sem patente (ou auto): equilibra os times (ou a média da sala no Solo);
                                           mobile só GM com gm_mobile; auto = aleatório
   /bot remove [nome|all]        sem nome: o último que entrou
+  /bot mobile nome              GM com gm_mobile: o próprio mobile da próxima partida (os do S2 e os ocultos, que a
+                                tela não oferece); vale até trocar na tela (0x3200)
 Config do game server: bots: {enabled, gm_mobile, max, reward, skill: {...}}.
 """
 from __future__ import annotations
@@ -193,9 +195,9 @@ def auto_level(others: list, team: int) -> float:
     return sum(strength(p) for p in others) / len(others) if others else 0.5
 
 
-def find_mobile(layout: str, name: str) -> int | None:
+def find_mobile(layout: str, name: str, extra=()) -> int | None:
     key = re.sub(r'[^a-z0-9]', '', name.lower())
-    tanks = phase.load(layout).tanks
+    tanks = {*phase.load(layout).tanks, *extra}
     return next((i for i, m in profiles.BY_PHASE[layout].items()
                  if i in tanks and re.sub(r'[^a-z0-9]', '', m.name.lower()) == key), None)
 
@@ -263,9 +265,11 @@ async def command(conn, text: str, inventory_repository) -> str:
     sub, args = (parts[0].lower(), parts[1:]) if parts else ('', [])
     if sub == 'remove':
         return await remove(room, ' '.join(args))
-    if sub != 'add':
-        return "BOT>> Use /bot add [patente|auto] [mobile|auto] ou /bot remove [nome|all]."
     layout = type(phase.of(conn)).__name__
+    if sub == 'mobile':
+        return own_mobile(conn, room, layout, ' '.join(args))
+    if sub != 'add':
+        return "BOT>> Use /bot add [patente|auto] [mobile|auto], /bot remove [nome|all] ou /bot mobile nome."
     grade = tank = None
     if args and args[0].lower() in AUTO:
         args.pop(0)
@@ -284,6 +288,19 @@ async def command(conn, text: str, inventory_repository) -> str:
         if tank is None:
             return f"BOT>> Mobile '{' '.join(args)}' não existe nesta versão."
     return await add(conn, room, grade, tank, inventory_repository)
+
+
+def own_mobile(conn, room, layout: str, name: str) -> str:
+    """O mobile vai no 0x3432 do início (room.start), que o cliente usa no lugar do que a tela mostra."""
+    from gunbound.game.protocol.gm_commands import is_gm
+    if not (cfg(conn.server.config).get('gm_mobile') and is_gm(conn)):
+        return "BOT>> Escolher o mobile é só para GM."
+    from gunbound.game.room import HIDDEN_TANKS
+    tank = find_mobile(layout, name, HIDDEN_TANKS)  # GM: os ocultos também (Authority >= 98, como o original)
+    if tank is None:
+        return f"BOT>> Mobile '{name}' não existe nesta versão."
+    room.set_tanks(conn, tank, room.player(conn).tank2)
+    return f"BOT>> Seu mobile na próxima partida: {profiles.BY_PHASE[layout][tank].name}."
 
 
 def reward(room, player, gold: int, gp: int, server_config) -> tuple[int, int] | None:
