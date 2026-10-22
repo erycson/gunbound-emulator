@@ -606,7 +606,8 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(info[0][:len(nick)], nick)
                 self.assertEqual(info[0][16:16 + min(12, len(nick))], nick[:12])
                 self.assertEqual(info[0][52], 1)
-                self.assertEqual(info[0][57:bots.INFO_SIZE], bytes(bots.INFO_SIZE - 57))
+                self.assertEqual(info[0][57:bots.INFO_GRADE], bytes(bots.INFO_GRADE - 57))
+                self.assertEqual(info[0][bots.INFO_GRADE], 0xFF)  # 0 virava patente de GM nos outros
             await self.cmd('/bot remove')
 
     async def test_confirms_result_screen(self):

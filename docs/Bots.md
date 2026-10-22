@@ -15,7 +15,9 @@ Falta validar jogando: física ajustada pela captura, mobiles com tiro especial 
 - 0x8400 (v584, emissor 0x50e710, receptor 0x42d927): dados do jogador que cada cliente manda aos outros no começo da
   partida, 184 bytes úteis (o humano manda 0x100): apelido 16, apelido 12 ([INCERTO] guild), u16, u32, 4 x u32, u16
   0x1c, u8 sinal + u32 GP, e do 57 em diante zeros no humano: licença de mobile (118), bônus de dano (122..130), pct de
-  dano e cratera (s16 163/165, <= -50 zera os dois, 0x4274f0) e avatar 4/5 (179/181). Sem o pacote o slot fica com o
+  dano e cratera (s16 163/165, <= -50 zera os dois, 0x4274f0) e avatar 4/5 (179/181); no 183 u8 patente, que vira a
+  total, a da temporada e a do país do slot se não for 0xff (0x42dd9a; o humano manda 0xff, o 0 deixava o bot com o
+  ícone de GM, que é a patente 0 no S2). Sem o pacote o slot fica com o
   que estava na memória desde a entrada na sala (0x4d93b0 zera). O bot manda o dele no começo de cada partida.
   [INCERTO] o Frank, o Trico e a baleia do bot não abriram cratera nos humanos (o Frank do humano abre); o pct e o
   GroundDamage do avatar (d0 += d0*GD/167, 0x427171, GD de -100..100: no pior caso ~40%) são os únicos atributos do

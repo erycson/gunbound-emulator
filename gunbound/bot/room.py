@@ -88,6 +88,7 @@ RESULT_OK = 0x8103
 # tinha na memória para o slot desde a entrada na sala (0x4d93b0 zera), então o bot manda o dele com os zeros.
 PLAYER_INFO = 0x8400
 INFO_SIZE = 0x100
+INFO_GRADE = 183  # u8 patente do slot (0x42dd9a); o humano manda 0xff
 RESULT_OK_WAIT = 3.0
 
 
@@ -159,7 +160,8 @@ def player_info(p) -> bytes:
     score = int(p.conn.data['game'].get('TotalScore') or 0)
     body = (nick[:15].ljust(16, b'\x00') + nick[:12].ljust(12, b'\x00') + struct.pack('<HI4IHBI', 0, 0, grade, grade, 0, grade,
                                                                                          0x1c, int(score >= 0), abs(score)))
-    return body.ljust(INFO_SIZE, b'\x00')
+    body = body.ljust(INFO_SIZE, b'\x00')
+    return body[:INFO_GRADE] + b'\xff' + body[INFO_GRADE + 1:]  # 0xff = não troca a patente (0 = admin no S2)
 
 
 def pick_avatar(slots: list[list[tuple[int, int]]], n: float, rng=random) -> list[int]:
