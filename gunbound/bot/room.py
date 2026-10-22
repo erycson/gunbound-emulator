@@ -76,8 +76,18 @@ def bot_name(taken: set[str], rng=random) -> str:
 TAIL = bytes.fromhex('d222eafaee3a')
 LOAD_STEP, LOAD_DONE = 0x8201, 0x82FF  # progresso (u8 slot, u8 etapa 1..3) e carregou: captura v584 de 2 clientes
 # Sala de espera: o "pronto" não passa pelo servidor; quem não é mestre manda 0x8102 u8 (3 pronto, 1 presente) pelo
-# túnel (captura; envio em 0x50923a, ReadyMode do v584). 0x8100 é o ping ("250ms").
+# túnel (captura; envio em 0x50923a, ReadyMode do v584).
 READY = 0x8102
+# Troca de mobile na sala: depois do 0x3201 o cliente manda 0x8100 aos outros, e quem recebe grava na tabela da vaga do
+# emissor e redesenha. Muda por versão (tank_change).
+TANK_CHANGE = 0x8100
+
+
+def tank_change(layout: str, tank1: int, tank2: int) -> bytes | None:
+    """Corpo do 0x8100. v584: u8 tank1, u16, u8 tank2, u16 (envio 0x508e12, grava 0x42d708, desenha "tank%d" ou
+    "rider" em 0x50b3cc). v440: u8 tank1, u8 tank2 (envio 0x4ec97b, grava 0x426910). TH: o receptor (0x4c4241) é
+    outro, não conferido: None."""
+    return {'WCS2': bytes([tank1, 0, 0, tank2, 0, 0]), 'WCS1': bytes([tank1, tank2])}.get(layout)
 # Tela de resultado: cada cliente manda 0x8103 (vazio) pelo túnel ao clicar OK, e quem já clicou fica em "espere os
 # outros usuários" até receber o de todos (captura de 2 humanos e do v584). O 0xc30c do mestre chega ao bot com a
 # partida já fechada (room.game None), então o servidor manda o OK dos bots depois do 0x4413.

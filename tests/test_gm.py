@@ -95,8 +95,18 @@ class GmTest(unittest.IsolatedAsyncioTestCase):
         self.gm.room = room
         await room.join(self.a)
         a = room.player(self.a)
+        self.gm.server.index = self.a.server.index = 0  # chave do P2P
         self.assertIn('Dragon', await self.cmd.run('/mobile dragon'))
         self.assertEqual((room.player(self.gm).tank1, a.tank1), (0x11, 0x00))
+        # a tela: 0x8100 pelo túnel, da vaga do GM, para os dois humanos (o próprio também); S1 = u8 tank1, u8 tank2
+        from Crypto.Cipher import AES
+        from gunbound.bot import room as bots
+        for c in (self.gm, self.a):
+            pkt = c.last(ServerPacket.SRV_GAME_TUNNEL)
+            plain = AES.new(bots.p2p_key(room, self.gm.server), AES.MODE_ECB).decrypt(pkt[7:])
+            self.assertEqual((pkt[2], plain[:4]), (room.player(self.gm).slot, bytes([0x00, 0x81, 0x11, 0x00])))
+        self.assertEqual(bots.tank_change('WCS2', 0x13, 0xFF), bytes([0x13, 0, 0, 0xFF, 0, 0]))
+        self.assertIsNone(bots.tank_change('TH', 0x01, 0xFF))
         await self.cmd.run(f'/mobile ice {a.slot}')
         self.assertEqual((room.player(self.gm).tank1, a.tank1), (0x11, 0x0A))
         a.ready = True

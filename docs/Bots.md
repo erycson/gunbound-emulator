@@ -10,7 +10,7 @@ Falta validar jogando: física ajustada pela captura, mobiles com tiro especial 
 - Entra como um jogador comum (0x3010 para a sala), sempre pronto, com patente, guild vazia, roupa sorteada pela
   patente (cabeça, corpo e bandeira da `Menu`, cash vale 100 gold na conta) e mobile sorteado entre os da versão.
 - "Pronto" não passa pelo servidor: quem não é mestre avisa os outros pelo túnel com 0x8102 u8 (3 pronto, 1 presente;
-  captura e envio em 0x50923a do v584; o 0x8100 é o ping). O bot manda 0x8102 03 ao entrar e 1 s depois de cada
+  captura e envio em 0x50923a do v584; o 0x8100 é a troca de mobile, `bots.tank_change`). O bot manda 0x8102 03 ao entrar e 1 s depois de cada
   0x3232 (volta do resultado); quem entra depois vê pelo estado do 0x2111. No fim da partida o bot continua pronto.
 - 0x8400 (v584, emissor 0x50e710, receptor 0x42d927): dados do jogador que cada cliente manda aos outros no começo da
   partida, 184 bytes úteis (o humano manda 0x100): apelido 16, apelido 12 ([INCERTO] guild), u16, u32, 4 x u32, u16
@@ -39,7 +39,10 @@ Falta validar jogando: física ajustada pela captura, mobiles com tiro especial 
   (até 7 letras + sufixo, 12 bytes no fio); o `/bot remove` aceita o nome com ou sem o sufixo.
 - **Escolher o mobile:** opção acoplável à parte, só para GM. Para testar os mobiles que a tela não oferece (S2 e os
   ocultos Dragon e Knight), o comando de GM `/mobile nome [slot|all]` (`gm_commands.py`) troca o mobile da próxima
-  partida: o do GM, o de um slot ou o de todos. Vai no 0x3432 do início; trocar na tela (0x3200) desfaz.
+  partida: o do GM, o de um slot ou o de todos. Vai no 0x3432 do início, e a tela da sala troca pelo P2P 0x8100 que
+  o cliente manda depois do 0x3201 (o servidor manda pelo túnel como se viesse da vaga, para todos os humanos). O
+  corpo muda por versão (`bots.tank_change`): v584 u8, u16, u8, u16; v440 u8, u8; TH não conferido, não manda.
+  Trocar na tela (0x3200) desfaz.
 - **Nível por versão:** a patente vira `n` de 0 (pintinho) a 1 (topo): TH/S1 19..-4, S2 1..41 (`skill.normalize`).
 - **Equipamento:** sorteado pela patente e pelo preço do item na `Menu`; nome aleatório. O bot pertence à sala,
   não existe no banco.
