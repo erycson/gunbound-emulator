@@ -216,9 +216,9 @@ impactos do fim do pacote só move a câmera (0x458c30). Então cada humano simu
   special=False). Captura v584 de 22/10 (humano atirando, impactos do próprio cliente no 0xc400/0xc409 contra o
   aim.fly partindo do cano do pacote): liberados Mage SS (4 px), Lightning 2 e SS (9-20), Trico 2 e SS (21, 1),
   Kalsiddon 2 e SS (28, 31; divide no ar), A.Sate 2 e Aduka 2 (pousam a 13-31 px; o dano vem do satélite), Turtle SS
-  (33), Raon 2 e SS (o robô pousa onde a mira diz e anda até o mobile mais perto). Seguem no 1: Nak 2 (cava), Turtle 2
-  (vai para o outro lado), J.Frog 2/SS (anda depois do pouso), Grub 2/SS (quica), Aduka SS (atravessa tudo), A.Sate SS
-  (sem dado), Boomer e os do S2 (sem captura).
+  (33). Seguem no 1: Raon 2/SS (o robô anda até o mobile mais perto, aliado também; só 1 pouso conferido), Nak 2
+  (cava), Turtle 2 (vai para o outro lado), J.Frog 2/SS (anda depois do pouso), Grub 2/SS (quica), Aduka SS (atravessa
+  tudo), A.Sate SS (sem dado), Boomer e os do S2 (sem captura).
 - Cano: os 2 primeiros s16 do 0xc400 são o deslocamento do cano a partir do pé, e o tiro começa ali. No cliente ele não
   segue o ângulo do tiro (Lightning a 57°: (4, 35); Trico a 32°: (17, 33); comprimento 27..41 conforme o mobile). O
   bot manda o dele (30 px na direção do tiro, `aim.muzzle`) e quem recebe começa o tiro ali, então a mira do bot fica

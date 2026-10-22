@@ -214,7 +214,7 @@ class GmCommands:
         if not targets:
             return f"ADMIN>> Ninguém no slot {who}."
         for p in targets:
-            room.set_tanks(p.conn, tank, p.tank2)
+            p.tank1 = tank  # sem set_tanks: ele tira o pronto, e o bot não fica pronto de novo
         names = ', '.join(p.conn.data['profile']['Nickname'] for p in targets)
         return f"ADMIN>> {bots.profiles.BY_PHASE[layout][tank].name} na próxima partida: {names}"
 

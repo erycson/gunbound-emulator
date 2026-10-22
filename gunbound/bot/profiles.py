@@ -49,9 +49,9 @@ TH = {
     0x04: mobile('BigFoot', Shot(range=1.4, note='rajada espalha com a distância'), Shot(range=1.4), Shot(range=1.2)),
     0x05: mobile('Boomer', Shot(angles=VERTICAL, wind=1.6, special=True, note='bumerangue; 89° de perto é normal'),
                  Shot(angles=VERTICAL, wind=1.6, special=True), Shot(angles=VERTICAL, wind=1.4, special=True)),
-    0x06: mobile('Raon Launcher', s2=Shot(min_dist=SPACE, note='o robô pousa onde a mira diz e anda até o mobile mais '
-                                                                 'perto, com alcance limitado; tiro nele o desliga'),
-                 ss=Shot(min_dist=SPACE)),
+    0x06: mobile('Raon Launcher', s2=Shot(min_dist=SPACE, special=True, note='o robô anda até o mobile mais perto '
+                                                                               '(até um aliado), com alcance limitado'),
+                 ss=Shot(min_dist=SPACE, special=True)),
     0x07: mobile('Lightning', Shot(angles=VERTICAL, note='raio cai na vertical'), Shot(angles=VERTICAL),
                  Shot(angles=VERTICAL, note='captura v584: 20 px')),
     0x08: mobile('J.D'),

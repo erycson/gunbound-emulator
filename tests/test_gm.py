@@ -99,8 +99,10 @@ class GmTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((room.player(self.gm).tank1, a.tank1), (0x11, 0x00))
         await self.cmd.run(f'/mobile ice {a.slot}')
         self.assertEqual((room.player(self.gm).tank1, a.tank1), (0x11, 0x0A))
+        a.ready = True
         await self.cmd.run('/mobile j.d all')
         self.assertEqual({p.tank1 for p in room.players.values()}, {0x08})
+        self.assertIsNone(room.start_check(self.gm))  # quem estava pronto continua pronto
         self.assertIn('não existe', await self.cmd.run('/mobile nada'))
         self.assertIn('Ninguém', await self.cmd.run('/mobile ice 7'))
 
