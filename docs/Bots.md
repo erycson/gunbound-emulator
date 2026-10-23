@@ -39,10 +39,11 @@ Falta validar jogando: física ajustada pela captura, mobiles com tiro especial 
   (até 7 letras + sufixo, 12 bytes no fio); o `/bot remove` aceita o nome com ou sem o sufixo.
 - **Escolher o mobile:** opção acoplável à parte, só para GM. Para testar os mobiles que a tela não oferece (S2 e os
   ocultos Dragon e Knight), o comando de GM `/mobile nome [slot|all]` (`gm_commands.py`) troca o mobile da próxima
-  partida: o do GM, o de um slot ou o de todos. Vai no 0x3432 do início, e a tela da sala troca pelo P2P 0x8100 que
-  o cliente manda depois do 0x3201 (o servidor manda pelo túnel como se viesse da vaga, para todos os humanos). O
-  corpo muda por versão (`bots.tank_change`): v584 u8, u16, u8, u16; v440 u8, u8; TH não conferido, não manda.
-  Trocar na tela (0x3200) desfaz.
+  partida: o do GM, o de um slot ou o de todos. Vai no 0x3432 do início. A tela da sala só troca para bot: o
+  servidor manda pelo túnel o P2P 0x8100 (o que o cliente manda depois do 0x3201) na vaga do bot. Na vaga de um
+  humano não: o canal P2P tem a seq do cliente dele, e o frame forjado travou mapa (0x8000) e F3 do GM até sair da
+  sala (teste de 22/10). O corpo muda por versão (`bots.tank_change`): v584 u8, u16, u8, u16; v440 u8, u8; TH não
+  conferido, não manda. Trocar na tela (0x3200) desfaz.
 - **Nível por versão:** a patente vira `n` de 0 (pintinho) a 1 (topo): TH/S1 19..-4, S2 1..41 (`skill.normalize`).
 - **Equipamento:** sorteado pela patente e pelo preço do item na `Menu`; nome aleatório. O bot pertence à sala,
   não existe no banco.

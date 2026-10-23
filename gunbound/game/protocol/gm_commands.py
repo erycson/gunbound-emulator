@@ -196,7 +196,7 @@ class GmCommands:
 
     async def cmd_mobile(self, arg):
         """Extra: /mobile nome [slot|all]. Sem slot, o do GM. O tank1 sai no 0x3432 do início (room.start); a tela da
-        sala troca pelo P2P 0x8100. Trocar na tela (0x3200) desfaz."""
+        sala só troca para bot (P2P 0x8100 na vaga dele). Trocar na tela (0x3200) desfaz."""
         from gunbound.game import phase
         from gunbound.game.room import HIDDEN_TANKS
         room = self.conn.room
@@ -215,9 +215,8 @@ class GmCommands:
             return f"ADMIN>> Ninguém no slot {who}."
         for p in targets:
             p.tank1 = tank  # sem set_tanks: ele tira o pronto, e o bot não fica pronto de novo
-            if body := bots.tank_change(layout, tank, p.tank2):  # a tela da sala, como se viesse da vaga dele
-                if not hasattr(p.conn, 'seq'):
-                    p.conn.seq = {}
+            # o canal P2P de um humano tem seq do cliente dele: frame forjado na vaga dele trava mapa e F3 até sair da sala
+            if bots.is_bot(p.conn) and (body := bots.tank_change(layout, tank, p.tank2)):
                 await bots.p2p_send(room, p, bots.TANK_CHANGE, body)
         names = ', '.join(p.conn.data['profile']['Nickname'] for p in targets)
         return f"ADMIN>> {bots.profiles.BY_PHASE[layout][tank].name} na próxima partida: {names}"

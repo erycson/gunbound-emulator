@@ -51,6 +51,18 @@ class BotRoomTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(b.tank1, range(0x11))
         self.assertIsNone(self.room.start_check(self.master))
 
+    async def test_gm_mobile_on_bot_redraws_room(self):
+        """/mobile no slot de um bot: 0x8100 pelo túnel na vaga do bot (S1 = u8 tank1, u8 tank2)."""
+        from Crypto.Cipher import AES
+        from gunbound.game.protocol.gm_commands import GmCommands
+        await self.cmd('/bot add')
+        [b] = self.bots()
+        self.master.sent.clear()
+        await GmCommands(self.master, self.rooms, None, None).run(f'/mobile ice {b.slot}')
+        pkt = self.master.last(ServerPacket.SRV_GAME_TUNNEL)
+        plain = AES.new(bots.p2p_key(self.room, self.master.server), AES.MODE_ECB).decrypt(pkt[7:])
+        self.assertEqual((b.tank1, pkt[2], plain[:4]), (0x0A, b.slot, bytes([0x00, 0x81, 0x0A, b.tank2])))
+
     async def test_grade_and_mobile_rules(self):
         self.assertIn('Patente de', await self.cmd('/bot add 50'))
         self.assertIn('só para GM', await self.cmd('/bot add 5 boomer'))
